@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>코브 애니메이터</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300..700&family=Noto+Sans+KR:wght@300..700&display=swap">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "./lib/three/build/three.module.js",
+  "three/addons/": "./lib/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<header>
+  <strong class="brand">코브 애니메이터</strong>
+  <span id="fileName" class="dim"></span>
+  <span class="spacer"></span>
+  <button id="btnUndo" title="실행 취소 (Ctrl+Z)">↶</button>
+  <button id="btnRedo" title="다시 실행 (Ctrl+Shift+Z)">↷</button>
+  <span class="sep"></span>
+  <button id="btnOpen">GLB 열기</button>
+  <button id="btnSaveProj">프로젝트 저장</button>
+  <button id="btnLoadProj">프로젝트 불러오기</button>
+  <button id="btnMedia">PNG · MP4</button>
+  <button id="btnExport" class="primary">GLB 내보내기</button>
+  <input type="file" id="fileGlb" accept=".glb" hidden>
+  <input type="file" id="fileProj" accept=".json" hidden>
+</header>
+
+<main>
+  <aside id="left">
+    <section>
+      <h3>본 / 노드</h3>
+      <div id="tree"></div>
+      <label class="check"><input type="checkbox" id="showAll"> 메시 노드도 표시</label>
+    </section>
+    <section>
+      <h3>클립</h3>
+      <select id="clipSel"></select>
+      <div class="row">
+        <button id="clipNew">새로</button>
+        <button id="clipDup">복제</button>
+        <button id="clipRen">이름</button>
+        <button id="clipDel">삭제</button>
+      </div>
+      <div class="row">
+        <label>길이(초) <input type="number" id="clipDur" min="0.1" step="0.1"></label>
+        <label>FPS <select id="clipFps"><option>24</option><option selected>30</option><option>60</option></select></label>
+      </div>
+      <select id="presetAdd"><option value="" disabled selected>프리셋 추가…</option></select>
+      <button id="clipReimport" class="wide">GLB 원본 모션으로 되돌리기</button>
+    </section>
+  </aside>
+
+  <div id="viewWrap">
+    <div id="view"></div>
+    <div class="overlay top-left">
+      <div class="seg" id="modeSeg">
+        <button data-mode="translate" title="이동 (W)">이동</button>
+        <button data-mode="rotate" class="on" title="회전 (E)">회전</button>
+        <button data-mode="scale" title="크기 (R)">크기</button>
+      </div>
+      <button id="spaceBtn" title="좌표계 전환 (Q)">로컬</button>
+      <label class="check"><input type="checkbox" id="showBones" checked> 본 표시</label>
+      <label class="check"><input type="checkbox" id="ikOn" checked> IK</label>
+      <label class="check opac">투명도 <input type="range" id="opacity" min="0.1" max="1" step="0.05" value="1"></label>
+      <button id="camReset">카메라 리셋</button>
+    </div>
+    <div id="drop">GLB 파일을 여기에 놓으세요</div>
+  </div>
+
+  <aside id="right">
+    <section>
+      <h3>선택: <span id="selName">-</span></h3>
+      <div id="keyState" class="dim">-</div>
+      <div class="grid3">
+        <span class="lbl">위치</span>
+        <input type="number" id="px" step="0.001"><input type="number" id="py" step="0.001"><input type="number" id="pz" step="0.001">
+        <span class="lbl">회전°</span>
+        <input type="number" id="rx" step="1"><input type="number" id="ry" step="1"><input type="number" id="rz" step="1">
+        <span class="lbl">크기</span>
+        <input type="number" id="sx" step="0.01"><input type="number" id="sy" step="0.01"><input type="number" id="sz" step="0.01">
+      </div>
+      <div class="row">
+        <button id="btnKey" class="primary" title="I">키 찍기</button>
+        <button id="btnKeyAll" title="Shift+I">모든 본 키</button>
+      </div>
+      <div class="row">
+        <button id="btnDelKey" title="Delete">키 삭제</button>
+        <button id="btnRest">기본 포즈</button>
+      </div>
+      <div id="keyProps" hidden>
+        <h3>선택한 키 <span id="keyCount"></span></h3>
+        <label>보간 <select id="keyInterp">
+          <option value="linear">선형</option>
+          <option value="smooth">부드럽게</option>
+          <option value="step">계단</option>
+        </select></label>
+      </div>
+    </section>
+    <section class="help">
+      <h3>단축키</h3>
+      <p><kbd>Space</kbd> 재생/정지 · <kbd>←</kbd><kbd>→</kbd> 프레임 이동</p>
+      <p><kbd>I</kbd> 키 찍기 · <kbd>Del</kbd> 키 삭제</p>
+      <p><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd> 이동/회전/크기 · <kbd>Q</kbd> 좌표계</p>
+      <p><kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>V</kbd> 키 복사/붙여넣기</p>
+      <p>타임라인: 키 드래그로 이동, Shift+클릭 다중 선택, Ctrl+휠 확대</p>
+      <p>뷰포트: 본 점이나 모델을 클릭해 선택</p>
+    </section>
+  </aside>
+</main>
+
+<footer>
+  <div id="transport">
+    <button id="tStart" title="처음 (Home)">⏮</button>
+    <button id="tPrev" title="이전 프레임 (←)">◀</button>
+    <button id="tPlay" class="primary" title="재생 (Space)">▶</button>
+    <button id="tNext" title="다음 프레임 (→)">▶</button>
+    <button id="tEnd" title="끝 (End)">⏭</button>
+    <span id="timeLabel" >0 / 0.00s</span>
+    <label class="check"><input type="checkbox" id="loop" checked> 반복</label>
+    <label class="check"><input type="checkbox" id="autoKey" checked> 자동 키</label>
+    <span class="spacer"></span>
+    <span class="dim">확대</span><input type="range" id="zoom" min="30" max="600" value="120">
+  </div>
+  <canvas id="tl"></canvas>
+</footer>
+<dialog id="mediaDlg">
+  <h3>이미지 · 영상 내보내기</h3>
+  <div class="seg2">
+    <label><input type="radio" name="mdFmt" value="png" checked><span>PNG · 현재 프레임</span></label>
+    <label><input type="radio" name="mdFmt" value="mp4"><span>MP4 · 현재 클립</span></label>
+  </div>
+  <div id="mdInfo" class="dim"></div>
+  <div class="grid2">
+    <span class="lbl">해상도</span>
+    <select id="mdRes"><option value="720">1280 × 720</option><option value="1080" selected>1920 × 1080</option><option value="sq">1080 × 1080</option><option value="v">1080 × 1920</option></select>
+    <span class="lbl">배경</span>
+    <select id="mdBg"><option value="dark">어두운 회색</option><option value="light">밝은 회색</option><option value="clear">투명 (PNG만)</option></select>
+  </div>
+  <progress id="mdBar" value="0" max="1"></progress>
+  <div id="mdStatus" class="dim"></div>
+  <div class="row"><button id="mdClose">닫기</button><button id="mdGo" class="primary">PNG 저장</button></div>
+</dialog>
+<div id="toast"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

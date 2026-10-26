@@ -1,0 +1,1101 @@
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
+import { PRESETS } from './presets.js';
+import { Muxer, ArrayBufferTarget } from './lib/mp4-muxer.mjs';
+
+const $ = (s) => document.querySelector(s);
+const EPS = 1e-4;
+const ACCENT = 0xff5a36;
+const FONT = '"Google Sans Flex", "Noto Sans KR", sans-serif';
+
+/* ───────────── 상태 ───────────── */
+const S = {
+  glb: null,              // { json, bin(ArrayBuffer), name }
+  model: null,
+  nodes: new Map(),       // glTF node index -> Object3D
+  idxOf: new Map(),       // Object3D -> node index
+  rest: new Map(),        // node index -> { p, q, s }
+  boneIdx: [],            // skin joint node indices
+  clips: [],
+  clip: 0,
+  time: 0,
+  playing: false,
+  sel: null,              // 선택된 Object3D
+  selKeys: new Set(),     // 선택된 키 객체
+  autoKey: true,
+  loop: true,
+  showAll: false,
+  copied: null,
+};
+
+const D2R = Math.PI / 180;
+const nodeName = (i) => S.glb.json.nodes[i].name || `node ${i}`;
+const curClip = () => S.clips[S.clip];
+const fps = () => curClip()?.fps || 30;
+
+/* ───────────── three.js 장면 ───────────── */
+const viewEl = $('#view');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setClearColor(0x000000, 0);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+viewEl.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 0.001, 100);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x555a66, 1.8));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(1, 2, 1.5);
+scene.add(sun);
+
+const orbit = new OrbitControls(camera, renderer.domElement);
+orbit.enableDamping = true;
+const tc = new TransformControls(camera, renderer.domElement);
+tc.setMode('rotate');
+tc.setSize(0.75);
+const tcHelper = tc.getHelper ? tc.getHelper() : tc;
+scene.add(tcHelper);
+tc.addEventListener('dragging-changed', (e) => {
+  orbit.enabled = !e.value;
+  if (!e.value) snapshot();
+});
+tc.addEventListener('objectChange', () => onNodeEdited());
+
+let grid = null;
+let markers = [];          // { idx, mesh }
+let boneLines = null;
+let fitInfo = { center: new THREE.Vector3(), size: 1 };
+const markerGeo = new THREE.SphereGeometry(1, 16, 12);
+
+function resizeView() {
+  const w = viewEl.clientWidth, h = viewEl.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / Math.max(h, 1);
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resizeView).observe(viewEl);
+
+function fitCamera() {
+  const { center, size } = fitInfo;
+  camera.position.copy(center).add(new THREE.Vector3(1, 0.6, 1).normalize().multiplyScalar(size * 1.5));
+  camera.near = size / 200; camera.far = size * 200;
+  camera.updateProjectionMatrix();
+  orbit.target.copy(center);
+  orbit.update();
+}
+
+/* ───────────── GLB 읽기 ───────────── */
+function parseGLB(buf) {
+  const dv = new DataView(buf);
+  if (dv.getUint32(0, true) !== 0x46546c67) throw new Error('GLB 파일이 아닙니다');
+  let off = 12, json = null, bin = null;
+  while (off < buf.byteLength) {
+    const len = dv.getUint32(off, true), type = dv.getUint32(off + 4, true);
+    const data = buf.slice(off + 8, off + 8 + len);
+    if (type === 0x4e4f534a) json = JSON.parse(new TextDecoder().decode(data));
+    else if (type === 0x004e4942 && !bin) bin = data;
+    off += 8 + len;
+  }
+  return { json, bin: bin || new ArrayBuffer(0) };
+}
+
+const COMP = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
+function readAccessor(i) {
+  const { json, bin } = S.glb;
+  const a = json.accessors[i];
+  if (a.componentType !== 5126) throw new Error('float 이외의 애니메이션 데이터는 지원하지 않습니다');
+  const bv = json.bufferViews[a.bufferView];
+  const n = COMP[a.type];
+  const stride = bv.byteStride || n * 4;
+  const base = (bv.byteOffset || 0) + (a.byteOffset || 0);
+  const dv = new DataView(bin);
+  const out = new Float32Array(a.count * n);
+  for (let k = 0; k < a.count; k++)
+    for (let c = 0; c < n; c++) out[k * n + c] = dv.getFloat32(base + k * stride + c * 4, true);
+  return out;
+}
+
+function loadGLB(buffer, name) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try { parsed = parseGLB(buffer); } catch (e) { return reject(e); }
+    new GLTFLoader().parse(buffer.slice(0), '', (gltf) => {
+      stopPlay();
+      if (S.model) scene.remove(S.model);
+      S.glb = { ...parsed, name };
+      S.model = gltf.scene;
+      scene.add(S.model);
+      S.model.updateMatrixWorld(true);
+
+      S.nodes.clear(); S.idxOf.clear(); S.rest.clear();
+      for (const [obj, assoc] of gltf.parser.associations) {
+        if (assoc && assoc.nodes !== undefined && obj.isObject3D) {
+          S.nodes.set(assoc.nodes, obj);
+          S.idxOf.set(obj, assoc.nodes);
+          S.rest.set(assoc.nodes, { p: obj.position.toArray(), q: obj.quaternion.toArray(), s: obj.scale.toArray() });
+        }
+      }
+      const joints = new Set();
+      (parsed.json.skins || []).forEach((sk) => sk.joints.forEach((j) => joints.add(j)));
+      S.boneIdx = [...joints].filter((j) => S.nodes.has(j));
+
+      const box = new THREE.Box3().setFromObject(S.model);
+      const size = box.getSize(new THREE.Vector3()).length() || 1;
+      fitInfo = { center: box.getCenter(new THREE.Vector3()), size };
+      if (grid) scene.remove(grid);
+      grid = new THREE.GridHelper(size * 2, 20, 0x555a64, 0x3d4149);
+      grid.position.y = box.min.y;
+      scene.add(grid);
+      buildMarkers();
+      fitCamera();
+      applyOpacity();
+
+      setupIK();
+      const saved = loadSaved();
+      S.clips = saved?.clips || [...importClips(), ...PRESETS.map(buildPresetClip)];
+      S.clip = Math.min(saved?.clip || 0, Math.max(S.clips.length - 1, 0));
+      if (!S.clips.length) S.clips = [newClipData('새 클립')];
+      S.time = 0;
+      S.selKeys.clear();
+      hist = []; hi = -1;
+      select(S.nodes.get(S.boneIdx[1] ?? S.boneIdx[0]) || null);
+      applyPose(0);
+      refreshClipUI();
+      snapshot(true);
+      $('#fileName').textContent = name;
+      resolve();
+    }, reject);
+  });
+}
+
+/* ───────────── 본 마커 ───────────── */
+function buildMarkers() {
+  markers.forEach((m) => scene.remove(m.mesh));
+  if (boneLines) scene.remove(boneLines);
+  markers = S.boneIdx.map((idx) => {
+    const isTarget = nodeName(idx).includes('IK') || nodeName(idx).includes('타겟');
+    const mat = new THREE.MeshBasicMaterial({ color: isTarget ? 0xffffff : 0x1c1e23, depthTest: false, transparent: true, opacity: 0.95 });
+    const mesh = new THREE.Mesh(markerGeo, mat);
+    mesh.scale.setScalar(fitInfo.size * 0.012);
+    mesh.renderOrder = 10;
+    mesh.userData.idx = idx;
+    scene.add(mesh);
+    return { idx, mesh };
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(S.boneIdx.length * 6), 3));
+  boneLines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x1c1e23, depthTest: false, transparent: true, opacity: 0.8 }));
+  boneLines.renderOrder = 9;
+  boneLines.frustumCulled = false;
+  scene.add(boneLines);
+}
+
+const _v = new THREE.Vector3();
+function updateMarkers() {
+  const show = $('#showBones').checked;
+  const pos = boneLines.geometry.attributes.position;
+  const boneSet = new Set(S.boneIdx);
+  S.model.updateMatrixWorld(true);
+  markers.forEach((m, k) => {
+    const obj = S.nodes.get(m.idx);
+    obj.getWorldPosition(m.mesh.position);
+    m.mesh.visible = show;
+    const sel = obj === S.sel;
+    m.mesh.material.color.set(sel ? ACCENT : (/IK|타겟/.test(nodeName(m.idx)) ? 0xffffff : 0x1c1e23));
+    m.mesh.scale.setScalar(fitInfo.size * (sel ? 0.016 : 0.011));
+    let p = obj.parent, parentBone = null;
+    while (p) { if (S.idxOf.has(p) && boneSet.has(S.idxOf.get(p))) { parentBone = p; break; } p = p.parent; }
+    const a = m.mesh.position;
+    const b = parentBone ? parentBone.getWorldPosition(_v) : a;
+    pos.setXYZ(k * 2, a.x, a.y, a.z);
+    pos.setXYZ(k * 2 + 1, b.x, b.y, b.z);
+  });
+  pos.needsUpdate = true;
+  boneLines.visible = show;
+}
+
+function applyOpacity() {
+  const o = +$('#opacity').value;
+  S.model?.traverse((c) => {
+    if (!c.isMesh) return;
+    [].concat(c.material).forEach((m) => { m.transparent = o < 1; m.opacity = o; m.depthWrite = o >= 1; m.needsUpdate = true; });
+  });
+}
+
+/* ───────────── 클립 / 키프레임 데이터 ───────────── */
+const newClipData = (name, duration = 2, f = 30) => ({ name, duration, fps: f, tracks: {} });
+const track = (idx, create = false) => {
+  const c = curClip();
+  if (!c.tracks[idx] && create) c.tracks[idx] = [];
+  return c.tracks[idx];
+};
+
+function lerpArr(a, b, f) { return a.map((v, i) => v + (b[i] - v) * f); }
+const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion();
+function slerpArr(a, b, f) { _qa.fromArray(a); _qb.fromArray(b); return _qa.slerp(_qb, f).toArray(); }
+
+function sampleAt(keys, t) {
+  if (t <= keys[0].t) return keys[0];
+  const last = keys[keys.length - 1];
+  if (t >= last.t) return last;
+  let lo = 0, hi = keys.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (keys[mid].t <= t) lo = mid; else hi = mid; }
+  const a = keys[lo], b = keys[hi];
+  let f = (t - a.t) / (b.t - a.t);
+  if (a.i === 'step') f = 0;
+  else if (a.i === 'smooth') f = f * f * (3 - 2 * f);
+  return { p: lerpArr(a.p, b.p, f), q: slerpArr(a.q, b.q, f), s: lerpArr(a.s, b.s, f) };
+}
+
+function applyPose(t) {
+  const clip = curClip();
+  for (const [idx, obj] of S.nodes) {
+    const keys = clip?.tracks[idx];
+    if (keys && keys.length) {
+      const r = sampleAt(keys, t);
+      obj.position.fromArray(r.p); obj.quaternion.fromArray(r.q); obj.scale.fromArray(r.s);
+    } else {
+      const r = S.rest.get(idx);
+      obj.position.fromArray(r.p); obj.quaternion.fromArray(r.q); obj.scale.fromArray(r.s);
+    }
+  }
+}
+
+function upsertKey(idx, t, interp) {
+  const keys = track(idx, true);
+  const obj = S.nodes.get(idx);
+  let k = keys.find((x) => Math.abs(x.t - t) < EPS);
+  if (!k) {
+    k = { t, i: interp || lastInterp, p: [], q: [], s: [] };
+    keys.push(k);
+    keys.sort((a, b) => a.t - b.t);
+  }
+  k.p = obj.position.toArray(); k.q = obj.quaternion.toArray(); k.s = obj.scale.toArray();
+  return k;
+}
+let lastInterp = 'linear';
+
+function keyAt(idx, t) {
+  return track(idx)?.find((k) => Math.abs(k.t - t) < EPS);
+}
+
+/* GLB 안의 기존 애니메이션 → 편집 가능한 클립 */
+function importClips() {
+  const { json } = S.glb;
+  const near = (a, b) => a.some((v, i) => Math.abs(v - b[i]) > 1e-5);
+  return (json.animations || []).map((anim, ai) => {
+    const byNode = new Map();
+    anim.channels.forEach((ch) => {
+      const smp = anim.samplers[ch.sampler];
+      const path = ch.target.path;
+      if (!['translation', 'rotation', 'scale'].includes(path) || !S.nodes.has(ch.target.node)) return;
+      if (!byNode.has(ch.target.node)) byNode.set(ch.target.node, {});
+      const times = readAccessor(smp.input);
+      const n = path === 'rotation' ? 4 : 3;
+      const vals = readAccessor(smp.output);
+      byNode.get(ch.target.node)[path] = { times, vals, n, step: smp.interpolation === 'STEP' };
+    });
+    const clip = newClipData(anim.name || `클립 ${ai + 1}`);
+    let maxT = 0;
+    byNode.forEach((chs, idx) => {
+      const rest = S.rest.get(idx);
+      const restOf = { translation: rest.p, rotation: rest.q, scale: rest.s };
+      const all = Object.entries(chs);
+      let src = all.filter(([, c]) => c.times.length > 2);
+      if (!src.length) {
+        const moved = all.some(([p, c]) => near(Array.from(c.vals.slice(0, c.n)), restOf[p]));
+        if (!moved) return;
+        src = all;
+      }
+      const ts = [...new Set(src.flatMap(([, c]) => Array.from(c.times)).map((t) => +t.toFixed(5)))].sort((a, b) => a - b);
+      const sample = (path, t) => {
+        const c = chs[path];
+        if (!c) return restOf[path].slice();
+        const { times, vals, n } = c;
+        const get = (k) => Array.from(vals.slice(k * n, k * n + n));
+        if (t <= times[0]) return get(0);
+        if (t >= times[times.length - 1]) return get(times.length - 1);
+        let k = 0; while (times[k + 1] < t) k++;
+        if (c.step) return get(k);
+        const f = (t - times[k]) / (times[k + 1] - times[k]);
+        return path === 'rotation' ? slerpArr(get(k), get(k + 1), f) : lerpArr(get(k), get(k + 1), f);
+      };
+      clip.tracks[idx] = ts.map((t) => ({ t, i: 'linear', p: sample('translation', t), q: sample('rotation', t), s: sample('scale', t) }));
+      maxT = Math.max(maxT, ts[ts.length - 1]);
+    });
+    clip.duration = Math.max(1, Math.ceil(maxT * 10) / 10);
+    return clip;
+  });
+}
+
+/* 프리셋: [시간, 기둥°, 머리°, 갸웃°] 키 목록 → 클립 (기본 포즈 기준 상대 각도, IK_타겟은 머리 끝에 맞춰 계산) */
+function buildPresetClip(def) {
+  const clip = newClipData(def.name, def.duration);
+  const ids = { col: S.boneIdx.find((i) => nodeName(i) === '기둥'), head: S.boneIdx.find((i) => nodeName(i) === '머리'), tilt: S.boneIdx.find((i) => /갸웃/.test(nodeName(i))) };
+  const target = IK?.target ? S.idxOf.get(IK.target) : undefined;
+  const q = new THREE.Quaternion(), r = new THREE.Quaternion(), axisZ = new THREE.Vector3(0, 0, 1), axisY = new THREE.Vector3(0, 1, 0);
+  const pose = (idx, deg, axis) => {
+    const o = S.nodes.get(idx), rest = S.rest.get(idx);
+    q.fromArray(rest.q).multiply(r.setFromAxisAngle(axis, deg * D2R));
+    o.quaternion.copy(q); o.position.fromArray(rest.p); o.scale.fromArray(rest.s);
+  };
+  const snap = (idx) => { const o = S.nodes.get(idx); return { p: o.position.toArray(), q: o.quaternion.toArray(), s: o.scale.toArray() }; };
+  for (const [t, a, b, c] of def.keys) {
+    pose(ids.col, a, axisZ); pose(ids.head, b, axisZ); if (ids.tilt !== undefined) pose(ids.tilt, c, axisY);
+    if (target !== undefined) { const o = S.nodes.get(target), rest = S.rest.get(target); o.quaternion.fromArray(rest.q); o.scale.fromArray(rest.s); syncTarget(); }
+    for (const idx of [ids.col, ids.head, ids.tilt, target]) {
+      if (idx === undefined) continue;
+      (clip.tracks[idx] ||= []).push({ t, i: 'smooth', ...snap(idx) });
+    }
+  }
+  return clip;
+}
+
+/* ───────────── 저장 / 실행취소 ───────────── */
+let hist = [], hi = -1;
+const storeKey = () => `cove-anim:${S.glb.name}:${S.nodes.size}`;
+function loadSaved() {
+  try { const s = localStorage.getItem(storeKey()); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function snapshot(initial) {
+  const str = JSON.stringify({ clips: S.clips, clip: S.clip });
+  if (hist[hi] === str) return;
+  hist = hist.slice(0, hi + 1); hist.push(str);
+  if (hist.length > 80) hist.shift();
+  hi = hist.length - 1;
+  try { localStorage.setItem(storeKey(), str); } catch { /* 용량 초과 등은 무시 */ }
+  if (!initial) refreshAll();
+}
+function restoreSnap(str) {
+  const d = JSON.parse(str);
+  S.clips = d.clips; S.clip = d.clip; S.selKeys.clear();
+  S.time = Math.min(S.time, curClip().duration);
+  applyPose(S.time);
+  refreshClipUI(); refreshAll();
+  try { localStorage.setItem(storeKey(), str); } catch { /* */ }
+}
+const undo = () => { if (hi > 0) restoreSnap(hist[--hi]); };
+const redo = () => { if (hi < hist.length - 1) restoreSnap(hist[++hi]); };
+
+/* ───────────── 선택 / 편집 ───────────── */
+function select(obj) {
+  S.sel = obj;
+  if (IK && obj === IK.target) setMode('translate');
+  if (obj) tc.attach(obj); else tc.detach();
+  buildTree(); refreshAll();
+}
+
+function onNodeEdited() {
+  if (!S.sel) return;
+  const ikOn = IK && $('#ikOn').checked;
+  let keyed = [S.sel];
+  if (ikOn && S.sel === IK.target) { solveIK(); keyed = [IK.target, IK.tip, IK.root]; }
+  else if (ikOn && (S.sel === IK.tip || S.sel === IK.root)) { syncTarget(); keyed = [IK.target, IK.tip, IK.root]; }
+  if (S.autoKey) keyed.forEach((o) => upsertKey(S.idxOf.get(o), S.time));
+  updateProps(); drawTL();
+}
+
+/* ───────────── IK (IK_타겟 → 머리 끝, 기둥·머리 평면 2링크) ───────────── */
+// glTF에는 IK 제약이 없어서, 구워진 모션에서 구조를 추정한다:
+// 타겟이 항상 같은 본의 로컬 +Y 위치에 있으면 그 본이 체인 끝, 그 부모 본이 체인 뿌리.
+// 구워진 모션에서 두 본은 로컬 Z축으로만 회전했으므로 Z축 회전만 푼다.
+let IK = null;
+function setupIK() {
+  IK = null;
+  const boneSet = new Set(S.boneIdx);
+  const tIdx = S.boneIdx.find((i) => /IK|타겟/.test(nodeName(i)));
+  if (tIdx === undefined) return;
+  const target = S.nodes.get(tIdx);
+  S.model.updateMatrixWorld(true);
+  const tw = target.getWorldPosition(new THREE.Vector3());
+  for (const i of S.boneIdx) {
+    if (i === tIdx) continue;
+    const tip = S.nodes.get(i);
+    const local = tip.worldToLocal(tw.clone());
+    if (Math.abs(local.x) > 1e-3 || Math.abs(local.z) > 1e-3 || local.y <= 0) continue;
+    let root = tip.parent;
+    while (root && !(S.idxOf.has(root) && boneSet.has(S.idxOf.get(root)))) root = root.parent;
+    if (!root) continue;
+    IK = { target, tip, root, offset: new THREE.Vector3(0, local.y, 0) };
+    return;
+  }
+}
+
+const _tw = new THREE.Vector3(), _tp = new THREE.Vector3(), _jt = new THREE.Vector3(), _jp = new THREE.Vector3();
+function solveIK() {
+  const { target, tip, root, offset } = IK;
+  S.model.updateMatrixWorld(true);
+  target.getWorldPosition(_tw);
+  for (let it = 0; it < 40; it++) {
+    for (const j of [tip, root]) {
+      j.updateWorldMatrix(true, false);
+      _tp.copy(offset); tip.localToWorld(_tp);
+      _jp.copy(_tp); j.worldToLocal(_jp);
+      _jt.copy(_tw); j.worldToLocal(_jt);
+      let d = Math.atan2(_jt.y, _jt.x) - Math.atan2(_jp.y, _jp.x);
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      j.rotateZ(d);
+      S.model.updateMatrixWorld(true);
+    }
+    _tp.copy(offset); tip.localToWorld(_tp);
+    if (_tp.distanceToSquared(_tw) < 1e-12) break;
+  }
+}
+function syncTarget() {
+  const { target, tip, offset } = IK;
+  S.model.updateMatrixWorld(true);
+  const w = tip.localToWorld(offset.clone());
+  target.parent.updateWorldMatrix(true, false);
+  target.position.copy(target.parent.worldToLocal(w));
+}
+
+function insertKeys(all) {
+  const idxs = all ? S.boneIdx : (S.sel ? [S.idxOf.get(S.sel)] : []);
+  idxs.forEach((i) => upsertKey(i, S.time));
+  snapshot();
+}
+
+function deleteKeys() {
+  const c = curClip();
+  if (!S.selKeys.size && S.sel) {
+    const k = keyAt(S.idxOf.get(S.sel), S.time);
+    if (k) S.selKeys.add(k);
+  }
+  for (const idx in c.tracks) c.tracks[idx] = c.tracks[idx].filter((k) => !S.selKeys.has(k));
+  S.selKeys.clear();
+  applyPose(S.time);
+  snapshot();
+}
+
+function resetPose() {
+  if (!S.sel) return;
+  const r = S.rest.get(S.idxOf.get(S.sel));
+  S.sel.position.fromArray(r.p); S.sel.quaternion.fromArray(r.q); S.sel.scale.fromArray(r.s);
+  onNodeEdited();
+  snapshot();
+}
+
+function copyKeys() {
+  if (!S.selKeys.size) return;
+  const c = curClip(), items = [];
+  for (const idx in c.tracks) c.tracks[idx].forEach((k) => S.selKeys.has(k) && items.push({ idx, k: JSON.parse(JSON.stringify(k)) }));
+  const t0 = Math.min(...items.map((x) => x.k.t));
+  S.copied = items.map((x) => ({ idx: x.idx, k: { ...x.k, t: x.k.t - t0 } }));
+  toast(`키 ${items.length}개 복사`);
+}
+function pasteKeys() {
+  if (!S.copied) return;
+  const c = curClip();
+  S.selKeys.clear();
+  S.copied.forEach(({ idx, k }) => {
+    const keys = c.tracks[idx] || (c.tracks[idx] = []);
+    const t = +(S.time + k.t).toFixed(5);
+    const ex = keys.findIndex((x) => Math.abs(x.t - t) < EPS);
+    if (ex >= 0) keys.splice(ex, 1);
+    const nk = { ...JSON.parse(JSON.stringify(k)), t };
+    keys.push(nk); keys.sort((a, b) => a.t - b.t);
+    S.selKeys.add(nk);
+  });
+  applyPose(S.time);
+  snapshot();
+}
+
+/* ───────────── 재생 ───────────── */
+function setTime(t, snap = true) {
+  const c = curClip();
+  t = Math.max(0, Math.min(c.duration, t));
+  if (snap) t = Math.round(t * c.fps) / c.fps;
+  S.time = t;
+  applyPose(t);
+  updateProps(); updateTimeLabel(); drawTL();
+}
+function stopPlay() { S.playing = false; $('#tPlay').textContent = '▶'; }
+function togglePlay() {
+  if (S.playing) return stopPlay();
+  if (S.time >= curClip().duration - EPS) S.time = 0;
+  S.playing = true; $('#tPlay').textContent = '❚❚';
+}
+let lastT = performance.now();
+function frame(now) {
+  const dt = Math.min((now - lastT) / 1000, 0.1); lastT = now;
+  if (S.playing) {
+    const c = curClip();
+    S.time += dt;
+    if (S.time >= c.duration) {
+      if (S.loop) S.time %= c.duration; else { S.time = c.duration; stopPlay(); }
+    }
+    applyPose(S.time); updateProps(); updateTimeLabel(); drawTL();
+  }
+  if (S.model) updateMarkers();
+  orbit.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+/* ───────────── UI: 트리 / 속성 / 클립 ───────────── */
+function buildTree() {
+  if (!S.model) return;
+  const el = $('#tree'); el.innerHTML = '';
+  const boneSet = new Set(S.boneIdx), show = new Set();
+  S.boneIdx.forEach((i) => { let o = S.nodes.get(i); while (o) { if (S.idxOf.has(o)) show.add(o); o = o.parent; } });
+  const clip = curClip();
+  const walk = (o, depth) => {
+    let d = depth;
+    if (S.idxOf.has(o) && (S.showAll || show.has(o))) {
+      const idx = S.idxOf.get(o);
+      const row = document.createElement('div');
+      const n = clip?.tracks[idx]?.length || 0;
+      row.className = 'node' + (boneSet.has(idx) ? ' bone' : '') + (o.isMesh ? ' mesh' : '') + (o === S.sel ? ' sel' : '') + (n ? ' haskeys' : '');
+      row.style.paddingLeft = 6 + depth * 14 + 'px';
+      row.innerHTML = `<span class="dot"></span><span></span><span class="badge">${n ? n + '키' : ''}</span>`;
+      row.children[1].textContent = nodeName(idx);
+      row.onclick = () => select(o);
+      el.appendChild(row);
+      d = depth + 1;
+    }
+    o.children.forEach((c) => walk(c, d));
+  };
+  S.model.children.forEach((c) => walk(c, 0));
+}
+
+const P = (id) => $('#' + id);
+function updateProps() {
+  const o = S.sel;
+  $('#selName').textContent = o ? nodeName(S.idxOf.get(o)) : '-';
+  if (!o) { $('#keyState').textContent = '-'; return; }
+  const set = (id, v) => { const el = P(id); if (document.activeElement !== el) el.value = +v.toFixed(4); };
+  set('px', o.position.x); set('py', o.position.y); set('pz', o.position.z);
+  set('rx', o.rotation.x / D2R); set('ry', o.rotation.y / D2R); set('rz', o.rotation.z / D2R);
+  set('sx', o.scale.x); set('sy', o.scale.y); set('sz', o.scale.z);
+  const idx = S.idxOf.get(o), keys = track(idx), ks = $('#keyState');
+  if (keys && keyAt(idx, S.time)) { ks.textContent = '◆ 현재 프레임에 키 있음'; ks.style.color = 'var(--text)'; }
+  else if (keys && keys.length) { ks.textContent = '◇ 보간 중 (키 ' + keys.length + '개)'; ks.style.color = 'var(--dim)'; }
+  else { ks.textContent = '키 없음 — 기본 포즈'; ks.style.color = 'var(--dim)'; }
+  const kp = $('#keyProps');
+  kp.hidden = !S.selKeys.size;
+  if (S.selKeys.size) {
+    $('#keyCount').textContent = `(${S.selKeys.size}개)`;
+    const first = [...S.selKeys][0];
+    if (document.activeElement !== $('#keyInterp')) $('#keyInterp').value = first.i;
+  }
+}
+['px', 'py', 'pz', 'rx', 'ry', 'rz', 'sx', 'sy', 'sz'].forEach((id) => {
+  P(id).addEventListener('input', () => {
+    const o = S.sel; if (!o) return;
+    const v = (k) => parseFloat(P(k).value) || 0;
+    o.position.set(v('px'), v('py'), v('pz'));
+    o.rotation.set(v('rx') * D2R, v('ry') * D2R, v('rz') * D2R, 'XYZ');
+    o.scale.set(v('sx'), v('sy'), v('sz'));
+    onNodeEdited();
+  });
+  P(id).addEventListener('change', () => snapshot());
+});
+
+function refreshClipUI() {
+  const sel = $('#clipSel');
+  sel.innerHTML = '';
+  S.clips.forEach((c, i) => sel.add(new Option(c.name, i)));
+  sel.value = S.clip;
+  $('#clipDur').value = curClip().duration;
+  $('#clipFps').value = curClip().fps;
+  refreshAll();
+}
+function refreshAll() { buildTree(); updateProps(); updateTimeLabel(); drawTL(); }
+function updateTimeLabel() {
+  $('#timeLabel').textContent = `${Math.round(S.time * fps())} / ${S.time.toFixed(2)}s`;
+}
+
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+/* ───────────── 타임라인 ───────────── */
+const tlc = $('#tl'), ctx = tlc.getContext('2d');
+const TL = { LW: 150, RULER: 26, RH: 26, pps: 120, sx: 0, sy: 0, w: 0, h: 0, drag: null };
+
+function resizeTL() {
+  const r = tlc.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  TL.w = r.width; TL.h = r.height;
+  tlc.width = r.width * dpr; tlc.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawTL();
+}
+new ResizeObserver(resizeTL).observe(tlc);
+
+function tlRows() {
+  if (!S.model) return [];
+  const rows = [...S.boneIdx];
+  const clip = curClip();
+  for (const idx in clip.tracks) if (clip.tracks[idx].length && !rows.includes(+idx)) rows.push(+idx);
+  if (S.sel && !rows.includes(S.idxOf.get(S.sel))) rows.push(S.idxOf.get(S.sel));
+  return rows;
+}
+const PAD = 12;
+const t2x = (t) => TL.LW + PAD + t * TL.pps - TL.sx;
+const x2t = (x) => (x - TL.LW - PAD + TL.sx) / TL.pps;
+
+function drawTL() {
+  if (!S.model || !TL.w) return;
+  const css = getComputedStyle(document.documentElement);
+  const C = (n) => css.getPropertyValue(n).trim();
+  const { LW, RULER, RH, w, h } = TL;
+  const clip = curClip(), rows = tlRows(), f = clip.fps;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = C('--panel'); ctx.fillRect(0, 0, w, h);
+
+  // 클립 길이 밖 영역
+  const endX = t2x(clip.duration);
+  ctx.fillStyle = '#0005'; ctx.fillRect(Math.max(endX, LW), RULER, w, h);
+
+  // 행
+  rows.forEach((idx, r) => {
+    const y = RULER + r * RH - TL.sy;
+    if (y + RH < RULER || y > h) return;
+    ctx.fillStyle = idx === S.idxOf.get(S.sel) ? C('--rowsel') : (r % 2 ? C('--row1') : C('--row2'));
+    ctx.fillRect(LW, y, w - LW, RH);
+    const keys = clip.tracks[idx] || [];
+    keys.forEach((k) => {
+      const x = t2x(k.t);
+      if (x < LW - 8 || x > w + 8) return;
+      const sel = S.selKeys.has(k), cy = y + RH / 2;
+      ctx.beginPath(); ctx.moveTo(x, cy - 7); ctx.lineTo(x + 6, cy); ctx.lineTo(x, cy + 7); ctx.lineTo(x - 6, cy); ctx.closePath();
+      ctx.fillStyle = sel ? C('--accent') : C('--key'); ctx.fill();
+      ctx.strokeStyle = '#000a'; ctx.lineWidth = 1; ctx.stroke();
+    });
+  });
+
+  // 눈금
+  ctx.fillStyle = C('--panel'); ctx.fillRect(LW, 0, w - LW, RULER);
+  const steps = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60];
+  const major = steps.find((s) => s * TL.pps >= 70) || 60;
+  ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle';
+  const t0 = Math.max(0, Math.floor(x2t(LW) / major) * major), t1 = x2t(w);
+  if (TL.pps / f >= 6) {
+    ctx.strokeStyle = '#3a3e46'; ctx.beginPath();
+    for (let fr = Math.floor(x2t(LW) * f); fr / f <= t1; fr++) {
+      const x = Math.round(t2x(fr / f)) + 0.5;
+      if (x < LW) continue; ctx.moveTo(x, RULER - 5); ctx.lineTo(x, RULER);
+    }
+    ctx.stroke();
+  }
+  for (let t = t0; t <= t1; t += major) {
+    const x = Math.round(t2x(t)) + 0.5;
+    if (x < LW) continue;
+    ctx.strokeStyle = '#555a64'; ctx.beginPath(); ctx.moveTo(x, RULER - 12); ctx.lineTo(x, h); ctx.globalAlpha = 0.35; ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.fillStyle = C('--dim'); ctx.fillText(t.toFixed(major < 1 ? 2 : 0) + 's', x + 4, 9);
+  }
+  // 길이 끝 선
+  ctx.strokeStyle = '#666'; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(endX + 0.5, RULER); ctx.lineTo(endX + 0.5, h); ctx.stroke(); ctx.globalAlpha = 1;
+
+  // 라벨 열
+  ctx.fillStyle = C('--panel'); ctx.fillRect(0, 0, LW, h);
+  ctx.strokeStyle = C('--line'); ctx.beginPath(); ctx.moveTo(LW + 0.5, 0); ctx.lineTo(LW + 0.5, h); ctx.stroke();
+  ctx.textBaseline = 'middle';
+  rows.forEach((idx, r) => {
+    const y = RULER + r * RH - TL.sy;
+    if (y + RH < RULER || y > h) return;
+    const sel = idx === S.idxOf.get(S.sel);
+    ctx.fillStyle = sel ? C('--rowsel') : (r % 2 ? C('--row1') : C('--row2')); ctx.fillRect(0, y, LW, RH);
+    const has = (clip.tracks[idx] || []).length;
+    ctx.fillStyle = has ? C('--key') : '#4a4f59'; ctx.beginPath(); ctx.arc(12, y + RH / 2, 3.5, 0, 7); ctx.fill();
+    ctx.fillStyle = sel ? '#fff' : C('--text'); ctx.font = `12px ${FONT}`;
+    ctx.fillText(nodeName(idx), 24, y + RH / 2, LW - 30);
+  });
+  ctx.fillStyle = C('--panel'); ctx.fillRect(0, 0, LW, RULER);
+
+  // 플레이헤드
+  const px = t2x(S.time);
+  if (px >= LW) {
+    ctx.strokeStyle = C('--accent'); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke(); ctx.lineWidth = 1;
+    ctx.fillStyle = C('--accent'); ctx.beginPath(); ctx.moveTo(px - 6, 0); ctx.lineTo(px + 6, 0); ctx.lineTo(px, 10); ctx.fill();
+  }
+}
+
+function tlHit(x, y) {
+  const rows = tlRows();
+  const r = Math.floor((y - TL.RULER + TL.sy) / TL.RH);
+  const idx = rows[r];
+  if (idx === undefined) return {};
+  const keys = curClip().tracks[idx] || [];
+  const key = keys.find((k) => Math.abs(t2x(k.t) - x) <= 7);
+  return { idx, key };
+}
+
+tlc.addEventListener('pointerdown', (e) => {
+  const rect = tlc.getBoundingClientRect(), x = e.clientX - rect.left, y = e.clientY - rect.top;
+  tlc.setPointerCapture(e.pointerId);
+  if (y < TL.RULER && x >= TL.LW) { TL.drag = { type: 'scrub' }; setTime(x2t(x)); return; }
+  const hit = tlHit(x, y);
+  if (x < TL.LW) { if (hit.idx !== undefined) select(S.nodes.get(hit.idx)); return; }
+  if (hit.idx !== undefined && S.nodes.get(hit.idx) !== S.sel) select(S.nodes.get(hit.idx));
+  if (hit.key) {
+    if (e.shiftKey) { S.selKeys.has(hit.key) ? S.selKeys.delete(hit.key) : S.selKeys.add(hit.key); }
+    else if (!S.selKeys.has(hit.key)) { S.selKeys.clear(); S.selKeys.add(hit.key); }
+    const origin = new Map();
+    for (const idx in curClip().tracks) curClip().tracks[idx].forEach((k) => S.selKeys.has(k) && origin.set(k, k.t));
+    TL.drag = { type: 'keys', x0: x, origin, moved: false };
+    updateProps(); drawTL();
+  } else {
+    if (!e.shiftKey) S.selKeys.clear();
+    TL.drag = { type: 'scrub' }; setTime(x2t(x));
+  }
+});
+tlc.addEventListener('pointermove', (e) => {
+  const d = TL.drag; if (!d) return;
+  const rect = tlc.getBoundingClientRect(), x = e.clientX - rect.left;
+  if (d.type === 'scrub') setTime(x2t(Math.max(x, TL.LW)));
+  else if (d.type === 'keys') {
+    const df = Math.round(((x - d.x0) / TL.pps) * fps());
+    const minT = Math.min(...d.origin.values());
+    const delta = Math.max(df / fps(), -minT);
+    if (Math.abs(delta) > EPS) d.moved = true;
+    d.origin.forEach((t0, k) => { k.t = +(t0 + delta).toFixed(5); });
+    applyPose(S.time); drawTL();
+  }
+});
+tlc.addEventListener('pointerup', () => {
+  const d = TL.drag; TL.drag = null;
+  if (d?.type === 'keys' && d.moved) {
+    const c = curClip();
+    for (const idx in c.tracks) {
+      const ks = c.tracks[idx];
+      // 이동한 키가 겹친 기존 키는 덮어쓴다
+      c.tracks[idx] = ks.filter((k) => S.selKeys.has(k) || !ks.some((o) => S.selKeys.has(o) && Math.abs(o.t - k.t) < EPS));
+      c.tracks[idx].sort((a, b) => a.t - b.t);
+    }
+    applyPose(S.time); snapshot();
+  }
+});
+tlc.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {
+    const rect = tlc.getBoundingClientRect(), x = e.clientX - rect.left, t = x2t(x);
+    TL.pps = Math.max(30, Math.min(600, TL.pps * Math.exp(-e.deltaY * 0.01)));
+    TL.sx = Math.max(0, t * TL.pps - (x - TL.LW - PAD));
+    $('#zoom').value = TL.pps;
+  } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+    TL.sx = Math.max(0, TL.sx + (e.deltaX || e.deltaY));
+  } else {
+    const max = Math.max(0, tlRows().length * TL.RH - (TL.h - TL.RULER));
+    TL.sy = Math.max(0, Math.min(max, TL.sy + e.deltaY));
+  }
+  drawTL();
+}, { passive: false });
+$('#zoom').addEventListener('input', (e) => { TL.pps = +e.target.value; drawTL(); });
+
+/* ───────────── 뷰포트 선택 ───────────── */
+const ray = new THREE.Raycaster();
+let down = null;
+renderer.domElement.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!down || !S.model) return;
+  const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); down = null;
+  if (moved > 4 || tc.dragging || tc.axis) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+  if ($('#showBones').checked) {
+    const m = ray.intersectObjects(markers.map((k) => k.mesh), false)[0];
+    if (m) return select(S.nodes.get(m.object.userData.idx));
+  }
+  const hit = ray.intersectObject(S.model, true)[0];
+  if (!hit) return;
+  const boneSet = new Set(S.boneIdx);
+  let o = hit.object, fallback = null;
+  while (o) {
+    if (S.idxOf.has(o)) { fallback = o; if (boneSet.has(S.idxOf.get(o))) return select(o); }
+    o = o.parent;
+  }
+  if (fallback) select(fallback);
+});
+
+/* ───────────── GLB 내보내기 (원본 리그 유지 + 애니메이션 교체) ───────────── */
+function exportGLB() {
+  const { json, bin, name } = S.glb;
+  const J = JSON.parse(JSON.stringify(json));
+  J.accessors = J.accessors || []; J.bufferViews = J.bufferViews || [];
+  const chunks = [];
+  let offset = bin.byteLength;
+  const push = (arr, type, count, minmax) => {
+    const bytes = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
+    J.bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: bytes.length });
+    const acc = { bufferView: J.bufferViews.length - 1, componentType: 5126, count, type };
+    if (minmax) { acc.min = minmax[0]; acc.max = minmax[1]; }
+    J.accessors.push(acc);
+    chunks.push(bytes); offset += bytes.length;
+    return J.accessors.length - 1;
+  };
+  const differs = (list, base) => list.some((v) => v.some((x, i) => Math.abs(x - base[i]) > 1e-6));
+
+  J.animations = S.clips.map((clip) => {
+    const anim = { name: clip.name, samplers: [], channels: [] };
+    for (const idxStr in clip.tracks) {
+      const idx = +idxStr;
+      let keys = clip.tracks[idx];
+      if (!keys.length) continue;
+      const modes = new Set(keys.slice(0, -1).map((k) => k.i));
+      let interp = 'LINEAR';
+      if (modes.size === 1 && modes.has('step')) interp = 'STEP';
+      else if (modes.has('smooth') || modes.size > 1) {
+        // 키마다 보간이 다르면 매 프레임으로 구워서 내보낸다
+        const baked = [];
+        const end = keys[keys.length - 1].t;
+        for (let t = keys[0].t; t < end - EPS; t += 1 / clip.fps) baked.push({ t, ...sampleAt(keys, t) });
+        baked.push(keys[keys.length - 1]);
+        keys = baked;
+      }
+      const rest = S.rest.get(idx);
+      const times = new Float32Array(keys.map((k) => k.t));
+      const input = push(times, 'SCALAR', times.length, [[times[0]], [times[times.length - 1]]]);
+      const add = (path, list, base, type, n) => {
+        const out = push(new Float32Array(list.flat()), type, list.length);
+        anim.samplers.push({ input, output: out, interpolation: interp });
+        anim.channels.push({ sampler: anim.samplers.length - 1, target: { node: idx, path } });
+      };
+      const pp = keys.map((k) => k.p), qq = keys.map((k) => k.q), ss = keys.map((k) => k.s);
+      if (differs(pp, rest.p)) add('translation', pp, rest.p, 'VEC3');
+      if (differs(qq, rest.q) || !(differs(pp, rest.p) || differs(ss, rest.s))) add('rotation', qq, rest.q, 'VEC4');
+      if (differs(ss, rest.s)) add('scale', ss, rest.s, 'VEC3');
+    }
+    return anim;
+  }).filter((a) => a.channels.length);
+  if (!J.animations.length) delete J.animations;
+
+  const binLen = offset;
+  J.buffers = [{ byteLength: binLen }];
+  const jsonBytes = new TextEncoder().encode(JSON.stringify(J));
+  const jsonPad = (4 - (jsonBytes.length % 4)) % 4;
+  const total = 12 + 8 + jsonBytes.length + jsonPad + 8 + binLen;
+  const out = new Uint8Array(total), dv = new DataView(out.buffer);
+  dv.setUint32(0, 0x46546c67, true); dv.setUint32(4, 2, true); dv.setUint32(8, total, true);
+  dv.setUint32(12, jsonBytes.length + jsonPad, true); dv.setUint32(16, 0x4e4f534a, true);
+  out.set(jsonBytes, 20); out.fill(0x20, 20 + jsonBytes.length, 20 + jsonBytes.length + jsonPad);
+  let p = 20 + jsonBytes.length + jsonPad;
+  dv.setUint32(p, binLen, true); dv.setUint32(p + 4, 0x004e4942, true); p += 8;
+  out.set(new Uint8Array(bin), p); p += bin.byteLength;
+  chunks.forEach((c) => { out.set(c, p); p += c.length; });
+  download(new Blob([out], { type: 'model/gltf-binary' }), name.replace(/\.glb$/i, '') + '_animated.glb');
+  toast(`내보내기 완료 (애니메이션 ${J.animations?.length || 0}개)`);
+}
+
+function download(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+/* ───────────── 이벤트 연결 ───────────── */
+$('#tPlay').onclick = togglePlay;
+$('#tStart').onclick = () => setTime(0);
+$('#tEnd').onclick = () => setTime(curClip().duration);
+$('#tPrev').onclick = () => { stopPlay(); setTime(S.time - 1 / fps()); };
+$('#tNext').onclick = () => { stopPlay(); setTime(S.time + 1 / fps()); };
+$('#loop').onchange = (e) => (S.loop = e.target.checked);
+$('#autoKey').onchange = (e) => (S.autoKey = e.target.checked);
+$('#showAll').onchange = (e) => { S.showAll = e.target.checked; buildTree(); };
+$('#showBones').onchange = () => {};
+$('#opacity').oninput = applyOpacity;
+$('#camReset').onclick = fitCamera;
+$('#btnKey').onclick = () => insertKeys(false);
+$('#btnKeyAll').onclick = () => insertKeys(true);
+$('#btnDelKey').onclick = deleteKeys;
+$('#btnRest').onclick = resetPose;
+$('#btnUndo').onclick = undo;
+$('#btnRedo').onclick = redo;
+$('#keyInterp').onchange = (e) => { lastInterp = e.target.value; S.selKeys.forEach((k) => (k.i = e.target.value)); applyPose(S.time); snapshot(); };
+
+document.querySelectorAll('#modeSeg button').forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
+function setMode(m) {
+  tc.setMode(m);
+  document.querySelectorAll('#modeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
+}
+$('#spaceBtn').onclick = () => {
+  tc.setSpace(tc.space === 'local' ? 'world' : 'local');
+  $('#spaceBtn').textContent = tc.space === 'local' ? '로컬' : '월드';
+};
+tc.setSpace('local');
+
+$('#clipSel').onchange = (e) => { S.clip = +e.target.value; S.selKeys.clear(); S.time = Math.min(S.time, curClip().duration); applyPose(S.time); refreshClipUI(); snapshot(); };
+$('#clipNew').onclick = () => { S.clips.push(newClipData(`클립 ${S.clips.length + 1}`)); S.clip = S.clips.length - 1; S.selKeys.clear(); S.time = 0; applyPose(0); refreshClipUI(); snapshot(); };
+$('#clipDup').onclick = () => { const c = JSON.parse(JSON.stringify(curClip())); c.name += ' 복사'; S.clips.push(c); S.clip = S.clips.length - 1; S.selKeys.clear(); refreshClipUI(); snapshot(); };
+$('#clipRen').onclick = () => { const n = prompt('클립 이름', curClip().name); if (n) { curClip().name = n; refreshClipUI(); snapshot(); } };
+$('#clipDel').onclick = () => {
+  if (S.clips.length < 2) return toast('마지막 클립은 삭제할 수 없어요');
+  if (!confirm(`'${curClip().name}' 클립을 삭제할까요?`)) return;
+  S.clips.splice(S.clip, 1); S.clip = Math.max(0, S.clip - 1); S.selKeys.clear(); applyPose(S.time); refreshClipUI(); snapshot();
+};
+$('#clipDur').onchange = (e) => { curClip().duration = Math.max(0.1, +e.target.value || 1); setTime(S.time); snapshot(); };
+$('#clipFps').onchange = (e) => { curClip().fps = +e.target.value; setTime(S.time); snapshot(); };
+$('#presetAdd').onchange = (e) => {
+  const def = PRESETS[+e.target.value]; e.target.value = '';
+  if (!def) return;
+  S.clips.push(buildPresetClip(def)); S.clip = S.clips.length - 1; S.selKeys.clear(); S.time = 0;
+  applyPose(0); refreshClipUI(); snapshot(); toast(`'${def.name}' 추가`);
+};
+PRESETS.forEach((d, i) => $('#presetAdd').add(new Option(d.name, i)));
+$('#presetAdd').value = '';
+document.fonts?.ready.then(drawTL);
+$('#clipReimport').onclick = () => {
+  if (!confirm('모든 클립을 GLB 파일에 들어있던 원본 모션으로 되돌릴까요? (현재 작업은 실행 취소로 복구 가능)')) return;
+  S.clips = importClips();
+  if (!S.clips.length) S.clips = [newClipData('새 클립')];
+  S.clip = 0; S.selKeys.clear(); applyPose(0); S.time = 0; refreshClipUI(); snapshot();
+};
+
+$('#btnOpen').onclick = () => $('#fileGlb').click();
+$('#fileGlb').onchange = (e) => openFile(e.target.files[0]);
+async function openFile(f) {
+  if (!f) return;
+  try { await loadGLB(await f.arrayBuffer(), f.name); toast(`${f.name} 불러옴`); }
+  catch (err) { console.error(err); toast('GLB를 읽을 수 없어요: ' + err.message); }
+}
+$('#btnExport').onclick = exportGLB;
+
+/* ───────────── PNG / MP4 내보내기 ───────────── */
+const dlg = $('#mediaDlg');
+$('#btnMedia').onclick = () => { updateMediaDlg(); dlg.showModal(); };
+$('#mdClose').onclick = () => { if (!exporting) dlg.close(); };
+document.querySelectorAll('input[name=mdFmt]').forEach((r) => (r.onchange = updateMediaDlg));
+function updateMediaDlg() {
+  const mp4 = document.querySelector('input[name=mdFmt]:checked').value === 'mp4';
+  const bg = $('#mdBg'); const opt = bg.querySelector('option[value=clear]');
+  opt.disabled = mp4; if (mp4 && bg.value === 'clear') bg.value = 'dark';
+  $('#mdInfo').textContent = mp4
+    ? `${curClip().name} · ${curClip().duration}초 · ${curClip().fps}fps (${Math.round(curClip().duration * curClip().fps)}프레임)`
+    : `${curClip().name} · 프레임 ${Math.round(S.time * fps())} (${S.time.toFixed(2)}초)`;
+  $('#mdGo').textContent = mp4 ? 'MP4 만들기' : 'PNG 저장';
+}
+
+let exporting = false, expRenderer = null;
+const BG = { dark: [0x2c2f35, 1], light: [0xf1f2f4, 1], clear: [0x000000, 0] };
+function setupExportRender(w, h, bgKey) {
+  if (!expRenderer) expRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  expRenderer.setPixelRatio(1);
+  expRenderer.setSize(w, h, false);
+  expRenderer.setClearColor(BG[bgKey][0], BG[bgKey][1]);
+  const hidden = [tcHelper, grid, boneLines, ...markers.map((m) => m.mesh)].filter(Boolean);
+  const prev = hidden.map((o) => o.visible);
+  hidden.forEach((o) => (o.visible = false));
+  const aspect = camera.aspect;
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  return {
+    render: () => expRenderer.render(scene, camera),
+    canvas: expRenderer.domElement,
+    restore: () => {
+      hidden.forEach((o, i) => (o.visible = prev[i]));
+      camera.aspect = aspect; camera.updateProjectionMatrix();
+      applyPose(S.time);
+    },
+  };
+}
+const RES = { '720': [1280, 720], '1080': [1920, 1080], sq: [1080, 1080], v: [1080, 1920] };
+
+$('#mdGo').onclick = async () => {
+  if (exporting) return;
+  const mp4 = document.querySelector('input[name=mdFmt]:checked').value === 'mp4';
+  const [w, h] = RES[$('#mdRes').value];
+  const bg = $('#mdBg').value;
+  const base = `${S.glb.name.replace(/\.glb$/i, '')}_${curClip().name}`;
+  exporting = true; stopPlay();
+  $('#mdGo').disabled = true; $('#mdClose').disabled = true;
+  const status = $('#mdStatus'), bar = $('#mdBar');
+  const job = setupExportRender(w, h, bg);
+  try {
+    if (!mp4) {
+      applyPose(S.time); job.render();
+      const blob = await new Promise((res) => job.canvas.toBlob(res, 'image/png'));
+      download(blob, `${base}_f${Math.round(S.time * fps())}.png`);
+      status.textContent = '저장했어요';
+    } else {
+      if (typeof VideoEncoder === 'undefined') throw new Error('이 브라우저는 MP4 인코딩(WebCodecs)을 지원하지 않아요');
+      const f = curClip().fps, total = Math.max(1, Math.round(curClip().duration * f));
+      const muxer = new Muxer({ target: new ArrayBufferTarget(), video: { codec: 'avc', width: w, height: h }, fastStart: 'in-memory' });
+      let encErr = null;
+      const enc = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: (e) => (encErr = e) });
+      const codec = h * w > 1280 * 720 ? 'avc1.64002A' : 'avc1.64001F';
+      const cfg = { codec, width: w, height: h, bitrate: w * h * f * 0.12, framerate: f };
+      const sup = await VideoEncoder.isConfigSupported(cfg);
+      if (!sup.supported) throw new Error('H.264 인코딩을 지원하지 않는 환경이에요');
+      enc.configure(cfg);
+      for (let i = 0; i < total; i++) {
+        if (encErr) throw encErr;
+        applyPose(i / f); job.render();
+        const frame = new VideoFrame(job.canvas, { timestamp: Math.round((i * 1e6) / f), duration: Math.round(1e6 / f) });
+        enc.encode(frame, { keyFrame: i % f === 0 });
+        frame.close();
+        bar.value = (i + 1) / total;
+        status.textContent = `인코딩 ${i + 1} / ${total}`;
+        while (enc.encodeQueueSize > 8) await new Promise((r) => setTimeout(r, 4));
+        if (i % 4 === 0) await new Promise((r) => setTimeout(r));
+      }
+      await enc.flush(); enc.close(); muxer.finalize();
+      download(new Blob([muxer.target.buffer], { type: 'video/mp4' }), `${base}.mp4`);
+      status.textContent = '저장했어요';
+    }
+  } catch (err) {
+    console.error(err); status.textContent = '실패: ' + err.message;
+  } finally {
+    job.restore();
+    exporting = false; $('#mdGo').disabled = false; $('#mdClose').disabled = false;
+    setTimeout(() => { bar.value = 0; }, 800);
+  }
+};
+$('#btnSaveProj').onclick = () => download(new Blob([JSON.stringify({ version: 1, glb: S.glb.name, clips: S.clips }, null, 1)], { type: 'application/json' }), S.glb.name.replace(/\.glb$/i, '') + '_project.json');
+$('#btnLoadProj').onclick = () => $('#fileProj').click();
+$('#fileProj').onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (!Array.isArray(d.clips) || !d.clips.length) throw new Error('클립이 없습니다');
+    S.clips = d.clips; S.clip = 0; S.selKeys.clear(); S.time = 0; applyPose(0); refreshClipUI(); snapshot(); toast('프로젝트를 불러왔어요');
+  } catch (err) { toast('프로젝트 파일 오류: ' + err.message); }
+  e.target.value = '';
+};
+
+// 드래그 앤 드롭
+const drop = $('#drop');
+addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('show'); });
+addEventListener('dragleave', (e) => { if (!e.relatedTarget) drop.classList.remove('show'); });
+addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('show'); openFile(e.dataTransfer.files[0]); });
+
+// 단축키
+addEventListener('keydown', (e) => {
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' && e.target.type !== 'checkbox' && e.target.type !== 'range') return;
+  if (tag === 'SELECT') return;
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (mod && e.key.toLowerCase() === 'c') { e.preventDefault(); copyKeys(); return; }
+  if (mod && e.key.toLowerCase() === 'v') { e.preventDefault(); pasteKeys(); return; }
+  if (mod) return;
+  switch (e.key) {
+    case ' ': e.preventDefault(); togglePlay(); break;
+    case 'ArrowLeft': e.preventDefault(); stopPlay(); setTime(S.time - (e.shiftKey ? 10 : 1) / fps()); break;
+    case 'ArrowRight': e.preventDefault(); stopPlay(); setTime(S.time + (e.shiftKey ? 10 : 1) / fps()); break;
+    case 'Home': setTime(0); break;
+    case 'End': setTime(curClip().duration); break;
+    case 'i': case 'I': insertKeys(e.shiftKey); break;
+    case 'Delete': case 'Backspace': e.preventDefault(); deleteKeys(); break;
+    case 'w': case 'W': setMode('translate'); break;
+    case 'e': case 'E': setMode('rotate'); break;
+    case 'r': case 'R': setMode('scale'); break;
+    case 'q': case 'Q': $('#spaceBtn').click(); break;
+    case 'Escape': S.selKeys.clear(); refreshAll(); break;
+  }
+});
+
+/* ───────────── 시작 ───────────── */
+resizeView();
+requestAnimationFrame(frame);
+(async () => {
+  try {
+    const res = await fetch('assets/cove.glb');
+    if (!res.ok) throw new Error(res.status);
+    await loadGLB(await res.arrayBuffer(), 'cove.glb');
+  } catch (err) {
+    console.error(err);
+    toast('기본 모델을 못 불러왔어요. GLB를 끌어다 놓거나 [GLB 열기]를 누르세요.');
+  }
+})();
+addEventListener('beforeunload', () => { try { if (S.glb) snapshot(true); } catch { /* */ } });
+window.__cove = { S, exportGLB };
