@@ -34,45 +34,59 @@
 
 <main>
   <aside id="left">
-    <section>
-      <h3>본 / 노드</h3>
-      <div id="tree"></div>
-      <label class="check"><input type="checkbox" id="showAll"> 메시 노드도 표시</label>
-    </section>
-    <section>
-      <h3>클립</h3>
-      <select id="clipSel"></select>
-      <div class="row">
+    <section id="clipSec">
+      <h3>시나리오</h3>
+      <div id="clipList"></div>
+      <div class="row tools">
         <button id="clipNew">새로</button>
         <button id="clipDup">복제</button>
         <button id="clipRen">이름</button>
         <button id="clipDel">삭제</button>
       </div>
-      <div class="row">
-        <label>길이(초) <input type="number" id="clipDur" min="0.1" step="0.1"></label>
-        <label>FPS <select id="clipFps"><option>24</option><option selected>30</option><option>60</option></select></label>
-      </div>
-      <select id="presetAdd"><option value="" disabled selected>프리셋 추가…</option></select>
-      <button id="clipReimport" class="wide">GLB 원본 모션으로 되돌리기</button>
+      <details id="clipMore">
+        <summary>클립 설정</summary>
+        <div class="row">
+          <label>길이(초) <input type="number" id="clipDur" min="0.1" step="0.1"></label>
+          <label>FPS <select id="clipFps"><option>24</option><option selected>30</option><option>60</option></select></label>
+        </div>
+        <select id="presetAdd"><option value="" disabled selected>프리셋 추가…</option></select>
+        <button id="clipReimport" class="wide">GLB 원본 모션으로 되돌리기</button>
+      </details>
+      <select id="clipSel" hidden></select>
+    </section>
+    <section id="treeSec">
+      <h3>본 / 노드</h3>
+      <div id="tree"></div>
+      <label class="check"><input type="checkbox" id="showAll"> 메시 노드도 표시</label>
     </section>
   </aside>
 
   <div id="viewWrap">
     <div id="view"></div>
     <div class="overlay top-left">
-      <div class="seg" id="modeSeg">
-        <button data-mode="translate" title="이동 (W)">이동</button>
-        <button data-mode="rotate" class="on" title="회전 (E)">회전</button>
-        <button data-mode="scale" title="크기 (R)">크기</button>
+      <div class="glass">
+        <div class="seg" id="modeSeg">
+          <button data-mode="translate" title="이동 (W)">이동</button>
+          <button data-mode="rotate" class="on" title="회전 (E)">회전</button>
+          <button data-mode="scale" title="크기 (R)">크기</button>
+        </div>
+        <span class="vr"></span>
+        <button id="spaceBtn" title="좌표계 전환 (Q)">로컬</button>
       </div>
-      <button id="spaceBtn" title="좌표계 전환 (Q)">로컬</button>
-      <label class="check"><input type="checkbox" id="showBones" checked> 본 표시</label>
-      <label class="check"><input type="checkbox" id="ikOn" checked> IK</label>
-      <label class="check opac">투명도 <input type="range" id="opacity" min="0.1" max="1" step="0.05" value="1"></label>
-      <button id="camReset">카메라 리셋</button>
-      <select id="eyeSel" title="눈 표정"></select>
+      <div class="glass">
+        <label class="check"><input type="checkbox" id="showBones" checked> 본</label>
+        <label class="check"><input type="checkbox" id="ikOn" checked> IK</label>
+      </div>
+      <span class="spacer"></span>
+      <div class="glass">
+        <select id="eyeSel" title="눈 표정"></select>
+        <span class="vr"></span>
+        <label class="check opac">투명도 <input type="range" id="opacity" autocomplete="off" min="0.1" max="1" step="0.05" value="1"></label>
+        <span class="vr"></span>
+        <button id="camReset">카메라 리셋</button>
+      </div>
     </div>
-    <div id="sceneTag" hidden><span class="no"></span><span class="nm"></span></div>
+    <div id="sceneTag" class="glass" hidden><div class="dots"></div><span class="no"></span><span class="nm"></span></div>
     <div id="drop">GLB 파일을 여기에 놓으세요</div>
   </div>
 

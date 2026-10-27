@@ -644,11 +644,11 @@ function setTime(t, snap = true) {
   applyPose(t);
   updateProps(); updateTimeLabel(); drawTL();
 }
-function stopPlay() { S.playing = false; $('#tPlay').textContent = '▶'; }
+function stopPlay() { S.playing = false; $('#tPlay').textContent = '▶'; updateProps(); }
 function togglePlay() {
   if (S.playing) return stopPlay();
   if (S.time >= curClip().duration - EPS) S.time = 0;
-  S.playing = true; $('#tPlay').textContent = '❚❚';
+  S.playing = true; $('#tPlay').textContent = '❚❚'; updateProps();
 }
 let lastT = performance.now();
 function frame(now) {
@@ -703,7 +703,8 @@ function updateProps() {
   set('rx', o.rotation.x / D2R); set('ry', o.rotation.y / D2R); set('rz', o.rotation.z / D2R);
   set('sx', o.scale.x); set('sy', o.scale.y); set('sz', o.scale.z);
   const idx = S.idxOf.get(o), keys = track(idx), ks = $('#keyState');
-  if (keys && keyAt(idx, S.time)) { ks.textContent = '◆ 현재 프레임에 키 있음'; ks.style.color = 'var(--text)'; }
+  if (S.playing) { const n = keys?.length || 0; ks.textContent = n ? `▶ 재생 중 (키 ${n}개)` : '▶ 재생 중'; ks.style.color = 'var(--dim)'; }   // 재생 중에는 키 위/사이 상태가 프레임마다 바뀌어 깜빡이므로 고정 문구
+  else if (keys && keyAt(idx, S.time)) { ks.textContent = '◆ 현재 프레임에 키 있음'; ks.style.color = 'var(--text)'; }
   else if (keys && keys.length) { ks.textContent = '◇ 보간 중 (키 ' + keys.length + '개)'; ks.style.color = 'var(--dim)'; }
   else { ks.textContent = '키 없음 — 기본 포즈'; ks.style.color = 'var(--dim)'; }
   const kp = $('#keyProps');
@@ -731,6 +732,17 @@ function refreshClipUI() {
   sel.innerHTML = '';
   S.clips.forEach((c, i) => sel.add(new Option(c.name, i)));
   sel.value = S.clip;
+  const list = $('#clipList');
+  list.innerHTML = '';
+  S.clips.forEach((c, i) => {                    // 시나리오를 한눈에 보이는 목록으로 (select는 숨겨 두고 값만 동기화)
+    const el = document.createElement('button');
+    el.className = 'clip-item' + (i === S.clip ? ' on' : '');
+    el.innerHTML = '<span class="nm"></span><span class="du"></span>';
+    el.children[0].textContent = c.name;
+    el.children[1].textContent = `${+c.duration.toFixed(1)}초`;
+    el.onclick = () => { sel.value = i; sel.dispatchEvent(new Event('change')); };
+    list.appendChild(el);
+  });
   $('#clipDur').value = curClip().duration;
   $('#clipFps').value = curClip().fps;
   refreshAll();
@@ -743,6 +755,9 @@ function updateSceneTag() {
   let i = 0; marks.forEach((m, k) => { if (S.time >= m.t - 1e-6) i = k; });
   el.hidden = false;
   el.querySelector('.no').textContent = `장면 ${i + 1} / ${marks.length}`;
+  const dots = el.querySelector('.dots');
+  if (dots.children.length !== marks.length) dots.innerHTML = marks.map(() => '<i></i>').join('');
+  [...dots.children].forEach((d, k) => { d.className = k === i ? 'on' : (k < i ? 'done' : ''); });
   el.querySelector('.nm').textContent = marks[i].label.replace(/^\d+\s*/, '');
 }
 function updateTimeLabel() {
@@ -809,7 +824,7 @@ function drawTL() {
       const dense = pitch < 24;                       // 키가 촘촘하면 마름모를 줄줄이 찍지 않고 하나의 띠로 보여준다
       const l = Math.max(xa, LW), rr = Math.min(xb, w);
       if (rr > l) {                                   // 첫 키 ~ 마지막 키 구간
-        ctx.beginPath(); ctx.roundRect(l, cy - (dense ? 5 : 1), rr - l, dense ? 10 : 2, dense ? 5 : 1);
+        ctx.beginPath(); ctx.rect(l, cy - (dense ? 5 : 1), rr - l, dense ? 10 : 2);
         ctx.fillStyle = dense ? '#4c4739' : '#55503f'; ctx.fill();
         if (dense) { ctx.fillStyle = 'rgba(239,217,174,.8)'; ctx.fillRect(l + 5, cy - 5, Math.max(0, rr - l - 10), 1); }
       }
