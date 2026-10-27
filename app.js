@@ -754,6 +754,7 @@ function refreshClipUI() {
     el.ondblclick = () => startRename(i);
     list.appendChild(el);
   });
+  { const m = curClip().name.match(/^시나리오(\d+)\s*(.*)$/); $('#clipHead .cur').textContent = m ? `${m[1].padStart(2, '0')} ${m[2]}` : curClip().name; }
   $('#clipDur').value = curClip().duration;
   $('#clipFps').value = curClip().fps;
   refreshAll();
@@ -1237,6 +1238,15 @@ function setEditOpen(on) {
   try { localStorage.setItem('cove-edit-open', on ? '1' : '0'); } catch { /* 무시 */ }
   requestAnimationFrame(() => { resizeView(); resizeTL(); });
 }
+// 시나리오 창 접기/펼치기 (상태를 기억한다). 접혀 있어도 제목 줄에 지금 선택한 클립 이름이 보인다.
+function setClipOpen(open) {
+  $('#clipBody').classList.toggle('closed', !open);
+  $('#clipHead').setAttribute('aria-expanded', open ? 'true' : 'false');
+  try { localStorage.setItem('cove-clip-open', open ? '1' : '0'); } catch { /* 무시 */ }
+}
+$('#clipHead').onclick = () => setClipOpen($('#clipBody').classList.contains('closed'));
+let clipOpenSaved = true; try { clipOpenSaved = localStorage.getItem('cove-clip-open') !== '0'; } catch { /* 무시 */ }
+setClipOpen(clipOpenSaved);
 $('#btnEdit').onclick = () => setEditOpen(!document.body.classList.contains('edit-open'));
 let editWas = false; try { editWas = localStorage.getItem('cove-edit-open') === '1'; } catch { /* 무시 */ }
 setEditOpen(editWas);

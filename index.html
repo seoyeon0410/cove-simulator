@@ -36,6 +36,10 @@
 <main>
   <aside id="left">
     <section id="clipSec">
+      <button class="sec-head" id="clipHead" aria-expanded="true" title="시나리오 목록 접기/펼치기">
+        <span class="lbl">시나리오</span><span class="cur"></span><span class="chev">▾</span>
+      </button>
+      <div class="sec-body" id="clipBody"><div class="sec-inner">
       <div id="clipList"></div>
       <div class="row tools">
         <button id="clipNew" title="빈 클립을 새로 만들어 직접 모션을 만들어요">＋ 새 클립</button>
@@ -53,6 +57,7 @@
         <button id="clipReimport" class="wide">GLB 원본 모션으로 되돌리기</button>
       </details>
       <select id="clipSel" hidden></select>
+    </div></div>
     </section>
     <section id="treeSec">
       <h3>본 / 노드</h3>
