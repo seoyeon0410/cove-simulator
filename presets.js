@@ -7,13 +7,13 @@ const k = (t, col, head, sw = 0, body = 0) => [t, col, head, sw, body];
 /* 기둥이 다 움직인 뒤에 헤드가 움직이게 한다.
    기둥과 머리가 함께 크게 변하는 구간(키 사이)을 둘로 쪼갠다:
    기둥이 올라갈 때는 [기둥 먼저 → 헤드], 내려올 때는 [헤드 먼저 → 기둥]. 나머지 값(스위블·몸통)은 구간 내내 보간한다. */
-const SEQ_MIN = 3, SEQ_FRAC = 0.6;
+const SEQ_MIN = 3, SEQ_FRAC = 0.6, SEQ_SKIP = 3;   // 처음 일어나는 구간(3초 이전)은 기둥과 헤드를 함께 움직인다
 function sequenceNeck(keys) {
   const out = [keys[0]];
   for (let i = 1; i < keys.length; i++) {
     const a = keys[i - 1], b = keys[i];
     const dCol = b[1] - a[1], dHead = b[2] - a[2];
-    if (Math.abs(dCol) >= SEQ_MIN && Math.abs(dHead) >= SEQ_MIN) {
+    if (a[0] >= SEQ_SKIP && Math.abs(dCol) >= SEQ_MIN && Math.abs(dHead) >= SEQ_MIN) {
       const rising = dCol > 0, f = rising ? SEQ_FRAC : 1 - SEQ_FRAC;
       const t = +(a[0] + (b[0] - a[0]) * f).toFixed(3);
       const lerp = (x, y) => (x ?? 0) + ((y ?? 0) - (x ?? 0)) * f;
@@ -85,7 +85,7 @@ function tickleMergedSteps() {
       head += 10 * Math.cos(phi) * e; sw += 15 * Math.sin(phi) * e; }
     col += 6 * wave(t, 8.5, 0.85) * env(t, 8.5, 12.8);                               // 03 기둥 앞뒤
     body += 12 * wave(t, 14.4, 1.4) * env(t, 14.4, 21.6, 0.7);                       // 04 바디 전체 좌우
-    head += 9 * wave(t, 24.5, 0.7) * env(t, 24.5, 37, 1.0);                          // 05 헤드만 앞뒤
+    head += 6 * wave(t, 24.5, 0.5) * env(t, 24.5, 37, 1.0);                          // 05 헤드만 앞뒤 (웃음: 폭 6°, 0.5초 주기)
     head += 9 * wave(t, 40.5, 0.9) * env(t, 40.5, 48.5);                             // 06 헤드 끄덕
     keys.push([t, col, Math.max(-50, Math.min(8, head)), sw, body]);
   }
