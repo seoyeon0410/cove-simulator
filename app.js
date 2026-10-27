@@ -741,7 +741,7 @@ function refreshClipUI() {
   list.innerHTML = '';
   let lastGroup = null;
   S.clips.forEach((c, i) => {                    // 시나리오를 한눈에 보이는 목록으로 (select는 숨겨 두고 값만 동기화)
-    const g = c.group || '시나리오';
+    const g = c.group || (c.markers?.length ? '시나리오' : '내 클립');
     if (g !== lastGroup) { lastGroup = g; const h = document.createElement('div'); h.className = 'grp'; h.textContent = g; list.appendChild(h); }
     const el = document.createElement('button');
     el.className = 'clip-item' + (i === S.clip ? ' on' : '');
@@ -751,6 +751,7 @@ function refreshClipUI() {
     el.children[1].textContent = m ? m[2] : c.name;
     el.children[2].textContent = `${+c.duration.toFixed(1)}초`;
     el.onclick = () => { sel.value = i; sel.dispatchEvent(new Event('change')); };
+    el.ondblclick = () => startRename(i);
     list.appendChild(el);
   });
   $('#clipDur').value = curClip().duration;
@@ -1180,13 +1181,31 @@ $('#spaceBtn').onclick = () => {
 tc.setSpace('local');
 
 $('#clipSel').onchange = (e) => { S.clip = +e.target.value; S.selKeys.clear(); S.time = Math.min(S.time, curClip().duration); applyPose(S.time); refreshClipUI(); snapshot(); };
-$('#clipNew').onclick = () => { S.clips.push(newClipData(`클립 ${S.clips.length + 1}`)); S.clip = S.clips.length - 1; S.selKeys.clear(); S.time = 0; applyPose(0); refreshClipUI(); snapshot(); };
-$('#clipDup').onclick = () => { const c = JSON.parse(JSON.stringify(curClip())); c.name += ' 복사'; S.clips.push(c); S.clip = S.clips.length - 1; S.selKeys.clear(); refreshClipUI(); snapshot(); };
-$('#clipRen').onclick = () => { const n = prompt('클립 이름', curClip().name); if (n) { curClip().name = n; refreshClipUI(); snapshot(); } };
+$('#clipNew').onclick = () => { const nc = newClipData(`새 클립 ${S.clips.filter((x) => x.group === '내 클립').length + 1}`); nc.group = '내 클립'; S.clips.push(nc); S.clip = S.clips.length - 1; S.selKeys.clear(); S.time = 0; applyPose(0); refreshClipUI(); snapshot(); };
+$('#clipDup').onclick = () => { const c = JSON.parse(JSON.stringify(curClip())); c.name += ' 복사'; c.group = '내 클립'; S.clips.push(c); S.clip = S.clips.length - 1; S.selKeys.clear(); refreshClipUI(); snapshot(); };
+// 이름 바꾸기: 브라우저 prompt 대신 목록 줄 안에서 바로 입력한다 (Enter 확정 · Esc 취소)
+function startRename(i) {
+  const row = [...document.querySelectorAll('#clipList .clip-item')][i]; if (!row) return;
+  const nmEl = row.querySelector('.nm'), input = document.createElement('input');
+  input.type = 'text'; input.value = S.clips[i].name; input.className = 'rename';
+  nmEl.replaceWith(input); input.focus(); input.select();
+  let done = false;
+  const finish = (ok) => {
+    if (done) return; done = true;
+    const v = input.value.trim();
+    if (ok && v && v !== S.clips[i].name) { S.clips[i].name = v; snapshot(); }
+    refreshClipUI();
+  };
+  input.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false); };
+  input.onblur = () => finish(true);
+  input.onclick = (e) => e.stopPropagation();
+}
+$('#clipRen').onclick = () => startRename(S.clip);
 $('#clipDel').onclick = () => {
   if (S.clips.length < 2) return toast('마지막 클립은 삭제할 수 없어요');
-  if (!confirm(`'${curClip().name}' 클립을 삭제할까요?`)) return;
+  const name = curClip().name;                    // 확인 창 대신 바로 지우고, Ctrl+Z로 되돌릴 수 있게 한다
   S.clips.splice(S.clip, 1); S.clip = Math.max(0, S.clip - 1); S.selKeys.clear(); applyPose(S.time); refreshClipUI(); snapshot();
+  toast(`'${name}' 삭제했어요 · Ctrl+Z로 되돌릴 수 있어요`);
 };
 $('#clipDur').onchange = (e) => { curClip().duration = Math.max(0.1, +e.target.value || 1); setTime(S.time); snapshot(); };
 $('#clipFps').onchange = (e) => { curClip().fps = +e.target.value; setTime(S.time); snapshot(); };
@@ -1205,7 +1224,6 @@ PRESET_GROUPS.forEach((grp, g) => {
 $('#presetAdd').value = '';
 document.fonts?.ready.then(drawTL);
 $('#clipReimport').onclick = () => {
-  if (!confirm('모든 클립을 GLB 파일에 들어있던 원본 모션으로 되돌릴까요? (현재 작업은 실행 취소로 복구 가능)')) return;
   S.clips = importClips();
   if (!S.clips.length) S.clips = [newClipData('새 클립')];
   S.clip = 0; S.selKeys.clear(); applyPose(0); S.time = 0; refreshClipUI(); snapshot();
