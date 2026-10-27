@@ -45,13 +45,25 @@ export function applyLook(model) {
 /* ───────────── 눈: 8×8 LED 매트릭스 한 개 = 눈 한 개 ───────────── */
 
 // 8×8 도트 (위→아래, 왼→오른). 1이 켜진 LED. 눈의 가운데 줄은 3행 근처로 맞춰서 표정이 바뀌어도 눈 높이가 흔들리지 않는다.
+// 값 형태: rows(두 눈 같은 모양) | { L, R }(보는 사람 기준 왼쪽·오른쪽 눈이 서로 다름) | { frames, step }(여러 프레임이 도는 애니메이션)
+const mirror = (rows) => rows.map((r) => [...r].reverse().join(''));
+const OVAL = ['00000000', '00011000', '00111100', '00111100', '00111100', '00011000', '00000000', '00000000'];   // 4×5 둥근 타원
+const HAPPY = ['00000000', '00000000', '00011000', '00100100', '01000010', '00000000', '00000000', '00000000'];  // ^
+const CHEVRON = ['00000000', '01100000', '00011000', '00001100', '00011000', '01100000', '00000000', '00000000']; // >
+const SAD_L = ['00000000', '00000011', '00001110', '00111100', '01110000', '00000000', '00000000', '00000000'];   // 바깥쪽이 처진 눈
+const SPARK = (off) => OVAL.map((r, y) => r.split('').map((v, x) => (off.some(([oy, ox]) => oy === y && ox === x) ? '0' : v)).join(''));
 const PATTERNS = {
-  '뜬 눈':   ['00000000', '00011000', '00111100', '00111100', '00111100', '00011000', '00000000', '00000000'],   // 4×5 둥근 타원
+  '뜬 눈': OVAL,
   '감은 눈': ['00000000', '00000000', '00000000', '01000010', '00111100', '00000000', '00000000', '00000000'],   // ∪ 편안히 감은 눈
-  '웃는 눈': ['00000000', '00000000', '00011000', '00100100', '01000010', '00000000', '00000000', '00000000'],   // ^ 웃는 눈
+  '웃는 눈': HAPPY,
   '졸린 눈': ['00000000', '00000000', '00000000', '00111100', '00111100', '00011000', '00000000', '00000000'],   // 눈꺼풀이 반쯤 내려온 눈
   '놀란 눈': ['00000000', '00111100', '01111110', '01100110', '01100110', '01111110', '00111100', '00000000'],   // 동공이 비어 있는 큰 눈
   '하트 눈': ['00000000', '01100110', '01111110', '01111110', '00111100', '00011000', '00000000', '00000000'],   // ♥
+  '반짝 눈': { frames: [SPARK([[2, 3]]), SPARK([[2, 3], [3, 2]]), SPARK([[2, 3]]), OVAL], step: 0.3 },            // 눈동자에 하이라이트가 반짝
+  '슬픈 눈': { L: SAD_L, R: mirror(SAD_L) },                                                                      // 조르는 듯 처진 눈
+  '신난 눈': { L: CHEVRON, R: mirror(CHEVRON) },                                                                  // > <
+  '윙크': { L: OVAL, R: HAPPY },                                                                                  // 한쪽 눈만 ^
+  '편안한 눈': ['00000000', '00000011', '00000110', '00001100', '00011000', '00110000', '00000000', '00000000'],   // ↗ 느긋한 눈
 };
 export const EXPRESSIONS = Object.keys(PATTERNS);
 
@@ -93,17 +105,25 @@ function blinkStage(t) {                       // 3.8초마다, 조금씩 어긋
   if (ph < 0 || ph >= BLINK_FRAMES.length * BLINK_STEP) return 0;
   return BLINK_FRAMES[Math.floor(ph / BLINK_STEP)];
 }
-function framePattern(name, gx, gy, stage) {
-  let rows = (PATTERNS[name] || PATTERNS['뜬 눈']).map((r) => r.split(''));
-  const BLINK = { 1: ['00000000', '00000000', '00011000', '00111100', '00011000', '00000000', '00000000', '00000000'],    // 반쯤 감김
-                  2: ['00000000', '00000000', '00000000', '00111100', '00000000', '00000000', '00000000', '00000000'] };  // 감김
-  if (name === '뜬 눈' && BLINK[stage]) rows = BLINK[stage].map((r) => r.split(''));
-  const out = Array.from({ length: 8 }, () => Array(8).fill('0'));
+const BLINK = { 1: ['00000000', '00000000', '00011000', '00111100', '00011000', '00000000', '00000000', '00000000'],    // 반쯤 감김
+                2: ['00000000', '00000000', '00000000', '00111100', '00000000', '00000000', '00000000', '00000000'] };  // 감김
+const shiftRows = (rows, gx, gy) => {
+  const src = rows.map((r) => r.split('')), out = Array.from({ length: 8 }, () => Array(8).fill('0'));
   for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
     const sx = x - gx, sy = y - gy;
-    if (sx >= 0 && sx < 8 && sy >= 0 && sy < 8) out[y][x] = rows[sy][sx];
+    if (sx >= 0 && sx < 8 && sy >= 0 && sy < 8) out[y][x] = src[sy][sx];
   }
   return out.map((r) => r.join(''));
+};
+// 반환: [보는 사람 기준 왼쪽 눈 프레임, 오른쪽 눈 프레임]
+function framePattern(name, gx, gy, stage, t) {
+  const def = PATTERNS[name] || PATTERNS['뜬 눈'];
+  let L, R;
+  if (Array.isArray(def)) L = R = def;
+  else if (def.frames) { L = R = def.frames[Math.floor(t / def.step) % def.frames.length]; }
+  else { L = def.L; R = def.R; }
+  if (name === '뜬 눈' && BLINK[stage]) L = R = BLINK[stage];
+  return [shiftRows(L, gx, gy), shiftRows(R, gx, gy)];
 }
 
 // 두 LED 매트릭스 앞쪽 헤드 외피 위에 눈 패널을 올린다.
@@ -117,14 +137,14 @@ export function buildEyes(S, { setPose, resetPose }) {
     if (['새_헤드_상판', '새_쿠션', '새_헤드_하부판'].includes(o.name)) shell.push(o);
   });
   if (mats.length < 2 || !colN || !tiltN) return null;
-  mats.sort((a, b) => a.name.length - b.name.length);
 
   setPose();                                    // 헤드가 수평으로 선 자세에서 계산
   S.model.updateMatrixWorld(true);
   const zAxis = new THREE.Vector3(0, 0, 1).applyQuaternion(colN.getWorldQuaternion(new THREE.Quaternion())).normalize();
   const front = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), zAxis).normalize().multiplyScalar(-1);
   const ray = new THREE.Raycaster(), group = new THREE.Group(); group.name = '눈';
-  const canvases = [], textures = [];
+  const canvases = [], textures = [], eyeList = [];
+  const viewerRight = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), front).normalize();   // 정면에서 마주 본 사람의 오른쪽
   const SIZE = 0.016;                           // 패널 한 변 16mm (도트 간격 2mm)
   const GAP_IN = 0.003, RAISE = 0.007;          // 미간을 눈 한쪽당 3mm씩 좁히고, 7mm 위로 올린다
   const tiltQ = tiltN.getWorldQuaternion(new THREE.Quaternion()).invert();
@@ -151,8 +171,10 @@ export function buildEyes(S, { setPose, resetPose }) {
     const look = new THREE.Object3D(); look.position.copy(pos); look.up.set(0, 1, 0); look.lookAt(pos.clone().add(n));
     mesh.position.copy(tiltN.worldToLocal(pos.clone()));
     mesh.quaternion.copy(tiltQ.clone().multiply(look.quaternion));
-    group.add(mesh); canvases.push(canvas); textures.push(tex);
+    group.add(mesh); eyeList.push({ canvas, tex, x: pos.dot(viewerRight) });
   }
+  eyeList.sort((a, b) => a.x - b.x);                      // 보는 사람 기준 왼쪽 → 오른쪽 순서
+  eyeList.forEach((e) => { canvases.push(e.canvas); textures.push(e.tex); });
   tiltN.add(group);
   resetPose();
 
@@ -161,12 +183,14 @@ export function buildEyes(S, { setPose, resetPose }) {
     group,
     // 표정 이름·시선(도트 칸 수)·시각 t(깜빡임용)에 맞는 프레임을 그린다. 같은 프레임이면 다시 그리지 않는다.
     show(name, gx = 0, gy = 0, t = 0) {
+      const def = PATTERNS[name];
       const stage = name === '뜬 눈' ? blinkStage(t) : 0;
-      const key = `${name}|${gx}|${gy}|${stage}`;
+      const frame = def && def.frames ? Math.floor(t / def.step) % def.frames.length : 0;
+      const key = `${name}|${gx}|${gy}|${stage}|${frame}`;
       if (key === lastKey) return;
       lastKey = key;
-      const rows = framePattern(name, gx, gy, stage);
-      canvases.forEach((cv, i) => { drawPattern(cv, rows); textures[i].needsUpdate = true; });
+      const [pl, pr] = framePattern(name, gx, gy, stage, t);
+      canvases.forEach((cv, i) => { drawPattern(cv, i === 0 ? pl : pr); textures[i].needsUpdate = true; });
     },
     count: canvases.length,
   };

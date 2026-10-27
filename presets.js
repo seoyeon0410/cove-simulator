@@ -53,6 +53,40 @@ function pchipResample(keys, dt = 0.1) {
   return out;
 }
 
+
+/* ───── 자연스러운 목 움직임 ─────
+   1) 스프링 추종: 목(기둥)과 헤드를 "목표 자세를 따라가는 스프링"으로 바꾼다. 목표가 움직이면 목이 먼저 반응하고
+      헤드가 조금 늦게 따라오며(팔로스루), 도착할 때 살짝 지나쳤다가 제자리로 안착한다(오버슈트·정착).
+   2) 미세한 흔들림: 목이 서 있는 동안 숨 쉬듯 ±0.5° 정도로 아주 천천히 흔들려 멈춘 인형처럼 보이지 않게 한다. */
+const SPRING = { col: [9, 0.62], head: [7, 0.7] };      // [각주파수 ω(rad/s), 감쇠비 ζ]
+function springFollow(samples, cfg = SPRING) {
+  const n = samples.length, dt = samples[1][0] - samples[0][0], sub = 10, h = dt / sub;
+  const out = samples.map((x) => x.slice());
+  for (const [c, [w, z]] of [[1, cfg.col], [2, cfg.head]]) {
+    let x = samples[0][c], v = 0;
+    for (let i = 1; i < n; i++) {
+      const a = samples[i - 1][c], b = samples[i][c];
+      for (let k = 1; k <= sub; k++) { const tgt = a + ((b - a) * k) / sub; v += (w * w * (tgt - x) - 2 * z * w * v) * h; x += v * h; }
+      out[i][c] = x;
+    }
+  }
+  const tEnd = samples[n - 1][0];                    // 끝 0.8초는 원래 목표 자세로 수렴시켜, 끝 자세가 정확히 목표와 같게(반복 이음새 방지)
+  out.forEach((x, i) => {
+    const q = Math.min(1, Math.max(0, (x[0] - (tEnd - 0.8)) / 0.8)), k = q * q * (3 - 2 * q);
+    x[1] = x[1] * (1 - k) + samples[i][1] * k; x[2] = x[2] * (1 - k) + samples[i][2] * k;
+    x[1] = Math.min(35.5, Math.max(0, x[1])); x[2] = Math.min(8, Math.max(-50, x[2]));   // 한계를 넘지 않게
+  });
+  return out;
+}
+function microSway(keys) {
+  return keys.map((k) => {
+    const t = k[0], g = Math.min(1, Math.max(0, (k[1] - 2) / 10)), a = g * g * (3 - 2 * g);   // 접힌 자세에서는 0
+    const col = k[1] + a * (0.45 * Math.sin((2 * Math.PI * t) / 3.7) + 0.25 * Math.sin((2 * Math.PI * t) / 5.9 + 1.3));
+    const head = k[2] + a * (0.7 * Math.sin((2 * Math.PI * t) / 4.3 + 0.6) + 0.3 * Math.sin((2 * Math.PI * t) / 2.9 + 2.1));
+    return [t, col, head, k[3], k[4]];
+  });
+}
+
 /* ───── 시나리오 (스토리보드): 단계별 키는 t=0이 이전 단계의 끝 포즈와 같도록 맞춘다 ───── */
 const WAKE = [k(0, 0, 0), k(1.2, 14, -20), k(2.2, 27, -37), k(3, 25, -34)];
 
@@ -72,7 +106,7 @@ const TICKLE_SECTIONS = [
   [14, 22, '04 손 떼면 · 바디 좌우 흔들기'], [22, 39, '05 뒤로 최대한 젖히기 · 헤드 앞뒤'], [39, 49.2, '06 제자리 · 헤드 끄덕'],
 ];
 function tickleMergedSteps() {
-  const base = pchipResample(videoKeys(TICKLE_BASE));   // 0.1초 격자, 속도가 이어지는 곡선
+  const base = springFollow(pchipResample(videoKeys(TICKLE_BASE)));   // 0.1초 격자, 속도가 이어지는 곡선 → 스프링으로 따라가기
   const wave = (t, a, period) => Math.sin((2 * Math.PI * (t - a)) / period);
   const env = (t, a, b, r = 0.5) => { const x = Math.max(0, Math.min(1, (t - a) / r, (b - t) / r)); return x * x * (3 - 2 * x); };   // 양 끝을 부드럽게(속도가 이어지게) 줄이는 포락선
   const keys = [];
@@ -108,7 +142,7 @@ const SNACK_VIDEO = [
    0.1초 간격으로 구워서 만든다. 키: [t, 기둥, 머리, 스위블, 몸통] */
 const SNACK_SECTIONS = [[0, 3, '01 사용자 바라보기 · 기둥 올리기'], [3, 9, '02 헤드 좌우 탐색'], [9, 14, '03 까딱까딱 · 이건 뭐지'], [14, 20, '04 고개 · 허리 최대로'], [20, 25, '05 씹기'], [25, 27, '06 만족'], [27, 35.2, '07 기분 좋은 까딱']];
 function snackMergedSteps() {
-  const base = pchipResample(videoKeys(SNACK_VIDEO));   // 0.1초 격자, 속도가 이어지는 곡선
+  const base = springFollow(pchipResample(videoKeys(SNACK_VIDEO)));   // 0.1초 격자, 속도가 이어지는 곡선 → 스프링으로 따라가기
   const bell = (t, a, b) => (t <= a || t >= b ? 0 : Math.sin((Math.PI * (t - a)) / (b - a)));
   const wave = (t, a, period) => Math.sin((2 * Math.PI * (t - a)) / period);
   const keys = [];
@@ -130,34 +164,34 @@ function snackMergedSteps() {
 }
 
 /* ───── 눈 연기 (8×8 도트): [시간, 표정, 시선 가로(칸), 시선 세로(칸)] — 표정은 키마다 통째로 바뀌고, 시선은 칸 단위로만 움직인다 ───── */
-const gazeSweep = (a, b, step, amp) => { const o = []; let s = 1, t = a; while (t < b - 1e-6) { o.push([+t.toFixed(2), '뜬 눈', s * amp, 0]); s = -s; t += step; } o.push([b, '뜬 눈', 0, 0]); return o; };
+const gazeSweep = (a, b, step, amp, name = '뜬 눈') => { const o = []; let s = 1, t = a; while (t < b - 1e-6) { o.push([+t.toFixed(2), name, s * amp, 0]); s = -s; t += step; } o.push([b, name, 0, 0]); return o; };
 const EYES_REST = [
-  [0, '졸린 눈'], [1.2, '뜬 눈'],            // 01 사용자 인식: 눈을 뜨고 응답
-  [3.2, '웃는 눈'],                          // 02 휴식 유도: 쓰다듬에 좋아함
-  [6, '뜬 눈', 1, 0], [7.5, '뜬 눈', 0, 0],   // 03 몸 올리기: 팔을 보며 시선을 살짝 옮김
-  [9.5, '졸린 눈'],                          // 04 기대기: 편안한 표정
-  [13, '뜬 눈'], [15, '졸린 눈'], [16, '감은 눈'], // 05 휴식 유지: 깜빡이다가 감음
-  [18.2, '졸린 눈'], [19.2, '뜬 눈'],         // 06 휴식 종료
+  [0, '졸린 눈'], [1.2, '뜬 눈'], [2.5, '반짝 눈'],   // 01 사용자 인식: 눈을 뜨고 반가워함
+  [3.2, '웃는 눈'],                                  // 02 휴식 유도: 쓰다듬에 좋아함
+  [6, '뜬 눈', 1, 0], [7.5, '뜬 눈', 0, 0],           // 03 몸 올리기: 팔을 보며 시선을 살짝 옮김
+  [9.5, '편안한 눈'],                                // 04 기대기: 느긋한 눈
+  [13, '뜬 눈'], [15, '졸린 눈'], [16, '감은 눈'],     // 05 휴식 유지: 깜빡이다가 감음
+  [18.2, '졸린 눈'], [19.2, '뜬 눈'], [20.4, '웃는 눈'], // 06 휴식 종료: 눈을 뜨고 웃으며 배웅
 ];
 const EYES_TICKLE = [
-  [0, '졸린 눈'], [1.2, '뜬 눈'],            // 01 사용자 인식
-  ...gazeSweep(4.2, 7.8, 0.6, 1),            // 02 헤드 좌우 5° 와 같이 시선도 좌우 한 칸씩
-  [8, '웃는 눈'],                            // 03 간지럼: 웃는 눈
-  [14.2, '뜬 눈', 0, 0], ...gazeSweep(14.6, 21.6, 0.7, 2).slice(0, -1), [22, '뜬 눈', 0, 0], // 04 바디를 흔들며 사용자를 쳐다봄
-  [22.5, '웃는 눈'],                         // 05 뒤로 젖혀 웃음
-  [39.3, '뜬 눈'], [41, '웃는 눈'], [48.5, '뜬 눈'], // 06 끄덕이며 만족
+  [0, '졸린 눈'], [1.2, '뜬 눈'], [2.6, '반짝 눈'],   // 01 사용자 인식
+  ...gazeSweep(4.2, 7.8, 0.6, 1),                    // 02 헤드 좌우 5° 와 같이 시선도 좌우 한 칸씩
+  [8, '신난 눈'], [10.5, '웃는 눈'], [12.5, '신난 눈'], // 03 간지럼: > < 와 ^^ 를 오가며 간지러워함
+  ...gazeSweep(14.4, 21.6, 0.7, 1, '슬픈 눈'),         // 04 손 떼면: 더 놀아달라고 조르는 처진 눈, 시선이 좌우로
+  [22, '반짝 눈'], [22.8, '웃는 눈'],                 // 05 뒤로 젖혀 웃음
+  [30, '신난 눈'], [32, '웃는 눈'], [36, '신난 눈'], [38, '웃는 눈'],
+  [39.3, '뜬 눈'], [41, '윙크'], [43, '하트 눈'], [47.2, '뜬 눈'], // 06 제자리: 윙크, 하트, 다시 눈 뜸
 ];
 const EYES_SNACK = [
-  [0, '졸린 눈'], [1.2, '뜬 눈'],            // 01 사용자 바라보기
-  ...gazeSweep(4, 7.5, 1.5, 2),              // 02 헤드 좌우 탐색
-  [9, '놀란 눈'],                            // 03 이건 뭐지
-  [13.5, '뜬 눈'],                           // 04 고개·허리 최대로
-  [20, '웃는 눈'],                           // 05 씹기
-  [27, '웃는 눈'], [33.5, '뜬 눈'],           // 06~07 만족, 기분 좋게 까딱
+  [0, '졸린 눈'], [1.2, '뜬 눈'],                    // 01 사용자 바라보기
+  ...gazeSweep(4, 7.5, 1.5, 2),                      // 02 헤드 좌우 탐색
+  [9, '놀란 눈'], [11.5, '반짝 눈'],                  // 03 이건 뭐지: 놀람 → 궁금해서 반짝
+  [20, '웃는 눈'],                                   // 05 씹기
+  [25, '하트 눈'], [29.5, '신난 눈'], [31, '웃는 눈'], [32.8, '윙크'], [34, '뜬 눈'], // 06~07 만족: 하트, > <, 윙크
 ];
 
 const SCENARIOS = [
-  { name: '시나리오1 휴식', eyes: EYES_REST, steps: [
+  { name: '시나리오1 휴식', eyes: EYES_REST, natural: true, steps: [
     { name: '01 사용자 인식', duration: 3, keys: WAKE },
     { name: '02 휴식 유도', duration: 3, keys: [k(0, 25, -34), k(0.75, 25, -34, 0, 5), k(1.5, 25, -34, 0, -5), k(2.25, 25, -34, 0, 5), k(3, 25, -34)] },
     { name: '03 몸 올리기', duration: 3, keys: [k(0, 25, -34), k(1, 28, -22), k(1.5, 28, -27), k(2, 28, -22), k(2.5, 28, -27), k(3, 28, -22)] },
@@ -176,7 +210,7 @@ const whole = SCENARIOS.map((s) => {
     st.keys.forEach((kk, j) => { if (i > 0 && j === 0) return; keys.push([kk[0] + t0, ...kk.slice(1)]); });
     t0 += st.duration;
   });
-  return { name: s.name, duration: t0, keys, markers, interp: s.interp, eyes: s.eyes };
+  return { name: s.name, duration: t0, keys, markers, interp: s.interp, eyes: s.eyes, natural: s.natural };
 });
 
 
@@ -194,7 +228,12 @@ function withTail(d) {
     eyes: d.eyes ? [...d.eyes, [+(end + 0.9).toFixed(2), '졸린 눈']] : d.eyes,
   };
 }
-const seq = (items) => items.map((d) => { const t = withTail(d); return { ...t, keys: pchipResample(sequenceNeck(t.keys)) }; });
+const seq = (items) => items.map((d) => {
+  const t = withTail(d);
+  let keys = pchipResample(sequenceNeck(t.keys));
+  if (t.natural) keys = springFollow(keys);          // 밑그림만 있는 시나리오는 전체에 스프링 (흔들림 덧씌움이 따로 없는 경우)
+  return { ...t, keys: microSway(keys) };
+});
 
 export const PRESET_GROUPS = [
   { label: '시나리오', items: seq(whole) },
