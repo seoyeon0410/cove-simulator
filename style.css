@@ -1,8 +1,8 @@
 :root{
-  --bg:#0a0a0a; --panel:#131211; --ctl:#1e1c1a; --ctl-hover:#2a2622; --ctl-on:#3a2a1c;
-  --view:#221c17; --text:#f2ece4; --dim:#8c8378;
-  --key:#e9dccf; --accent:#ff7a1a;
-  --row1:#131211; --row2:#171513; --rowsel:#2b1d12; --line:#25211e;
+  --bg:#0a0b0b; --panel:#141616; --ctl:#1e2121; --ctl-hover:#292d2d; --ctl-on:#2a3a37;
+  --view:#202425; --text:#ecefef; --dim:#868c8e;
+  --key:#d9dfe0; --accent:#3ee6b4;
+  --row1:#141616; --row2:#181b1b; --rowsel:#1f2d2a; --line:#242828;
   --font:"Google Sans Flex","Noto Sans KR",sans-serif;
 }
 *{box-sizing:border-box}
@@ -18,28 +18,28 @@ button,select,input[type=number]{background:var(--ctl);color:var(--text);border:
 button{cursor:pointer;transition:background .12s}
 button:hover{background:var(--ctl-hover)}
 button:active{background:var(--ctl-on)}
-button.primary{background:var(--accent);color:#120a03;font-weight:500}
-button.primary:hover{background:#ff9444}
-button.on{background:var(--accent);color:#120a03}
+button.primary{background:var(--accent);color:#04140f;font-weight:500}
+button.primary:hover{background:#7af2d2}
+button.on{background:var(--accent);color:#04140f}
 button.wide{width:100%;margin-top:8px}
 select{appearance:none;width:100%;cursor:pointer;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238c8378' stroke-width='1.4'/%3E%3C/svg%3E");
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23868c8e' stroke-width='1.4'/%3E%3C/svg%3E");
   background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
-select option{background:#1e1c1a}
+select option{background:#1e2121}
 input[type=number]{width:100%;min-width:0;padding:4px 7px;background:var(--bg)}
-input:focus,select:focus{outline:none;box-shadow:inset 0 0 0 1px #ff7a1a}
-button:focus-visible{outline:none;box-shadow:0 0 0 1px #ff7a1a}
+input:focus,select:focus{outline:none;box-shadow:inset 0 0 0 1px var(--accent)}
+button:focus-visible{outline:none;box-shadow:0 0 0 1px var(--accent)}
 input[type=number]::-webkit-inner-spin-button{display:none}
 
 /* 체크박스 → 작은 점 */
 .check{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);white-space:nowrap;cursor:pointer;user-select:none}
 .check:has(input:checked){color:var(--text)}
-input[type=checkbox]{appearance:none;width:7px;height:7px;border-radius:50%;background:#4a423a;margin:0;cursor:pointer}
+input[type=checkbox]{appearance:none;width:7px;height:7px;border-radius:50%;background:#454b4c;margin:0;cursor:pointer}
 input[type=checkbox]:checked{background:var(--accent)}
 
 /* 슬라이더 */
 input[type=range]{appearance:none;background:transparent;width:90px;height:16px;margin:0;cursor:pointer}
-input[type=range]::-webkit-slider-runnable-track{height:2px;background:#4a423a;border-radius:1px}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:#454b4c;border-radius:1px}
 input[type=range]::-webkit-slider-thumb{appearance:none;width:10px;height:10px;border-radius:50%;background:var(--accent);margin-top:-4px}
 
 /* 레이아웃 */
@@ -68,7 +68,7 @@ kbd{background:var(--ctl);border-radius:3px;padding:0 5px;font:inherit;font-size
 #tree .node:hover{background:var(--ctl)}
 #tree .node.sel{background:var(--rowsel);color:#fff}
 #tree .node.mesh{color:var(--dim)}
-#tree .dot{width:6px;height:6px;border-radius:50%;background:#4a423a;flex:none}
+#tree .dot{width:6px;height:6px;border-radius:50%;background:#454b4c;flex:none}
 #tree .node.haskeys .dot{background:var(--key)}
 #tree .badge{margin-left:auto;font-size:10.5px;color:var(--dim)}
 
@@ -81,12 +81,12 @@ kbd{background:var(--ctl);border-radius:3px;padding:0 5px;font:inherit;font-size
 .overlay .check{padding:6px 10px;background:var(--panel);border-radius:6px}
 .overlay button{background:var(--panel)}
 .overlay button:hover{background:var(--ctl)}
-.overlay button.on{background:var(--accent);color:#120a03}
+.overlay button.on{background:var(--accent);color:#04140f}
 .overlay .opac{margin-left:auto;background:var(--panel);padding:6px 10px;border-radius:6px}
 .seg{display:flex;gap:2px;background:var(--panel);padding:2px;border-radius:8px}
 .seg button{background:transparent;padding:4px 12px}
 .seg button:hover{background:var(--ctl)}
-.seg button.on{background:var(--accent);color:#120a03;font-weight:600}
+.seg button.on{background:var(--accent);color:#04140f;font-weight:600}
 #drop{display:none;position:absolute;inset:0;z-index:5;background:#000c;align-items:center;justify-content:center;font-size:16px}
 #drop.show{display:flex}
 
@@ -102,9 +102,9 @@ footer{height:250px;background:var(--panel);display:flex;flex-direction:column;f
 #toast.show{opacity:1}
 
 /* 스크롤바 */
-*{scrollbar-width:thin;scrollbar-color:#3a322b transparent}
+*{scrollbar-width:thin;scrollbar-color:#343a3b transparent}
 ::-webkit-scrollbar{width:8px;height:8px}
-::-webkit-scrollbar-thumb{background:#3a322b;border-radius:4px}
+::-webkit-scrollbar-thumb{background:#343a3b;border-radius:4px}
 ::-webkit-scrollbar-track{background:transparent}
 button{white-space:nowrap}
 #left .row button{padding:5px 4px}
@@ -116,7 +116,7 @@ dialog .seg2{display:flex;gap:2px;background:var(--bg);padding:2px;border-radius
 dialog .seg2 label{flex:1;cursor:pointer}
 dialog .seg2 input{display:none}
 dialog .seg2 span{display:block;text-align:center;padding:6px 4px;border-radius:6px;font-size:12.5px;color:var(--dim)}
-dialog .seg2 input:checked+span{background:var(--accent);color:#120a03;font-weight:600}
+dialog .seg2 input:checked+span{background:var(--accent);color:#04140f;font-weight:600}
 dialog .grid2{display:grid;grid-template-columns:56px 1fr;gap:8px;align-items:center;margin:14px 0}
 #mdInfo{font-size:12px}
 #mdStatus{min-height:18px;font-size:12px;margin-top:6px}
@@ -129,3 +129,8 @@ progress::-webkit-progress-value{background:var(--accent)}
 #sceneTag[hidden]{display:none}
 #sceneTag .no{font-size:11px;color:var(--dim)}
 #sceneTag .nm{font-size:15px;font-weight:600;color:var(--text)}
+
+/* 레이아웃 순서: 뷰포트를 맨 왼쪽으로 */
+#viewWrap{order:0}
+#left{order:1}
+#right{order:2}

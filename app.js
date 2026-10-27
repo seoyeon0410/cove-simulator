@@ -7,7 +7,7 @@ import { Muxer, ArrayBufferTarget } from './lib/mp4-muxer.mjs';
 
 const $ = (s) => document.querySelector(s);
 const EPS = 1e-4;
-const ACCENT = 0xff7a1a;
+const ACCENT = 0x3ee6b4;
 const FONT = '"Google Sans Flex", "Noto Sans KR", sans-serif';
 
 /* ───────────── 상태 ───────────── */
@@ -43,7 +43,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 viewEl.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(40, 1, 0.001, 100);
-scene.add(new THREE.HemisphereLight(0xffffff, 0x55483c, 1.8));
+scene.add(new THREE.HemisphereLight(0xffffff, 0x4a5150, 1.8));
 const sun = new THREE.DirectionalLight(0xffffff, 2.2);
 sun.position.set(1, 2, 1.5);
 scene.add(sun);
@@ -143,7 +143,7 @@ function loadGLB(buffer, name) {
       const size = box.getSize(new THREE.Vector3()).length() || 1;
       fitInfo = { center: box.getCenter(new THREE.Vector3()), size };
       if (grid) scene.remove(grid);
-      grid = new THREE.GridHelper(size * 2, 20, 0x6a5a4a, 0x3a322b);
+      grid = new THREE.GridHelper(size * 2, 20, 0x59605f, 0x353a39);
       grid.position.y = box.min.y;
       scene.add(grid);
       buildMarkers();
@@ -174,7 +174,7 @@ function buildMarkers() {
   if (boneLines) scene.remove(boneLines);
   markers = S.boneIdx.map((idx) => {
     const isTarget = nodeName(idx).includes('IK') || nodeName(idx).includes('타겟');
-    const mat = new THREE.MeshBasicMaterial({ color: isTarget ? 0xffffff : 0x8a7a6a, depthTest: false, transparent: true, opacity: 0.95 });
+    const mat = new THREE.MeshBasicMaterial({ color: isTarget ? 0xffffff : 0x9aa3a2, depthTest: false, transparent: true, opacity: 0.95 });
     const mesh = new THREE.Mesh(markerGeo, mat);
     mesh.scale.setScalar(fitInfo.size * 0.012);
     mesh.renderOrder = 10;
@@ -184,7 +184,7 @@ function buildMarkers() {
   });
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(S.boneIdx.length * 6), 3));
-  boneLines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x8a7a6a, depthTest: false, transparent: true, opacity: 0.8 }));
+  boneLines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x9aa3a2, depthTest: false, transparent: true, opacity: 0.8 }));
   boneLines.renderOrder = 9;
   boneLines.frustumCulled = false;
   scene.add(boneLines);
@@ -201,7 +201,7 @@ function updateMarkers() {
     obj.getWorldPosition(m.mesh.position);
     m.mesh.visible = show;
     const sel = obj === S.sel;
-    m.mesh.material.color.set(sel ? ACCENT : (/IK|타겟/.test(nodeName(m.idx)) ? 0xffffff : 0x8a7a6a));
+    m.mesh.material.color.set(sel ? ACCENT : (/IK|타겟/.test(nodeName(m.idx)) ? 0xffffff : 0x9aa3a2));
     m.mesh.scale.setScalar(fitInfo.size * (sel ? 0.016 : 0.011));
     let p = obj.parent, parentBone = null;
     while (p) { if (S.idxOf.has(p) && boneSet.has(S.idxOf.get(p))) { parentBone = p; break; } p = p.parent; }
@@ -760,7 +760,7 @@ function drawTL() {
   ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle';
   const t0 = Math.max(0, Math.floor(x2t(LW) / major) * major), t1 = x2t(w);
   if (TL.pps / f >= 6) {
-    ctx.strokeStyle = '#2e2824'; ctx.beginPath();
+    ctx.strokeStyle = '#2a2e2f'; ctx.beginPath();
     for (let fr = Math.floor(x2t(LW) * f); fr / f <= t1; fr++) {
       const x = Math.round(t2x(fr / f)) + 0.5;
       if (x < LW) continue; ctx.moveTo(x, RUL - 5); ctx.lineTo(x, RUL);
@@ -770,7 +770,7 @@ function drawTL() {
   for (let t = t0; t <= t1; t += major) {
     const x = Math.round(t2x(t)) + 0.5;
     if (x < LW) continue;
-    ctx.strokeStyle = '#4a423a'; ctx.beginPath(); ctx.moveTo(x, RUL - 12); ctx.lineTo(x, h); ctx.globalAlpha = 0.35; ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#454b4c'; ctx.beginPath(); ctx.moveTo(x, RUL - 12); ctx.lineTo(x, h); ctx.globalAlpha = 0.35; ctx.stroke(); ctx.globalAlpha = 1;
     ctx.fillStyle = C('--dim'); ctx.fillText(t.toFixed(major < 1 ? 2 : 0) + 's', x + 4, 9);
   }
   // 장면 구간: 눈금 아래 띠로 표시하고 현재 장면을 강조한다
@@ -780,17 +780,17 @@ function drawTL() {
     if (x1 < LW || x0 > w) return;
     const cur = S.time >= m.t - 1e-6 && (i + 1 >= marks.length || S.time < marks[i + 1].t - 1e-6);
     const l = Math.max(x0, LW);
-    ctx.fillStyle = cur ? '#3a2514' : (i % 2 ? '#181513' : '#141210'); ctx.fillRect(l, RUL, x1 - l - 1, BAND - 2);
+    ctx.fillStyle = cur ? '#1f3a33' : (i % 2 ? '#151717' : '#121414'); ctx.fillRect(l, RUL, x1 - l - 1, BAND - 2);
     if (cur) { ctx.fillStyle = C('--accent'); ctx.fillRect(l, RUL, x1 - l - 1, 2); }
     ctx.save(); ctx.beginPath(); ctx.rect(l, RUL, x1 - l - 1, BAND); ctx.clip();
     ctx.fillStyle = cur ? '#fff' : C('--dim'); ctx.font = `${cur ? 600 : 400} 11px ${FONT}`; ctx.textBaseline = 'middle';
     ctx.fillText(m.label, Math.max(x0, LW) + 6, RUL + BAND / 2 - 0.5);
     ctx.restore();
-    if (x0 >= LW) { ctx.strokeStyle = '#4a423a'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(Math.round(x0) + 0.5, RULER); ctx.lineTo(Math.round(x0) + 0.5, h); ctx.stroke(); ctx.setLineDash([]); }
+    if (x0 >= LW) { ctx.strokeStyle = '#454b4c'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(Math.round(x0) + 0.5, RULER); ctx.lineTo(Math.round(x0) + 0.5, h); ctx.stroke(); ctx.setLineDash([]); }
   });
 
   // 길이 끝 선
-  ctx.strokeStyle = '#6b6157'; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(endX + 0.5, RULER); ctx.lineTo(endX + 0.5, h); ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.strokeStyle = '#6a7273'; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(endX + 0.5, RULER); ctx.lineTo(endX + 0.5, h); ctx.stroke(); ctx.globalAlpha = 1;
 
   // 라벨 열
   ctx.fillStyle = C('--panel'); ctx.fillRect(0, 0, LW, h);
@@ -802,7 +802,7 @@ function drawTL() {
     const sel = idx === S.idxOf.get(S.sel);
     ctx.fillStyle = sel ? C('--rowsel') : (r % 2 ? C('--row1') : C('--row2')); ctx.fillRect(0, y, LW, RH);
     const has = (clip.tracks[idx] || []).length;
-    ctx.fillStyle = has ? C('--key') : '#4a423a'; ctx.beginPath(); ctx.arc(12, y + RH / 2, 3.5, 0, 7); ctx.fill();
+    ctx.fillStyle = has ? C('--key') : '#454b4c'; ctx.beginPath(); ctx.arc(12, y + RH / 2, 3.5, 0, 7); ctx.fill();
     ctx.fillStyle = sel ? '#fff' : C('--text'); ctx.font = `12px ${FONT}`;
     ctx.fillText(nodeName(idx), 24, y + RH / 2, LW - 30);
   });
@@ -1083,7 +1083,7 @@ function updateMediaDlg() {
 }
 
 let exporting = false, expRenderer = null;
-const BG = { dark: [0x221c17, 1], light: [0xf1f2f4, 1], clear: [0x000000, 0] };
+const BG = { dark: [0x232628, 1], light: [0xf1f2f4, 1], clear: [0x000000, 0] };
 function setupExportRender(w, h, bgKey) {
   if (!expRenderer) expRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   expRenderer.setPixelRatio(1);
