@@ -3,7 +3,7 @@
   --view:#e9e3d8; --text:#f4efe6; --dim:#a8a195;
   --key:#e6dfd2; --accent:#efd9ae;
   --row1:#151514; --row2:#1b1b19; --rowsel:#34302a; --line:#2a2a27;
-  --r-xs:4px; --r-ctl:8px; --r-box:10px; --r-panel:14px; --r-pill:999px;   /* 라운드 단계: 작은 요소 4 · 컨트롤 8 · 묶음 10 · 패널 14 */
+  --r-xs:2px; --r-ctl:5px; --r-box:7px; --r-panel:10px; --r-pill:999px;   /* 라운드 단계: 작은 요소 2 · 컨트롤 5 · 묶음 7 · 패널 10 */
   --font:"Google Sans Flex","Noto Sans KR",sans-serif;
 }
 *{box-sizing:border-box}
