@@ -873,6 +873,22 @@ function drawTL() {
         ctx.fillStyle = sel ? '#fff' : (now ? C('--accent') : '#d9d2c4'); ctx.fill();
         if (sel) { ctx.strokeStyle = C('--accent'); ctx.lineWidth = 2; ctx.stroke(); }
       });
+      const hk = TL.hover;                              // 마우스가 올라간 키: 빛 번짐 + 큰 마름모 + 시간 표시
+      if (hk && keys.includes(hk)) {
+        const x = t2x(hk.t);
+        if (x >= LW - 8 && x <= w + 8) {
+          ctx.strokeStyle = 'rgba(239,217,174,.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + 0.5, RULER); ctx.lineTo(x + 0.5, h); ctx.stroke();   // 같은 시간의 세로 안내선
+          const g = ctx.createRadialGradient(x, cy, 0, x, cy, 18);
+          g.addColorStop(0, 'rgba(239,217,174,.75)'); g.addColorStop(0.45, 'rgba(239,217,174,.28)'); g.addColorStop(1, 'rgba(239,217,174,0)');
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, cy, 18, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(x, cy - 7.5); ctx.lineTo(x + 7.5, cy); ctx.lineTo(x, cy + 7.5); ctx.lineTo(x - 7.5, cy); ctx.closePath();
+          ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = C('--accent'); ctx.lineWidth = 2; ctx.stroke();
+          const label = `${hk.t.toFixed(2)}초`; ctx.font = `600 11px ${FONT}`; ctx.textBaseline = 'middle';
+          const tw = ctx.measureText(label).width + 12, lx = Math.min(Math.max(x - tw / 2, LW + 2), w - tw - 2), ly = cy - 22;
+          ctx.fillStyle = 'rgba(20,20,19,.92)'; ctx.fillRect(lx, ly - 9, tw, 18);
+          ctx.fillStyle = C('--accent'); ctx.fillText(label, lx + 6, ly);
+        }
+      }
     }
   });
 
@@ -973,7 +989,8 @@ function tlHit(x, y) {
   const idx = rows[r];
   if (idx === undefined) return {};
   const keys = curClip().tracks[idx] || [];
-  const key = keys.find((k) => Math.abs(t2x(k.t) - x) <= 7);
+  let key = null, best = 8;                           // 마우스에 가장 가까운 키 (8px 안)
+  for (const k of keys) { const d = Math.abs(t2x(k.t) - x); if (d <= best) { best = d; key = k; } }
   return { idx, key };
 }
 
@@ -1002,7 +1019,16 @@ tlc.addEventListener('pointerdown', (e) => {
     TL.drag = { type: 'scrub' }; setTime(x2t(x));
   }
 });
+// 마우스를 올리면 키가 빛나며 "여기를 선택할 수 있다"고 알려준다 (촘촘한 키 띠에서도 가까운 키 하나가 나타남)
 tlc.addEventListener('pointermove', (e) => {
+  if (!TL.drag) {
+    const rect = tlc.getBoundingClientRect(), x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const hit = x >= TL.LW && y >= tlTop() ? tlHit(x, y) : {};
+    const next = hit.key || null;
+    tlc.style.cursor = next ? 'pointer' : (x >= TL.LW && y < TL.RULER ? 'ew-resize' : 'default');
+    if (next !== TL.hover) { TL.hover = next; drawTL(); }
+    return;
+  }
   const d = TL.drag; if (!d) return;
   const rect = tlc.getBoundingClientRect(), x = e.clientX - rect.left;
   if (d.type === 'scrub') setTime(x2t(Math.max(x, TL.LW)));
@@ -1028,6 +1054,7 @@ tlc.addEventListener('pointerup', () => {
     applyPose(S.time); snapshot();
   }
 });
+tlc.addEventListener('pointerleave', () => { if (TL.hover) { TL.hover = null; drawTL(); } });
 tlc.addEventListener('wheel', (e) => {
   e.preventDefault();
   if (e.ctrlKey || e.metaKey) {
