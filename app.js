@@ -3,11 +3,13 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { PRESET_GROUPS } from './presets.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { applyLook, buildEyes, EXPRESSIONS } from './look.js';
 import { Muxer, ArrayBufferTarget } from './lib/mp4-muxer.mjs';
 
 const $ = (s) => document.querySelector(s);
 const EPS = 1e-4;
-const ACCENT = 0x3ee6b4;
+const ACCENT = 0xefd9ae;
 const FONT = '"Google Sans Flex", "Noto Sans KR", sans-serif';
 
 /* ───────────── 상태 ───────────── */
@@ -40,13 +42,18 @@ const viewEl = $('#view');
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setClearColor(0x000000, 0);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 viewEl.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(40, 1, 0.001, 100);
-scene.add(new THREE.HemisphereLight(0xffffff, 0x4a5150, 1.8));
-const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;   // 알루미늄·패브릭의 은은한 반사/광택용
+scene.add(new THREE.HemisphereLight(0xffffff, 0x9a958c, 0.8));
+const sun = new THREE.DirectionalLight(0xffffff, 1.3);
 sun.position.set(1, 2, 1.5);
-scene.add(sun);
+sun.castShadow = true;
+scene.add(sun, sun.target);
 
 const orbit = new OrbitControls(camera, renderer.domElement);
 orbit.enableDamping = true;
@@ -62,10 +69,31 @@ tc.addEventListener('dragging-changed', (e) => {
 tc.addEventListener('objectChange', () => onNodeEdited());
 
 let grid = null;
+let eyes = null;
 let markers = [];          // { idx, mesh }
 let boneLines = null;
 let fitInfo = { center: new THREE.Vector3(), size: 1 };
 const markerGeo = new THREE.SphereGeometry(1, 16, 12);
+
+// 바닥: 연한 회색 원판이 가장자리로 갈수록 배경(베이지)에 녹아든다. 그림자는 이 바닥에 떨어진다.
+function makeFloor(size, box) {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d'), grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  grad.addColorStop(0, '#fff'); grad.addColorStop(0.55, '#fff'); grad.addColorStop(1, '#000');
+  g.fillStyle = grad; g.fillRect(0, 0, 256, 256);
+  const mat = new THREE.MeshStandardMaterial({ color: '#d6d2cb', roughness: 0.95, metalness: 0, alphaMap: new THREE.CanvasTexture(c), transparent: true, envMapIntensity: 0.4 });
+  const m = new THREE.Mesh(new THREE.CircleGeometry(size * 2.6, 64), mat);
+  m.rotation.x = -Math.PI / 2; m.position.set(fitInfo.center.x, box.min.y - 0.0003, fitInfo.center.z);
+  m.receiveShadow = true; m.renderOrder = -1; m.name = '바닥';
+  return m;
+}
+function setupSun(size, center) {
+  sun.position.set(center.x + size * 0.55, center.y + size * 1.5, center.z + size * 0.9);
+  sun.target.position.copy(center); sun.target.updateMatrixWorld();
+  const cam = sun.shadow.camera, r = size * 0.9;
+  cam.left = -r; cam.right = r; cam.top = r; cam.bottom = -r; cam.near = size * 0.2; cam.far = size * 4; cam.updateProjectionMatrix();
+  sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004; sun.shadow.normalBias = size * 0.002; sun.shadow.radius = 5;
+}
 
 function resizeView() {
   const w = viewEl.clientWidth, h = viewEl.clientHeight;
@@ -143,11 +171,21 @@ function loadGLB(buffer, name) {
       const size = box.getSize(new THREE.Vector3()).length() || 1;
       fitInfo = { center: box.getCenter(new THREE.Vector3()), size };
       if (grid) scene.remove(grid);
-      grid = new THREE.GridHelper(size * 2, 20, 0x59605f, 0x353a39);
-      grid.position.y = box.min.y;
+      grid = makeFloor(size, box);
       scene.add(grid);
+      S.model.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      setupSun(size, fitInfo.center);
       buildMarkers();
       fitCamera();
+      applyLook(S.model);
+      const z = new THREE.Vector3(0, 0, 1);
+      eyes = buildEyes(S, {
+        setPose: () => {
+          S.nodes.get(40).quaternion.fromArray(S.rest.get(40).q).multiply(new THREE.Quaternion().setFromAxisAngle(z, 35 * D2R));
+          S.nodes.get(37).quaternion.fromArray(S.rest.get(37).q).multiply(new THREE.Quaternion().setFromAxisAngle(z, -42 * D2R));
+        },
+        resetPose: () => { for (const [i, o] of S.nodes) { const r = S.rest.get(i); o.position.fromArray(r.p); o.quaternion.fromArray(r.q); o.scale.fromArray(r.s); } },
+      });
       applyOpacity();
 
       setupIK();
@@ -174,7 +212,7 @@ function buildMarkers() {
   if (boneLines) scene.remove(boneLines);
   markers = S.boneIdx.map((idx) => {
     const isTarget = nodeName(idx).includes('IK') || nodeName(idx).includes('타겟');
-    const mat = new THREE.MeshBasicMaterial({ color: isTarget ? 0xffffff : 0x9aa3a2, depthTest: false, transparent: true, opacity: 0.95 });
+    const mat = new THREE.MeshBasicMaterial({ color: isTarget ? 0xffffff : 0x8a8174, depthTest: false, transparent: true, opacity: 0.95 });
     const mesh = new THREE.Mesh(markerGeo, mat);
     mesh.scale.setScalar(fitInfo.size * 0.012);
     mesh.renderOrder = 10;
@@ -184,7 +222,7 @@ function buildMarkers() {
   });
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(S.boneIdx.length * 6), 3));
-  boneLines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x9aa3a2, depthTest: false, transparent: true, opacity: 0.8 }));
+  boneLines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x8a8174, depthTest: false, transparent: true, opacity: 0.8 }));
   boneLines.renderOrder = 9;
   boneLines.frustumCulled = false;
   scene.add(boneLines);
@@ -201,7 +239,7 @@ function updateMarkers() {
     obj.getWorldPosition(m.mesh.position);
     m.mesh.visible = show;
     const sel = obj === S.sel;
-    m.mesh.material.color.set(sel ? ACCENT : (/IK|타겟/.test(nodeName(m.idx)) ? 0xffffff : 0x9aa3a2));
+    m.mesh.material.color.set(sel ? ACCENT : (/IK|타겟/.test(nodeName(m.idx)) ? 0xffffff : 0x8a8174));
     m.mesh.scale.setScalar(fitInfo.size * (sel ? 0.016 : 0.011));
     let p = obj.parent, parentBone = null;
     while (p) { if (S.idxOf.has(p) && boneSet.has(S.idxOf.get(p))) { parentBone = p; break; } p = p.parent; }
@@ -217,7 +255,7 @@ function updateMarkers() {
 function applyOpacity() {
   const o = +$('#opacity').value;
   S.model?.traverse((c) => {
-    if (!c.isMesh) return;
+    if (!c.isMesh || c.userData.noOpacity) return;
     [].concat(c.material).forEach((m) => { m.transparent = o < 1; m.opacity = o; m.depthWrite = o >= 1; m.needsUpdate = true; });
   });
 }
@@ -247,8 +285,28 @@ function sampleAt(keys, t) {
   return { p: lerpArr(a.p, b.p, f), q: slerpArr(a.q, b.q, f), s: lerpArr(a.s, b.s, f) };
 }
 
+// 눈 키: clip.eyes = [{ t, e: 표정, gx, gy }] — 시간순이고, 다음 키 전까지 그 표정(칸 단위 시선)을 유지한다.
+function eyeKeyAt(t) {
+  let k = { e: '뜬 눈', gx: 0, gy: 0 };
+  for (const x of curClip()?.eyes || []) { if (x.t <= t + 1e-6) k = x; else break; }
+  return k;
+}
+function applyEyes(t) {
+  if (!eyes) return;
+  const k = eyeKeyAt(t);
+  eyes.show(k.e, k.gx || 0, k.gy || 0, t);
+  const sel = $('#eyeSel');
+  if (document.activeElement !== sel && sel.value !== k.e) sel.value = k.e;
+}
+function setEyeKey(t, e) {
+  const clip = curClip(); clip.eyes ||= [];
+  const ex = clip.eyes.find((x) => Math.abs(x.t - t) < EPS);
+  if (ex) ex.e = e; else { clip.eyes.push({ t, e, gx: 0, gy: 0 }); clip.eyes.sort((a, b) => a.t - b.t); }
+}
+
 function applyPose(t) {
   const clip = curClip();
+  applyEyes(t);
   for (const [idx, obj] of S.nodes) {
     const keys = clip?.tracks[idx];
     if (keys && keys.length) {
@@ -396,6 +454,7 @@ function clearHeadFromBody(keys, applyPose4) {
 function buildPresetClip(def) {
   const clip = newClipData(def.name, def.duration);
   if (def.markers) clip.markers = def.markers;
+  if (def.eyes) clip.eyes = def.eyes.map(([t, e, gx = 0, gy = 0]) => ({ t, e, gx, gy }));
   const ids = { col: S.boneIdx.find((i) => nodeName(i) === '기둥'), head: S.boneIdx.find((i) => nodeName(i) === '머리'), tilt: S.boneIdx.find((i) => /갸웃/.test(nodeName(i))) };
   let rootObj = S.nodes.get(ids.col);
   while (rootObj.parent && S.idxOf.has(rootObj.parent)) rootObj = rootObj.parent;
@@ -426,7 +485,7 @@ function buildPresetClip(def) {
 }
 
 /* ───────────── 저장 / 실행취소 ───────────── */
-const SAVE_VERSION = 9; // 저장 형식/기본 클립 구성이 바뀌면 올린다 (이전 자동 저장은 새 기본 클립으로 교체됨)
+const SAVE_VERSION = 10; // 저장 형식/기본 클립 구성이 바뀌면 올린다 (이전 자동 저장은 새 기본 클립으로 교체됨)
 let hist = [], hi = -1;
 const storeKey = () => `cove-anim:${S.glb.name}:${S.nodes.size}`;
 function loadSaved() {
@@ -535,6 +594,7 @@ function deleteKeys() {
   if (!S.selKeys.size && S.sel) {
     const k = keyAt(S.idxOf.get(S.sel), S.time);
     if (k) S.selKeys.add(k);
+    else if (c.eyes?.some((x) => Math.abs(x.t - S.time) < EPS)) { c.eyes = c.eyes.filter((x) => Math.abs(x.t - S.time) >= EPS); applyEyes(S.time); snapshot(); return; }
   }
   for (const idx in c.tracks) c.tracks[idx] = c.tracks[idx].filter((k) => !S.selKeys.has(k));
   S.selKeys.clear();
@@ -743,15 +803,47 @@ function drawTL() {
     ctx.fillStyle = idx === S.idxOf.get(S.sel) ? C('--rowsel') : (r % 2 ? C('--row1') : C('--row2'));
     ctx.fillRect(LW, y, w - LW, RH);
     const keys = clip.tracks[idx] || [];
-    keys.forEach((k) => {
-      const x = t2x(k.t);
-      if (x < LW - 8 || x > w + 8) return;
-      const sel = S.selKeys.has(k), cy = y + RH / 2;
-      ctx.beginPath(); ctx.moveTo(x, cy - 7); ctx.lineTo(x + 6, cy); ctx.lineTo(x, cy + 7); ctx.lineTo(x - 6, cy); ctx.closePath();
-      ctx.fillStyle = sel ? '#fff' : C('--key'); ctx.fill();
-      ctx.strokeStyle = sel ? C('--accent') : '#000a'; ctx.lineWidth = sel ? 2 : 1; ctx.stroke();
-    });
+    if (keys.length) {
+      const cy = y + RH / 2, xa = t2x(keys[0].t), xb = t2x(keys[keys.length - 1].t);
+      const pitch = keys.length > 1 ? (xb - xa) / (keys.length - 1) : 99;
+      const dense = pitch < 24;                       // 키가 촘촘하면 마름모를 줄줄이 찍지 않고 하나의 띠로 보여준다
+      const l = Math.max(xa, LW), rr = Math.min(xb, w);
+      if (rr > l) {                                   // 첫 키 ~ 마지막 키 구간
+        ctx.beginPath(); ctx.roundRect(l, cy - (dense ? 5 : 1), rr - l, dense ? 10 : 2, dense ? 5 : 1);
+        ctx.fillStyle = dense ? '#4c4739' : '#55503f'; ctx.fill();
+        if (dense) { ctx.fillStyle = 'rgba(239,217,174,.8)'; ctx.fillRect(l + 5, cy - 5, Math.max(0, rr - l - 10), 1); }
+      }
+      keys.forEach((k) => {
+        const x = t2x(k.t);
+        if (x < LW - 8 || x > w + 8) return;
+        const sel = S.selKeys.has(k), now = Math.abs(k.t - S.time) < EPS;
+        if (dense && !sel && !now) return;            // 촘촘할 땐 선택한 키와 현재 키만 마름모로
+        const r = sel || now ? 6 : 4.5;
+        ctx.beginPath(); ctx.moveTo(x, cy - r); ctx.lineTo(x + r, cy); ctx.lineTo(x, cy + r); ctx.lineTo(x - r, cy); ctx.closePath();
+        ctx.fillStyle = sel ? '#fff' : (now ? C('--accent') : '#d9d2c4'); ctx.fill();
+        if (sel) { ctx.strokeStyle = C('--accent'); ctx.lineWidth = 2; ctx.stroke(); }
+      });
+    }
   });
+
+  // 눈 행(키는 표정 블록으로 표시)
+  {
+    const y = RULER + rows.length * RH - TL.sy;
+    if (y + RH >= RULER && y <= h) {
+      ctx.fillStyle = C('--row2'); ctx.fillRect(LW, y, w - LW, RH);
+      (clip.eyes || []).forEach((k, i, arr) => {
+        const x0 = t2x(k.t), x1 = t2x(i + 1 < arr.length ? arr[i + 1].t : clip.duration);
+        if (x1 < LW || x0 > w) return;
+        const l = Math.max(x0, LW);
+        ctx.fillStyle = '#3a3428'; ctx.fillRect(l, y + 4, Math.max(2, x1 - l - 1), RH - 8);
+        ctx.fillStyle = C('--accent'); ctx.fillRect(l, y + 4, 2, RH - 8);
+        ctx.save(); ctx.beginPath(); ctx.rect(l, y, Math.max(2, x1 - l - 1), RH); ctx.clip();
+        ctx.fillStyle = C('--text'); ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle';
+        ctx.fillText(k.e + ((k.gx || k.gy) ? ` (${k.gx || 0},${k.gy || 0})` : ''), l + 6, y + RH / 2);
+        ctx.restore();
+      });
+    }
+  }
 
   // 눈금
   ctx.fillStyle = C('--panel'); ctx.fillRect(LW, 0, w - LW, RUL);
@@ -760,7 +852,7 @@ function drawTL() {
   ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle';
   const t0 = Math.max(0, Math.floor(x2t(LW) / major) * major), t1 = x2t(w);
   if (TL.pps / f >= 6) {
-    ctx.strokeStyle = '#2a2e2f'; ctx.beginPath();
+    ctx.strokeStyle = '#3a3834'; ctx.beginPath();
     for (let fr = Math.floor(x2t(LW) * f); fr / f <= t1; fr++) {
       const x = Math.round(t2x(fr / f)) + 0.5;
       if (x < LW) continue; ctx.moveTo(x, RUL - 5); ctx.lineTo(x, RUL);
@@ -770,7 +862,7 @@ function drawTL() {
   for (let t = t0; t <= t1; t += major) {
     const x = Math.round(t2x(t)) + 0.5;
     if (x < LW) continue;
-    ctx.strokeStyle = '#454b4c'; ctx.beginPath(); ctx.moveTo(x, RUL - 12); ctx.lineTo(x, h); ctx.globalAlpha = 0.35; ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#5a564e'; ctx.beginPath(); ctx.moveTo(x, RUL - 12); ctx.lineTo(x, h); ctx.globalAlpha = 0.35; ctx.stroke(); ctx.globalAlpha = 1;
     ctx.fillStyle = C('--dim'); ctx.fillText(t.toFixed(major < 1 ? 2 : 0) + 's', x + 4, 9);
   }
   // 장면 구간: 눈금 아래 띠로 표시하고 현재 장면을 강조한다
@@ -780,17 +872,17 @@ function drawTL() {
     if (x1 < LW || x0 > w) return;
     const cur = S.time >= m.t - 1e-6 && (i + 1 >= marks.length || S.time < marks[i + 1].t - 1e-6);
     const l = Math.max(x0, LW);
-    ctx.fillStyle = cur ? '#1f3a33' : (i % 2 ? '#151717' : '#121414'); ctx.fillRect(l, RUL, x1 - l - 1, BAND - 2);
+    ctx.fillStyle = cur ? '#4a4234' : (i % 2 ? '#201f1d' : '#191917'); ctx.fillRect(l, RUL, x1 - l - 1, BAND - 2);
     if (cur) { ctx.fillStyle = C('--accent'); ctx.fillRect(l, RUL, x1 - l - 1, 2); }
     ctx.save(); ctx.beginPath(); ctx.rect(l, RUL, x1 - l - 1, BAND); ctx.clip();
     ctx.fillStyle = cur ? '#fff' : C('--dim'); ctx.font = `${cur ? 600 : 400} 11px ${FONT}`; ctx.textBaseline = 'middle';
     ctx.fillText(m.label, Math.max(x0, LW) + 6, RUL + BAND / 2 - 0.5);
     ctx.restore();
-    if (x0 >= LW) { ctx.strokeStyle = '#454b4c'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(Math.round(x0) + 0.5, RULER); ctx.lineTo(Math.round(x0) + 0.5, h); ctx.stroke(); ctx.setLineDash([]); }
+    if (x0 >= LW) { ctx.strokeStyle = '#5a564e'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(Math.round(x0) + 0.5, RULER); ctx.lineTo(Math.round(x0) + 0.5, h); ctx.stroke(); ctx.setLineDash([]); }
   });
 
   // 길이 끝 선
-  ctx.strokeStyle = '#6a7273'; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(endX + 0.5, RULER); ctx.lineTo(endX + 0.5, h); ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.strokeStyle = '#8a8579'; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(endX + 0.5, RULER); ctx.lineTo(endX + 0.5, h); ctx.stroke(); ctx.globalAlpha = 1;
 
   // 라벨 열
   ctx.fillStyle = C('--panel'); ctx.fillRect(0, 0, LW, h);
@@ -802,10 +894,18 @@ function drawTL() {
     const sel = idx === S.idxOf.get(S.sel);
     ctx.fillStyle = sel ? C('--rowsel') : (r % 2 ? C('--row1') : C('--row2')); ctx.fillRect(0, y, LW, RH);
     const has = (clip.tracks[idx] || []).length;
-    ctx.fillStyle = has ? C('--key') : '#454b4c'; ctx.beginPath(); ctx.arc(12, y + RH / 2, 3.5, 0, 7); ctx.fill();
+    ctx.fillStyle = has ? C('--key') : '#5a564e'; ctx.beginPath(); ctx.arc(12, y + RH / 2, 3.5, 0, 7); ctx.fill();
     ctx.fillStyle = sel ? '#fff' : C('--text'); ctx.font = `12px ${FONT}`;
     ctx.fillText(nodeName(idx), 24, y + RH / 2, LW - 30);
   });
+  {
+    const y = RULER + rows.length * RH - TL.sy;
+    if (y + RH >= RULER && y <= h) {
+      ctx.fillStyle = C('--row2'); ctx.fillRect(0, y, LW, RH);
+      ctx.fillStyle = (clip.eyes || []).length ? C('--key') : '#5a564e'; ctx.beginPath(); ctx.arc(12, y + RH / 2, 3.5, 0, 7); ctx.fill();
+      ctx.fillStyle = C('--text'); ctx.font = `12px ${FONT}`; ctx.textBaseline = 'middle'; ctx.fillText('눈 (8×8 도트)', 24, y + RH / 2, LW - 30);
+    }
+  }
   ctx.fillStyle = C('--panel'); ctx.fillRect(0, 0, LW, RULER);
   if (marks.length) { ctx.fillStyle = C('--dim'); ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle'; ctx.fillText('장면', 12, RUL + BAND / 2); }
 
@@ -888,7 +988,7 @@ tlc.addEventListener('wheel', (e) => {
   } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
     TL.sx = Math.max(0, TL.sx + (e.deltaX || e.deltaY));
   } else {
-    const max = Math.max(0, tlRows().length * TL.RH - (TL.h - tlTop()));
+    const max = Math.max(0, (tlRows().length + 1) * TL.RH - (TL.h - tlTop()));
     TL.sy = Math.max(0, Math.min(max, TL.sy + e.deltaY));
   }
   drawTL();
@@ -1007,6 +1107,11 @@ $('#showAll').onchange = (e) => { S.showAll = e.target.checked; buildTree(); };
 $('#showBones').onchange = () => {};
 $('#opacity').oninput = applyOpacity;
 $('#camReset').onclick = fitCamera;
+EXPRESSIONS.forEach((n) => $('#eyeSel').add(new Option(n, n)));
+$('#eyeSel').onchange = (e) => {                 // 선택한 표정을 현재 시간의 눈 키로 기록한다
+  if (!curClip()) return;
+  setEyeKey(S.time, e.target.value); applyEyes(S.time); snapshot();
+};
 $('#btnKey').onclick = () => insertKeys(false);
 $('#btnKeyAll').onclick = () => insertKeys(true);
 $('#btnDelKey').onclick = deleteKeys;
@@ -1083,13 +1188,17 @@ function updateMediaDlg() {
 }
 
 let exporting = false, expRenderer = null;
-const BG = { dark: [0x232628, 1], light: [0xf1f2f4, 1], clear: [0x000000, 0] };
+const BG = { beige: [0xe4dccf, 1], dark: [0x232628, 1], light: [0xf1f2f4, 1], clear: [0x000000, 0] };
 function setupExportRender(w, h, bgKey) {
   if (!expRenderer) expRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   expRenderer.setPixelRatio(1);
   expRenderer.setSize(w, h, false);
+  expRenderer.shadowMap.enabled = true; expRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
   expRenderer.setClearColor(BG[bgKey][0], BG[bgKey][1]);
-  const hidden = [tcHelper, grid, boneLines, ...markers.map((m) => m.mesh)].filter(Boolean);
+  const prevEnv = scene.environment;            // WebGL 자원은 렌더러(컨텍스트)별이라 내보내기용 환경맵을 따로 만든다
+  const expPmrem = new THREE.PMREMGenerator(expRenderer);
+  scene.environment = expPmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const hidden = [tcHelper, bgKey === 'clear' ? grid : null, boneLines, ...markers.map((m) => m.mesh)].filter(Boolean);
   const prev = hidden.map((o) => o.visible);
   hidden.forEach((o) => (o.visible = false));
   const aspect = camera.aspect;
@@ -1098,6 +1207,7 @@ function setupExportRender(w, h, bgKey) {
     render: () => expRenderer.render(scene, camera),
     canvas: expRenderer.domElement,
     restore: () => {
+      scene.environment = prevEnv;
       hidden.forEach((o, i) => (o.visible = prev[i]));
       camera.aspect = aspect; camera.updateProjectionMatrix();
       applyPose(S.time);
@@ -1214,4 +1324,4 @@ requestAnimationFrame(frame);
   }
 })();
 addEventListener('beforeunload', () => { try { if (S.glb) snapshot(true); } catch { /* */ } });
-window.__cove = { S, exportGLB, camera, orbit, THREE, renderer, scene, setTime };
+window.__cove = { S, exportGLB, getEyes: () => eyes, camera, orbit, THREE, renderer, scene, setTime };

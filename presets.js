@@ -129,8 +129,35 @@ function snackMergedSteps() {
   }));
 }
 
+/* ───── 눈 연기 (8×8 도트): [시간, 표정, 시선 가로(칸), 시선 세로(칸)] — 표정은 키마다 통째로 바뀌고, 시선은 칸 단위로만 움직인다 ───── */
+const gazeSweep = (a, b, step, amp) => { const o = []; let s = 1, t = a; while (t < b - 1e-6) { o.push([+t.toFixed(2), '뜬 눈', s * amp, 0]); s = -s; t += step; } o.push([b, '뜬 눈', 0, 0]); return o; };
+const EYES_REST = [
+  [0, '졸린 눈'], [1.2, '뜬 눈'],            // 01 사용자 인식: 눈을 뜨고 응답
+  [3.2, '웃는 눈'],                          // 02 휴식 유도: 쓰다듬에 좋아함
+  [6, '뜬 눈', 1, 0], [7.5, '뜬 눈', 0, 0],   // 03 몸 올리기: 팔을 보며 시선을 살짝 옮김
+  [9.5, '졸린 눈'],                          // 04 기대기: 편안한 표정
+  [13, '뜬 눈'], [15, '졸린 눈'], [16, '감은 눈'], // 05 휴식 유지: 깜빡이다가 감음
+  [18.2, '졸린 눈'], [19.2, '뜬 눈'],         // 06 휴식 종료
+];
+const EYES_TICKLE = [
+  [0, '졸린 눈'], [1.2, '뜬 눈'],            // 01 사용자 인식
+  ...gazeSweep(4.2, 7.8, 0.6, 1),            // 02 헤드 좌우 5° 와 같이 시선도 좌우 한 칸씩
+  [8, '웃는 눈'],                            // 03 간지럼: 웃는 눈
+  [14.2, '뜬 눈', 0, 0], ...gazeSweep(14.6, 21.6, 0.7, 2).slice(0, -1), [22, '뜬 눈', 0, 0], // 04 바디를 흔들며 사용자를 쳐다봄
+  [22.5, '웃는 눈'],                         // 05 뒤로 젖혀 웃음
+  [39.3, '뜬 눈'], [41, '웃는 눈'], [48.5, '뜬 눈'], // 06 끄덕이며 만족
+];
+const EYES_SNACK = [
+  [0, '졸린 눈'], [1.2, '뜬 눈'],            // 01 사용자 바라보기
+  ...gazeSweep(4, 7.5, 1.5, 2),              // 02 헤드 좌우 탐색
+  [9, '놀란 눈'],                            // 03 이건 뭐지
+  [13.5, '뜬 눈'],                           // 04 고개·허리 최대로
+  [20, '웃는 눈'],                           // 05 씹기
+  [27, '웃는 눈'], [33.5, '뜬 눈'],           // 06~07 만족, 기분 좋게 까딱
+];
+
 const SCENARIOS = [
-  { name: '시나리오1 휴식', steps: [
+  { name: '시나리오1 휴식', eyes: EYES_REST, steps: [
     { name: '01 사용자 인식', duration: 3, keys: WAKE },
     { name: '02 휴식 유도', duration: 3, keys: [k(0, 25, -34), k(0.75, 25, -34, 0, 5), k(1.5, 25, -34, 0, -5), k(2.25, 25, -34, 0, 5), k(3, 25, -34)] },
     { name: '03 몸 올리기', duration: 3, keys: [k(0, 25, -34), k(1, 28, -22), k(1.5, 28, -27), k(2, 28, -22), k(2.5, 28, -27), k(3, 28, -22)] },
@@ -138,8 +165,8 @@ const SCENARIOS = [
     { name: '05 휴식 유지', duration: 5, keys: [k(0, 32, -10), k(1.5, 31, -8), k(3, 32, -10), k(4, 31, -8), k(5, 30, -8)] },
     { name: '06 휴식 종료', duration: 4, keys: [k(0, 30, -8), k(1.5, 25, -34), k(2.2, 25, -34, 10), k(3, 25, -34, -10), k(4, 25, -34)] },
   ] },
-  { name: '시나리오2 간지럽히기', interp: 'linear', steps: tickleMergedSteps() },
-  { name: '시나리오3 간식주기', interp: 'linear', steps: snackMergedSteps() },
+  { name: '시나리오2 간지럽히기', interp: 'linear', eyes: EYES_TICKLE, steps: tickleMergedSteps() },
+  { name: '시나리오3 간식주기', interp: 'linear', eyes: EYES_SNACK, steps: snackMergedSteps() },
 ];
 
 const whole = SCENARIOS.map((s) => {
@@ -149,7 +176,7 @@ const whole = SCENARIOS.map((s) => {
     st.keys.forEach((kk, j) => { if (i > 0 && j === 0) return; keys.push([kk[0] + t0, ...kk.slice(1)]); });
     t0 += st.duration;
   });
-  return { name: s.name, duration: t0, keys, markers, interp: s.interp };
+  return { name: s.name, duration: t0, keys, markers, interp: s.interp, eyes: s.eyes };
 });
 
 
