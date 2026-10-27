@@ -745,9 +745,11 @@ function refreshClipUI() {
     if (g !== lastGroup) { lastGroup = g; const h = document.createElement('div'); h.className = 'grp'; h.textContent = g; list.appendChild(h); }
     const el = document.createElement('button');
     el.className = 'clip-item' + (i === S.clip ? ' on' : '');
-    el.innerHTML = '<span class="nm"></span><span class="du"></span>';
-    el.children[0].textContent = c.name;
-    el.children[1].textContent = `${+c.duration.toFixed(1)}초`;
+    const m = c.name.match(/^시나리오(\d+)\s*(.*)$/);                      // "시나리오1 휴식" → 번호 01 + 제목 "휴식"
+    el.innerHTML = '<span class="no"></span><span class="nm"></span><span class="du"></span>';
+    el.children[0].textContent = m ? m[1].padStart(2, '0') : '';
+    el.children[1].textContent = m ? m[2] : c.name;
+    el.children[2].textContent = `${+c.duration.toFixed(1)}초`;
     el.onclick = () => { sel.value = i; sel.dispatchEvent(new Event('change')); };
     list.appendChild(el);
   });
