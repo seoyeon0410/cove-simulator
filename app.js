@@ -44,6 +44,8 @@ renderer.setClearColor(0x000000, 0);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
 viewEl.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(40, 1, 0.001, 100);
@@ -485,7 +487,7 @@ function buildPresetClip(def) {
 }
 
 /* ───────────── 저장 / 실행취소 ───────────── */
-const SAVE_VERSION = 11; // 저장 형식/기본 클립 구성이 바뀌면 올린다 (이전 자동 저장은 새 기본 클립으로 교체됨)
+const SAVE_VERSION = 12; // 저장 형식/기본 클립 구성이 바뀌면 올린다 (이전 자동 저장은 새 기본 클립으로 교체됨)
 let hist = [], hi = -1;
 const storeKey = () => `cove-anim:${S.glb.name}:${S.nodes.size}`;
 function loadSaved() {
@@ -1209,6 +1211,7 @@ function setupExportRender(w, h, bgKey) {
   expRenderer.setPixelRatio(1);
   expRenderer.setSize(w, h, false);
   expRenderer.shadowMap.enabled = true; expRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  expRenderer.toneMapping = THREE.ACESFilmicToneMapping; expRenderer.toneMappingExposure = 1.0;
   expRenderer.setClearColor(BG[bgKey][0], BG[bgKey][1]);
   const prevEnv = scene.environment;            // WebGL 자원은 렌더러(컨텍스트)별이라 내보내기용 환경맵을 따로 만든다
   const expPmrem = new THREE.PMREMGenerator(expRenderer);
