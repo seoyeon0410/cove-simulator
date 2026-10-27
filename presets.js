@@ -112,7 +112,7 @@ const SCENARIOS = [
     { name: '05 휴식 유지', duration: 5, keys: [k(0, 32, -10), k(1.5, 31, -8), k(3, 32, -10), k(4, 31, -8), k(5, 30, -8)] },
     { name: '06 휴식 종료', duration: 4, keys: [k(0, 30, -8), k(1.5, 25, -34), k(2.2, 25, -34, 10), k(3, 25, -34, -10), k(4, 25, -34)] },
   ] },
-  { name: '시나리오2 간지럽히기 (영상)', interp: 'linear', steps: videoSteps(TICKLE_VIDEO, TICKLE_STEPS) },
+  { name: '시나리오2 간지럽히기', interp: 'linear', steps: videoSteps(TICKLE_VIDEO, TICKLE_STEPS) },
   { name: '시나리오3 간식주기', interp: 'linear', steps: snackMergedSteps() },
 ];
 
@@ -125,27 +125,10 @@ const whole = SCENARIOS.map((s) => {
   });
   return { name: s.name, duration: t0, keys, markers, interp: s.interp };
 });
-const steps = SCENARIOS.flatMap((s) => s.steps.map((st) => ({ name: `${s.name} · ${st.name}`, duration: st.duration, keys: st.keys, interp: s.interp })));
 
-
-const BASIC = [
-  { name: '숨쉬기', duration: 4, keys: [[0, 0, 0, 0], [2, 5, -6, 0], [4, 0, 0, 0]] },
-  { name: '기상', duration: 3, keys: [[0, 0, 0, 0], [0.6, 3, -3, 0], [1.6, 30, -40, 0], [2.2, 24, -33, 0], [3, 25, -34, 0]] },
-  { name: '끄덕끄덕', duration: 3, keys: [[0, 25, -34, 0], [0.5, 25, -20, 0], [1, 25, -36, 0], [1.5, 25, -20, 0], [2, 25, -36, 0], [3, 25, -34, 0]] },
-  { name: '갸웃갸웃', duration: 4, keys: [[0, 25, -34, 0], [1, 25, -30, 14], [2, 25, -34, 0], [3, 25, -30, -14], [4, 25, -34, 0]] },
-  { name: '두리번', duration: 6, keys: [[0, 25, -34, 0], [1.2, 27, -33, -15], [2.4, 27, -33, -15], [3.6, 23, -34, 15], [4.8, 23, -34, 15], [6, 25, -34, 0]] },
-  { name: '졸기', duration: 6, keys: [[0, 25, -34, 0], [1.5, 22, -18, 3], [2.5, 22, -14, 5], [3, 26, -33, 0], [3.4, 25, -34, 0], [4.5, 20, -12, -4], [6, 25, -34, 0]] },
-  { name: '놀람', duration: 2.5, keys: [[0, 0, 0, 0], [0.15, 35, -40, 0], [0.5, 32, -38, 8], [0.8, 34, -40, -8], [1.2, 28, -36, 0], [2.5, 25, -34, 0]] },
-  { name: '신남', duration: 3, keys: [[0, 15, -22, 10], [0.5, 30, -38, -10], [1, 15, -22, 10], [1.5, 30, -38, -10], [2, 15, -22, 10], [2.5, 30, -38, -10], [3, 15, -22, 10]] },
-  { name: '인사', duration: 4, keys: [[0, 25, -34, 0], [1, 35, -12, 0], [2.2, 35, -12, 0], [3.2, 25, -34, 0], [4, 25, -34, 0]] },
-  { name: '부끄럼', duration: 3, keys: [[0, 25, -34, 0], [0.8, 12, -8, 12], [2.2, 12, -8, 12], [3, 25, -34, 0]] },
-  { name: '잘자', duration: 4, keys: [[0, 25, -34, 0], [1.5, 12, -16, 0], [3, 0, 0, 0], [4, 0, 0, 0]] },
-];
 
 const seq = (items) => items.map((d) => ({ ...d, keys: sequenceNeck(d.keys) }));
 
 export const PRESET_GROUPS = [
-  { label: '시나리오 전체', items: seq(whole) },
-  { label: '시나리오 단계', items: seq(steps) },
-  { label: '기본 모션', items: seq(BASIC) },
+  { label: '시나리오', items: seq(whole) },
 ];

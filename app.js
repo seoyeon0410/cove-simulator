@@ -152,7 +152,7 @@ function loadGLB(buffer, name) {
 
       setupIK();
       const saved = loadSaved();
-      S.clips = saved?.clips || [...importClips(), ...PRESET_GROUPS[0].items.map(buildPresetClip)];
+      S.clips = saved?.clips || PRESET_GROUPS[0].items.map(buildPresetClip);
       S.clip = Math.min(saved?.clip || 0, Math.max(S.clips.length - 1, 0));
       if (!S.clips.length) S.clips = [newClipData('새 클립')];
       S.time = 0;
@@ -357,13 +357,14 @@ function buildPresetClip(def) {
 }
 
 /* ───────────── 저장 / 실행취소 ───────────── */
+const SAVE_VERSION = 2; // 저장 형식/기본 클립 구성이 바뀌면 올린다 (이전 자동 저장은 새 기본 클립으로 교체됨)
 let hist = [], hi = -1;
 const storeKey = () => `cove-anim:${S.glb.name}:${S.nodes.size}`;
 function loadSaved() {
-  try { const s = localStorage.getItem(storeKey()); return s ? JSON.parse(s) : null; } catch { return null; }
+  try { const d = JSON.parse(localStorage.getItem(storeKey())); return d?.v === SAVE_VERSION ? d : null; } catch { return null; }
 }
 function snapshot(initial) {
-  const str = JSON.stringify({ clips: S.clips, clip: S.clip });
+  const str = JSON.stringify({ v: SAVE_VERSION, clips: S.clips, clip: S.clip });
   if (hist[hi] === str) return;
   hist = hist.slice(0, hi + 1); hist.push(str);
   if (hist.length > 80) hist.shift();
