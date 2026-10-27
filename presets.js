@@ -190,6 +190,14 @@ const EYES_SNACK = [
   [27, '신난 눈'], [31.5, '윙크'],          // 07 기분 좋은 까딱
 ];
 
+
+/* ───── 새 시나리오용: 장면마다 표정 2가지를 자동 배치 (장면 시작 / 장면 중간) ───── */
+function autoEyes(durations, pairs) {
+  const o = []; let t = 0;
+  durations.forEach((d, i) => { o.push([+t.toFixed(2), pairs[i][0]], [+(t + d * 0.5).toFixed(2), pairs[i][1]]); t += d; });
+  return o;
+}
+
 const SCENARIOS = [
   { name: '시나리오1 휴식', eyes: EYES_REST, natural: true, tailLabel: '다시 쉬어요', steps: [
     { name: '누가 다가왔어요', duration: 3, keys: WAKE },
@@ -201,6 +209,41 @@ const SCENARIOS = [
   ] },
   { name: '시나리오2 간지럽히기', interp: 'linear', eyes: EYES_TICKLE, tailLabel: '이제 쉬어요', steps: tickleMergedSteps() },
   { name: '시나리오3 간식주기', interp: 'linear', eyes: EYES_SNACK, tailLabel: '졸려요', steps: snackMergedSteps() },
+  { name: '시나리오4 인사', eyes: autoEyes([3, 3, 4, 4, 4], [['졸린 눈', '뜬 눈'], ['반짝 눈', '초롱 눈'], ['웃는 눈', '윙크'], ['신난 눈', '웃는 눈'], ['초롱 눈', '반짝 눈']]), natural: true, tailLabel: '다시 쉬어요', steps: [
+    { name: '누가 지나가요', duration: 3, keys: WAKE },
+    { name: '반가워서 고개를 들어요', duration: 3, keys: [k(0, 25, -34), k(1.2, 33, -42), k(3, 33, -42)] },
+    { name: '안녕! 인사해요', duration: 4, keys: [k(0, 33, -42), k(0.8, 31, -30), k(1.6, 33, -42), k(2.4, 31, -30), k(3.2, 33, -42), k(4, 33, -42)] },
+    { name: '같이 놀자고 몸을 흔들어요', duration: 4, keys: [k(0, 33, -42), k(1, 33, -42, 10, 10), k(2, 33, -42, -10, -10), k(3, 33, -42, 10, 10), k(4, 33, -42)] },
+    { name: '손 흔들어 주길 기다려요', duration: 4, keys: [k(0, 33, -42), k(1, 30, -36, 20, 0), k(2.5, 30, -36, 20, 0), k(4, 28, -34)] },
+  ] },
+  { name: '시나리오5 칭찬받기', eyes: autoEyes([3, 4, 4, 4, 4], [['졸린 눈', '뜬 눈'], ['편안한 눈', '감은 눈'], ['웃는 눈', '점 눈'], ['신난 눈', '별 눈'], ['하트 눈', '웃는 눈']]), natural: true, noSeq: true, tailLabel: '뿌듯하게 쉬어요', steps: [
+    { name: '누가 다가와요', duration: 3, keys: WAKE },
+    { name: '머리를 쓰다듬어 줘요', duration: 4, keys: [k(0, 25, -34), k(1.2, 27, -24), k(2.4, 27, -22, 0, 4), k(3.2, 27, -22, 0, -4), k(4, 27, -22)] },
+    { name: '칭찬해 줘서 부끄러워요', duration: 4, keys: [k(0, 27, -22), k(1.2, 22, -12, -20, 0), k(2.8, 22, -12, -20, 0), k(4, 24, -18)] },
+    { name: '기뻐서 폴짝 뛰고 싶어요', duration: 4, keys: [k(0, 24, -18), k(0.5, 31, -32), k(1, 22, -18), k(1.5, 31, -32), k(2, 22, -18), k(2.5, 31, -32), k(3.2, 27, -28), k(4, 27, -28)] },
+    { name: '고마워요!', duration: 4, keys: [k(0, 27, -28), k(1.2, 26, -14), k(2.2, 26, -14), k(3.2, 28, -34), k(4, 28, -34)] },
+  ] },
+  { name: '시나리오6 깜짝 놀람', eyes: autoEyes([4, 3, 5, 4, 4], [['감은 눈', '졸린 눈'], ['놀란 눈', '초롱 눈'], ['뜬 눈', '반짝 눈'], ['편안한 눈', '졸린 눈'], ['졸린 눈', '감은 눈']]), natural: true, noSeq: true, steps: [
+    { name: '쿨쿨 자고 있어요', duration: 4, keys: [k(0, 4, -5), k(2, 5, -6), k(4, 4, -5)] },
+    { name: '쿵! 큰 소리에 깜짝!', duration: 3, keys: [k(0, 4, -5), k(0.5, 33, -42), k(3, 33, -42)] },
+    { name: '무슨 일인지 두리번거려요', duration: 5, keys: [k(0, 33, -42), k(1, 33, -42, 22, -8), k(2.5, 33, -42, -22, 8), k(4, 33, -42, 18, -6), k(5, 31, -38)] },
+    { name: '아무것도 아니구나, 안심해요', duration: 4, keys: [k(0, 31, -38), k(1.5, 24, -28), k(4, 22, -24)] },
+    { name: '다시 스르르 졸려요', duration: 4, keys: [k(0, 22, -24), k(2, 10, -12), k(4, 4, -5)] },
+  ] },
+  { name: '시나리오7 두리번 탐색', eyes: autoEyes([3, 3, 4, 4, 4], [['졸린 눈', '뜬 눈'], ['뜬 눈', '반짝 눈'], ['뜬 눈', '초롱 눈'], ['놀란 눈', '신난 눈'], ['웃는 눈', '하트 눈']]), natural: true, tailLabel: '다시 쉬어요', steps: [
+    { name: '누가 부르는 것 같아요', duration: 3, keys: WAKE },
+    { name: '소리 나는 쪽을 봐요', duration: 3, keys: [k(0, 25, -34), k(1, 28, -34, 16, -12), k(3, 28, -34, 16, -12)] },
+    { name: '반대쪽도 살펴봐요', duration: 4, keys: [k(0, 28, -34, 16, -12), k(2, 28, -34, -16, 12), k(4, 28, -34, -16, 12)] },
+    { name: '찾았다! 기뻐요', duration: 4, keys: [k(0, 28, -34, -16, 12), k(0.8, 32, -40), k(1.6, 30, -30, 12), k(2.4, 32, -40, -12), k(3.2, 30, -30, 10), k(4, 32, -40)] },
+    { name: '같이 놀아요', duration: 4, keys: [k(0, 32, -40), k(1, 30, -36, 0, 10), k(2, 30, -36, 0, -10), k(3, 30, -36, 0, 10), k(4, 30, -36)] },
+  ] },
+  { name: '시나리오8 작별 인사', eyes: autoEyes([3, 4, 4, 5, 4], [['뜬 눈', '점 눈'], ['슬픈 눈', '눈물 눈'], ['초롱 눈', '반짝 눈'], ['웃는 눈', '윙크'], ['하트 눈', '별 눈']]), natural: true, tailLabel: '또 올 거예요', steps: [
+    { name: '이제 가야 한다고 해요', duration: 3, keys: WAKE },
+    { name: '아쉬워서 시무룩해요', duration: 4, keys: [k(0, 25, -34), k(1.5, 20, -20), k(4, 19, -18)] },
+    { name: '다시 온다는 말에 힘이 나요', duration: 4, keys: [k(0, 19, -18), k(2, 30, -36), k(4, 30, -36)] },
+    { name: '손 흔들며 인사해요', duration: 5, keys: [k(0, 30, -36), k(0.8, 30, -36, 20, 8), k(1.8, 30, -36, -20, -8), k(2.8, 30, -36, 20, 8), k(3.8, 30, -36, -20, -8), k(5, 30, -36)] },
+    { name: '또 만나요!', duration: 4, keys: [k(0, 30, -36), k(1.2, 26, -14), k(2.2, 26, -14), k(3.2, 29, -35), k(4, 29, -35)] },
+  ] },
 ];
 
 const whole = SCENARIOS.map((s) => {
@@ -210,7 +253,7 @@ const whole = SCENARIOS.map((s) => {
     st.keys.forEach((kk, j) => { if (i > 0 && j === 0) return; keys.push([kk[0] + t0, ...kk.slice(1)]); });
     t0 += st.duration;
   });
-  return { name: s.name, duration: t0, keys, markers, interp: s.interp, eyes: s.eyes, natural: s.natural, tailLabel: s.tailLabel };
+  return { name: s.name, duration: t0, keys, markers, interp: s.interp, eyes: s.eyes, natural: s.natural, noSeq: s.noSeq, tailLabel: s.tailLabel };
 });
 
 
@@ -244,7 +287,7 @@ whole.push(expressionClip());
 
 const seq = (items) => items.map((d) => {
   const t = withTail(d);
-  let keys = pchipResample(sequenceNeck(t.keys));
+  let keys = pchipResample(t.noSeq ? t.keys : sequenceNeck(t.keys));
   if (t.natural) keys = springFollow(keys);          // 밑그림만 있는 시나리오는 전체에 스프링 (흔들림 덧씌움이 따로 없는 경우)
   return { ...t, keys: microSway(keys) };
 });
