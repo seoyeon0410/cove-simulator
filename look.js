@@ -3,9 +3,9 @@ import * as THREE from 'three';
 
 /* ───────────── 재질 ───────────── */
 
-// 패브릭: 오브젝트 좌표 기반의 고운 노이즈로 색·거칠기·미세한 요철(범프)을 만든다 (UV가 없는 모델이라 셰이더에서 처리)
-function fabricMaterial(color, { bump = 0.55, sheen = 0.6, env = 0.3 } = {}) {
-  const m = new THREE.MeshPhysicalMaterial({ color, roughness: 1, metalness: 0, sheen, sheenRoughness: 0.8, sheenColor: new THREE.Color('#ffffff'), envMapIntensity: env });
+// 패브릭: 오브젝트 좌표 기반의 고운 노이즈로 색·질감을 흩어 펠트/니트 느낌을 낸다 (UV가 없는 모델이라 셰이더에서 처리)
+function fabricMaterial(color) {
+  const m = new THREE.MeshPhysicalMaterial({ color, roughness: 1, metalness: 0, sheen: 0.55, sheenRoughness: 0.85, sheenColor: new THREE.Color('#ffffff'), envMapIntensity: 0.28 });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vObjPos;')
@@ -16,39 +16,30 @@ varying vec3 vObjPos;
 float h31(vec3 p){ p = fract(p * 0.3183099 + .1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float vn(vec3 x){ vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(mix(h31(i), h31(i + vec3(1,0,0)), f.x), mix(h31(i + vec3(0,1,0)), h31(i + vec3(1,1,0)), f.x), f.y),
-             mix(mix(h31(i + vec3(0,0,1)), h31(i + vec3(1,0,1)), f.x), mix(h31(i + vec3(0,1,1)), h31(i + vec3(1,1,1)), f.x), f.y), f.z); }
-float fabH(vec3 p){ return 0.55 * vn(p * 330.0) + 0.3 * vn(p * 115.0) + 0.15 * vn(p * 36.0); }`)
+             mix(mix(h31(i + vec3(0,0,1)), h31(i + vec3(1,0,1)), f.x), mix(h31(i + vec3(0,1,1)), h31(i + vec3(1,1,1)), f.x), f.y), f.z); }`)
       .replace('#include <map_fragment>', `#include <map_fragment>
 { float g1 = vn(vObjPos * 420.0), g2 = vn(vObjPos * 130.0), g3 = vn(vObjPos * 38.0);
-  diffuseColor.rgb *= 0.92 + 0.11 * g1 + 0.05 * g2 + 0.04 * g3; }`)
-      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-roughnessFactor = clamp(roughnessFactor * (0.9 + 0.2 * vn(vObjPos * 300.0)), 0.0, 1.0);`)
-      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-{ float hh = fabH(vObjPos); vec2 dH = vec2(dFdx(hh), dFdy(hh)) * ${bump.toFixed(3)};
-  vec3 sp = -vViewPosition; vec3 sx = normalize(dFdx(sp)), sy = normalize(dFdy(sp));
-  vec3 r1 = cross(sy, normal), r2 = cross(normal, sx); float det = dot(sx, r1) * faceDirection;
-  normal = normalize(abs(det) * normal - sign(det) * (dH.x * r1 + dH.y * r2)); }`);
+  diffuseColor.rgb *= 0.93 + 0.10 * g1 + 0.05 * g2 + 0.04 * g3; }`);
   };
-  m.customProgramCacheKey = () => `fabric${bump}`;
   return m;
 }
 
 export function applyLook(model) {
-  // 사진처럼: 헤드는 밝은 회색, 바디 위(폼)는 밝은 회색, 바디 아래(쉘)는 한 톤 어두운 회색
-  const headTop = fabricMaterial('#d8d4cc', { bump: 1.0 });
-  const cushion = fabricMaterial('#c8c3bb', { bump: 1.0 });
-  const foam = fabricMaterial('#c9c4bc', { bump: 1.0 });
-  const shell = fabricMaterial('#9d9992', { sheen: 0.45, bump: 1.0 });
-  const piping = new THREE.MeshPhysicalMaterial({ color: '#f6f4f0', roughness: 0.4, metalness: 0, clearcoat: 0.35, clearcoatRoughness: 0.5, envMapIntensity: 0.7 });
-  const aluminum = new THREE.MeshPhysicalMaterial({ color: '#cfd2d5', roughness: 0.26, metalness: 1, clearcoat: 0.25, clearcoatRoughness: 0.35, envMapIntensity: 1.25 });
-  const rubber = new THREE.MeshStandardMaterial({ color: '#8d8c8a', roughness: 0.85, metalness: 0, envMapIntensity: 0.4 });
-  const MAP = {
-    '새_헤드_상판': headTop, '새_쿠션': cushion, '새_하부_폼': foam, '새_하부_쉘': shell,
-    '새_헤드_하부판': piping, '새_하부_덮개판': piping,
-    '기둥_1': aluminum, '본체6': aluminum,
-    '새_미끄럼방지_고무링': rubber, '하부_회전판': rubber,
-  };
-  model.traverse((o) => { if (o.isMesh && MAP[o.name]) o.material = MAP[o.name]; });
+  const fabric = fabricMaterial('#ddd5c9');
+  const piping = new THREE.MeshStandardMaterial({ color: '#f4f2ee', roughness: 0.55, metalness: 0, envMapIntensity: 0.6 });
+  const aluminum = new THREE.MeshStandardMaterial({ color: '#c6c9cc', roughness: 0.32, metalness: 1, envMapIntensity: 1.1 });
+  const rubber = new THREE.MeshStandardMaterial({ color: '#8d8c8a', roughness: 0.9, metalness: 0 });
+  const FABRIC = ['새_헤드_상판', '새_쿠션', '새_하부_폼', '새_하부_쉘'];
+  const PIPING = ['새_헤드_하부판', '새_하부_덮개판'];
+  const ALU = ['기둥_1', '본체6'];
+  const RUBBER = ['새_미끄럼방지_고무링', '하부_회전판'];
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    if (FABRIC.includes(o.name)) o.material = fabric;
+    else if (PIPING.includes(o.name)) o.material = piping;
+    else if (ALU.includes(o.name)) o.material = aluminum;
+    else if (RUBBER.includes(o.name)) o.material = rubber;
+  });
 }
 
 /* ───────────── 눈: 8×8 LED 매트릭스 한 개 = 눈 한 개 ───────────── */
@@ -58,7 +49,6 @@ const PATTERNS = {
   '뜬 눈': ['00000000', '00000000', '00011000', '00011000', '00011000', '00011000', '00000000', '00000000'],
   '감은 눈': ['00000000', '00000000', '00000000', '00000000', '01111110', '00000000', '00000000', '00000000'],
   '웃는 눈': ['00000000', '00000000', '00011000', '00100100', '01000010', '00000000', '00000000', '00000000'],
-  '편안한 눈': ['00000000', '00000011', '00000110', '00001100', '00011000', '00110000', '00000000', '00000000'],
   '졸린 눈': ['00000000', '00000000', '00000000', '00111100', '00111100', '00000000', '00000000', '00000000'],
   '놀란 눈': ['00000000', '00011000', '00111100', '00111100', '00111100', '00111100', '00011000', '00000000'],
 };
