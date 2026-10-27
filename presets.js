@@ -32,34 +32,47 @@ const WAKE = [k(0, 0, 0), k(1.2, 14, -20), k(2.2, 27, -37), k(3, 25, -34)];
    머리 각도는 목이 높을수록 같이 더 꺾이므로 "수평 기준 + 기울기(왼쪽이 올라가면 +)"로 표기한 뒤 변환한다: head = 기울기 - 1.2 × 기둥 */
 const videoKeys = (rows) => sequenceNeck(rows.map(([t, col, tilt]) => [t, col, Math.max(-48, Math.min(8, tilt - 1.2 * col))]));
 
-function videoSteps(rows, bounds) {
-  const v = videoKeys(rows);
-  const at = (t) => {
-    if (t <= v[0][0]) return v[0].slice(1);
-    for (let i = 1; i < v.length; i++) if (t <= v[i][0]) {
-      const f = (t - v[i - 1][0]) / (v[i][0] - v[i - 1][0]);
-      return [v[i - 1][1] + (v[i][1] - v[i - 1][1]) * f, v[i - 1][2] + (v[i][2] - v[i - 1][2]) * f];
-    }
-    return v[v.length - 1].slice(1);
-  };
-  return bounds.map(([a, b, name]) => {
-    const dur = +(b - a).toFixed(3);
-    const mid = v.filter(([t]) => t > a && t < b).map(([t, c, h]) => [+(t - a).toFixed(3), c, h]);
-    const [c0, h0] = at(a), [c1, h1] = at(b);
-    return { name, duration: dur, keys: [[0, c0, h0], ...mid, [dur, c1, h1]] };
-  });
-}
-
-// 시나리오2 간지럽히기 (영상 49초): [시간, 기둥°, 기울기°]
-const TICKLE_VIDEO = [
-  [0, 0, 0], [0.5, 0, 0], [1.5, 8, -10], [2.5, 8, -10], [3.5, 9, -3], [4.5, 11, 3], [5.5, 11, 5], [6.5, 12, -3], [7.5, 14, 0],
-  [8.5, 14, 8], [9.5, 13, 10], [10.5, 13, 5], [11.5, 10, -12], [12.5, 15, 5], [13.5, 15, 0], [14.5, 13, -6], [15.5, 13, -5],
-  [16.5, 12, -3], [17.5, 12, -3], [18.5, 16, 15], [19.5, 17, 15], [20.5, 24, 25], [21.5, 24, 20], [22.5, 24, 22], [23.5, 24, 20],
-  [24.5, 24, 22], [25.5, 24, 15], [26.5, 24, 15], [27.5, 24, 20], [28.5, 24, 25], [29.5, 22, -5], [30.5, 22, -5], [31.5, 22, -5],
-  [32.5, 20, 22], [33.5, 20, 20], [34.5, 26, 25], [35.5, 26, 25], [36.5, 26, 25], [37.5, 26, 28], [38.5, 26, 25], [39.5, 20, 5],
-  [40.5, 14, -5], [41.5, 14, -3], [42.5, 16, 5], [43.5, 24, 20], [44.5, 24, 28], [45.5, 22, 10], [46.5, 18, 0], [47.5, 18, 0], [49.2, 18, 0],
+/* 시나리오2 간지럽히기: 사용자가 정한 6단계 동작을 0.1초 간격으로 구운 클립. 키: [t, 기둥, 머리, 갸웃(좌우 기울임), 몸통]
+   기둥·머리는 "기둥 높이 / 머리 기울기(수평 기준)"로 먼저 곡선을 만들고, 그 위에 단계별 동작을 얹는다. */
+const TICKLE_BASE = [
+  [0, 0, 0], [0.4, 0, 0], [2, 35, 0], [4, 35, 0], [5, 33, 0], [8, 33, 0], [9, 27, 0], [14, 27, 0], [15, 28, 0], [22, 28, 0],
+  [24, 14, -20], [36, 14, -20], [38, 14, -12], [39.5, 22, 0], [41, 22, 0], [49.2, 22, 0],
 ];
-const TICKLE_STEPS = [[0, 4, '01 사용자 인식'], [4, 8, '02 놀아 유도'], [8, 14, '03 첫 터치'], [14, 22, '04 반응 즐기기'], [22, 39, '05 깊은 교감'], [39, 49.2, '06 놀이 마무리']];
+const TICKLE_SECTIONS = [
+  [0, 4, '01 사용자 인식 · 기둥 최대로'], [4, 8, '02 헤드 좌우 5° · 접촉 유도'], [8, 14, '03 간지럼 · 목 돌리기 2바퀴 · 기둥 앞뒤'],
+  [14, 22, '04 손 떼면 · 바디 좌우 흔들기'], [22, 39, '05 뒤로 최대한 젖히기 · 헤드 앞뒤'], [39, 49.2, '06 제자리 · 헤드 끄덕'],
+];
+function tickleMergedSteps() {
+  const base = videoKeys(TICKLE_BASE);
+  const at = (t) => {
+    if (t <= base[0][0]) return base[0].slice(1);
+    for (let i = 1; i < base.length; i++) if (t <= base[i][0]) {
+      const f = (t - base[i - 1][0]) / (base[i][0] - base[i - 1][0]);
+      return [base[i - 1][1] + (base[i][1] - base[i - 1][1]) * f, base[i - 1][2] + (base[i][2] - base[i - 1][2]) * f];
+    }
+    return base[base.length - 1].slice(1);
+  };
+  const wave = (t, a, period) => Math.sin((2 * Math.PI * (t - a)) / period);
+  const env = (t, a, b, r = 0.5) => Math.max(0, Math.min(1, (t - a) / r, (b - t) / r));   // 양 끝을 부드럽게 줄이는 포락선
+  const keys = [];
+  const N = Math.round(49.2 * 10);
+  for (let i = 0; i <= N; i++) {
+    const t = +(i / 10).toFixed(3);
+    let [col, head] = at(t), sw = 0, body = 0;
+    sw += 5 * wave(t, 4, 1.0) * env(t, 4.2, 7.8);                                   // 02 헤드 좌우 5°
+    { const phi = (2 * Math.PI * (t - 8.8)) / 1.7, e = env(t, 8.8, 12.2);             // 03 목 돌리기 2바퀴: 앞→옆→뒤→옆 (앞뒤 끄덕임 + 좌우 갸웃을 90° 어긋나게)
+      head += 10 * Math.cos(phi) * e; sw += 15 * Math.sin(phi) * e; }
+    col += 6 * wave(t, 8.5, 0.85) * env(t, 8.5, 12.8);                               // 03 기둥 앞뒤
+    body += 12 * wave(t, 14.4, 1.4) * env(t, 14.4, 21.6, 0.7);                       // 04 바디 전체 좌우
+    head += 9 * wave(t, 24.5, 0.7) * env(t, 24.5, 37, 1.0);                          // 05 헤드만 앞뒤
+    head += 9 * wave(t, 40.5, 0.9) * env(t, 40.5, 48.5);                             // 06 헤드 끄덕
+    keys.push([t, col, Math.max(-50, Math.min(8, head)), sw, body]);
+  }
+  return TICKLE_SECTIONS.map(([a, b, name]) => ({
+    name, duration: +(b - a).toFixed(3),
+    keys: keys.filter(([t]) => t >= a - 1e-6 && t <= b + 1e-6).map(([t, ...r]) => [+(t - a).toFixed(3), ...r]),
+  }));
+}
 
 // 시나리오3 간식주기 (영상 35초)
 const SNACK_VIDEO = [
@@ -112,7 +125,7 @@ const SCENARIOS = [
     { name: '05 휴식 유지', duration: 5, keys: [k(0, 32, -10), k(1.5, 31, -8), k(3, 32, -10), k(4, 31, -8), k(5, 30, -8)] },
     { name: '06 휴식 종료', duration: 4, keys: [k(0, 30, -8), k(1.5, 25, -34), k(2.2, 25, -34, 10), k(3, 25, -34, -10), k(4, 25, -34)] },
   ] },
-  { name: '시나리오2 간지럽히기', interp: 'linear', steps: videoSteps(TICKLE_VIDEO, TICKLE_STEPS) },
+  { name: '시나리오2 간지럽히기', interp: 'linear', steps: tickleMergedSteps() },
   { name: '시나리오3 간식주기', interp: 'linear', steps: snackMergedSteps() },
 ];
 
