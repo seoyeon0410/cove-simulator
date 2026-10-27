@@ -44,32 +44,44 @@ export function applyLook(model) {
 
 /* ───────────── 눈: 8×8 LED 매트릭스 한 개 = 눈 한 개 ───────────── */
 
-// 8×8 도트 (위→아래, 왼→오른). 1이 켜진 LED.
+// 8×8 도트 (위→아래, 왼→오른). 1이 켜진 LED. 눈의 가운데 줄은 3행 근처로 맞춰서 표정이 바뀌어도 눈 높이가 흔들리지 않는다.
 const PATTERNS = {
-  '뜬 눈': ['00000000', '00000000', '00011000', '00011000', '00011000', '00011000', '00000000', '00000000'],
-  '감은 눈': ['00000000', '00000000', '00000000', '00000000', '01111110', '00000000', '00000000', '00000000'],
-  '웃는 눈': ['00000000', '00000000', '00011000', '00100100', '01000010', '00000000', '00000000', '00000000'],
-  '졸린 눈': ['00000000', '00000000', '00000000', '00111100', '00111100', '00000000', '00000000', '00000000'],
-  '놀란 눈': ['00000000', '00011000', '00111100', '00111100', '00111100', '00111100', '00011000', '00000000'],
+  '뜬 눈':   ['00000000', '00011000', '00111100', '00111100', '00111100', '00011000', '00000000', '00000000'],   // 4×5 둥근 타원
+  '감은 눈': ['00000000', '00000000', '00000000', '01000010', '00111100', '00000000', '00000000', '00000000'],   // ∪ 편안히 감은 눈
+  '웃는 눈': ['00000000', '00000000', '00011000', '00100100', '01000010', '00000000', '00000000', '00000000'],   // ^ 웃는 눈
+  '졸린 눈': ['00000000', '00000000', '00000000', '00111100', '00111100', '00011000', '00000000', '00000000'],   // 눈꺼풀이 반쯤 내려온 눈
+  '놀란 눈': ['00000000', '00111100', '01111110', '01100110', '01100110', '01111110', '00111100', '00000000'],   // 동공이 비어 있는 큰 눈
+  '하트 눈': ['00000000', '01100110', '01111110', '01111110', '00111100', '00011000', '00000000', '00000000'],   // ♥
 };
 export const EXPRESSIONS = Object.keys(PATTERNS);
 
+// LED 한 칸마다 또렷한 동그란 점(밝은 중심 + 얇은 헤일로)을 찍고, 천 뒤에서 은은하게 번지도록 두 겹으로 합성한다.
+// 꺼진 칸은 아무것도 그리지 않는다(천 뒤라 보이지 않음).
 function drawPattern(canvas, rows) {
   const S = canvas.width, cell = S / 8, ctx = canvas.getContext('2d');
-  const glow = document.createElement('canvas'); glow.width = glow.height = S;
-  const g = glow.getContext('2d');
-  g.fillStyle = '#eaf4ff';
-  rows.forEach((r, y) => [...r].forEach((v, x) => { if (v === '1') { g.beginPath(); g.roundRect(x * cell + cell * 0.14, y * cell + cell * 0.14, cell * 0.72, cell * 0.72, cell * 0.22); g.fill(); } }));
+  const dots = document.createElement('canvas'); dots.width = dots.height = S;
+  const g = dots.getContext('2d');
+  rows.forEach((r, y) => [...r].forEach((v, x) => {
+    if (v !== '1') return;
+    const cx = (x + 0.5) * cell, cy = (y + 0.5) * cell;
+    const R = cell * 0.5;                          // 이웃 칸과 살짝만 닿아 한 칸 한 칸이 구분되어 보이도록
+    const grad = g.createRadialGradient(cx, cy, 0, cx, cy, R);
+    grad.addColorStop(0, 'rgba(252,254,255,1)');
+    grad.addColorStop(0.5, 'rgba(232,243,255,.96)');
+    grad.addColorStop(0.82, 'rgba(200,224,255,.4)');
+    grad.addColorStop(1, 'rgba(200,224,255,0)');
+    g.fillStyle = grad; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fill();
+  }));
   ctx.clearRect(0, 0, S, S);
   ctx.globalCompositeOperation = 'lighter';
-  ctx.filter = `blur(${cell * 0.55}px)`; ctx.drawImage(glow, 0, 0);     // 천 뒤에서 번지는 빛
-  ctx.filter = `blur(${cell * 0.16}px)`; ctx.drawImage(glow, 0, 0); ctx.drawImage(glow, 0, 0);
-  ctx.filter = 'none'; ctx.globalCompositeOperation = 'source-over';
+  ctx.filter = `blur(${cell * 0.1}px)`; ctx.drawImage(dots, 0, 0);               // 도트 자체 (거의 선명)
+  ctx.globalAlpha = 0.34; ctx.filter = `blur(${cell * 0.5}px)`; ctx.drawImage(dots, 0, 0);   // 천에 번지는 빛
+  ctx.globalAlpha = 1; ctx.filter = 'none'; ctx.globalCompositeOperation = 'source-over';
 }
 
 /* 8×8 도트 매트릭스라서 눈의 모든 움직임은 "도트 한 칸" 단위의 프레임으로만 만든다(중간 값 없음):
    - 시선: 패턴을 칸 단위(−2~+2)로 밀기
-   - 깜빡임: 눈 높이를 4줄 → 2줄 → 1줄로 줄였다가 되돌리는 5프레임 (60ms 간격)
+   - 깜빡임: 눈 높이를 5줄 → 3줄 → 1줄로 줄였다가 되돌리는 5프레임 (60ms 간격)
    - 표정 전환: 프레임이 바뀌는 순간 통째로 교체 (LED가 한 번에 바뀌는 것처럼) */
 const BLINK_FRAMES = [1, 2, 2, 1, 0];          // 0 = 뜬 눈, 1 = 반쯤, 2 = 감김
 const BLINK_STEP = 0.06;
@@ -83,8 +95,9 @@ function blinkStage(t) {                       // 3.8초마다, 조금씩 어긋
 }
 function framePattern(name, gx, gy, stage) {
   let rows = (PATTERNS[name] || PATTERNS['뜬 눈']).map((r) => r.split(''));
-  if (name === '뜬 눈' && stage === 1) rows = rows.map((r, y) => (y === 3 || y === 4 ? r : r.map(() => '0')));
-  if (name === '뜬 눈' && stage === 2) rows = rows.map((r, y) => (y === 4 ? '00111100'.split('') : r.map(() => '0')));
+  const BLINK = { 1: ['00000000', '00000000', '00011000', '00111100', '00011000', '00000000', '00000000', '00000000'],    // 반쯤 감김
+                  2: ['00000000', '00000000', '00000000', '00111100', '00000000', '00000000', '00000000', '00000000'] };  // 감김
+  if (name === '뜬 눈' && BLINK[stage]) rows = BLINK[stage].map((r) => r.split(''));
   const out = Array.from({ length: 8 }, () => Array(8).fill('0'));
   for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
     const sx = x - gx, sy = y - gy;
@@ -112,7 +125,7 @@ export function buildEyes(S, { setPose, resetPose }) {
   const front = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), zAxis).normalize().multiplyScalar(-1);
   const ray = new THREE.Raycaster(), group = new THREE.Group(); group.name = '눈';
   const canvases = [], textures = [];
-  const SIZE = 0.020;                           // 패널 한 변 20mm (도트 간격 2.5mm)
+  const SIZE = 0.016;                           // 패널 한 변 16mm (도트 간격 2mm)
   const GAP_IN = 0.003, RAISE = 0.007;          // 미간을 눈 한쪽당 3mm씩 좁히고, 7mm 위로 올린다
   const tiltQ = tiltN.getWorldQuaternion(new THREE.Quaternion()).invert();
 
