@@ -606,7 +606,17 @@ function refreshClipUI() {
   refreshAll();
 }
 function refreshAll() { buildTree(); updateProps(); updateTimeLabel(); drawTL(); }
+function updateSceneTag() {
+  const el = $('#sceneTag'), marks = curClip()?.markers;
+  if (!el) return;
+  if (!marks?.length) { el.hidden = true; return; }
+  let i = 0; marks.forEach((m, k) => { if (S.time >= m.t - 1e-6) i = k; });
+  el.hidden = false;
+  el.querySelector('.no').textContent = `장면 ${i + 1} / ${marks.length}`;
+  el.querySelector('.nm').textContent = marks[i].label.replace(/^\d+\s*/, '');
+}
 function updateTimeLabel() {
+  updateSceneTag();
   $('#timeLabel').textContent = `${Math.round(S.time * fps())} / ${S.time.toFixed(2)}s`;
 }
 
@@ -617,7 +627,9 @@ function toast(msg) {
 
 /* ───────────── 타임라인 ───────────── */
 const tlc = $('#tl'), ctx = tlc.getContext('2d');
+const BAND = 22;
 const TL = { LW: 150, RULER: 26, RH: 26, pps: 120, sx: 0, sy: 0, w: 0, h: 0, drag: null };
+const tlTop = () => TL.RULER + (curClip()?.markers?.length ? BAND : 0);
 
 function resizeTL() {
   const r = tlc.getBoundingClientRect(), dpr = devicePixelRatio || 1;
@@ -644,7 +656,8 @@ function drawTL() {
   if (!S.model || !TL.w) return;
   const css = getComputedStyle(document.documentElement);
   const C = (n) => css.getPropertyValue(n).trim();
-  const { LW, RULER, RH, w, h } = TL;
+  const { LW, RH, w, h } = TL;
+  const RUL = TL.RULER, RULER = tlTop();
   const clip = curClip(), rows = tlRows(), f = clip.fps;
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = C('--panel'); ctx.fillRect(0, 0, w, h);
@@ -671,7 +684,7 @@ function drawTL() {
   });
 
   // 눈금
-  ctx.fillStyle = C('--panel'); ctx.fillRect(LW, 0, w - LW, RULER);
+  ctx.fillStyle = C('--panel'); ctx.fillRect(LW, 0, w - LW, RUL);
   const steps = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60];
   const major = steps.find((s) => s * TL.pps >= 70) || 60;
   ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle';
@@ -680,23 +693,30 @@ function drawTL() {
     ctx.strokeStyle = '#3a3e46'; ctx.beginPath();
     for (let fr = Math.floor(x2t(LW) * f); fr / f <= t1; fr++) {
       const x = Math.round(t2x(fr / f)) + 0.5;
-      if (x < LW) continue; ctx.moveTo(x, RULER - 5); ctx.lineTo(x, RULER);
+      if (x < LW) continue; ctx.moveTo(x, RUL - 5); ctx.lineTo(x, RUL);
     }
     ctx.stroke();
   }
   for (let t = t0; t <= t1; t += major) {
     const x = Math.round(t2x(t)) + 0.5;
     if (x < LW) continue;
-    ctx.strokeStyle = '#555a64'; ctx.beginPath(); ctx.moveTo(x, RULER - 12); ctx.lineTo(x, h); ctx.globalAlpha = 0.35; ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#555a64'; ctx.beginPath(); ctx.moveTo(x, RUL - 12); ctx.lineTo(x, h); ctx.globalAlpha = 0.35; ctx.stroke(); ctx.globalAlpha = 1;
     ctx.fillStyle = C('--dim'); ctx.fillText(t.toFixed(major < 1 ? 2 : 0) + 's', x + 4, 9);
   }
-  // 구간 마커
-  (clip.markers || []).forEach((m) => {
-    const x = Math.round(t2x(m.t)) + 0.5;
-    if (x < LW || x > w) return;
-    ctx.strokeStyle = '#555a64'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(x, RULER); ctx.lineTo(x, h); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = C('--text'); ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle';
-    ctx.fillText(m.label, x + 5, RULER - 7, 150);
+  // 장면 구간: 눈금 아래 띠로 표시하고 현재 장면을 강조한다
+  const marks = clip.markers || [];
+  marks.forEach((m, i) => {
+    const x0 = t2x(m.t), x1 = t2x(i + 1 < marks.length ? marks[i + 1].t : clip.duration);
+    if (x1 < LW || x0 > w) return;
+    const cur = S.time >= m.t - 1e-6 && (i + 1 >= marks.length || S.time < marks[i + 1].t - 1e-6);
+    const l = Math.max(x0, LW);
+    ctx.fillStyle = cur ? '#3d424b' : (i % 2 ? '#22252a' : '#1e2125'); ctx.fillRect(l, RUL, x1 - l - 1, BAND - 2);
+    if (cur) { ctx.fillStyle = C('--accent'); ctx.fillRect(l, RUL, x1 - l - 1, 2); }
+    ctx.save(); ctx.beginPath(); ctx.rect(l, RUL, x1 - l - 1, BAND); ctx.clip();
+    ctx.fillStyle = cur ? '#fff' : C('--dim'); ctx.font = `${cur ? 600 : 400} 11px ${FONT}`; ctx.textBaseline = 'middle';
+    ctx.fillText(m.label, Math.max(x0, LW) + 6, RUL + BAND / 2 - 0.5);
+    ctx.restore();
+    if (x0 >= LW) { ctx.strokeStyle = '#4a4f59'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(Math.round(x0) + 0.5, RULER); ctx.lineTo(Math.round(x0) + 0.5, h); ctx.stroke(); ctx.setLineDash([]); }
   });
 
   // 길이 끝 선
@@ -717,6 +737,7 @@ function drawTL() {
     ctx.fillText(nodeName(idx), 24, y + RH / 2, LW - 30);
   });
   ctx.fillStyle = C('--panel'); ctx.fillRect(0, 0, LW, RULER);
+  if (marks.length) { ctx.fillStyle = C('--dim'); ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle'; ctx.fillText('장면', 12, RUL + BAND / 2); }
 
   // 플레이헤드
   const px = t2x(S.time);
@@ -728,7 +749,7 @@ function drawTL() {
 
 function tlHit(x, y) {
   const rows = tlRows();
-  const r = Math.floor((y - TL.RULER + TL.sy) / TL.RH);
+  const r = Math.floor((y - tlTop() + TL.sy) / TL.RH);
   const idx = rows[r];
   if (idx === undefined) return {};
   const keys = curClip().tracks[idx] || [];
@@ -740,6 +761,12 @@ tlc.addEventListener('pointerdown', (e) => {
   const rect = tlc.getBoundingClientRect(), x = e.clientX - rect.left, y = e.clientY - rect.top;
   tlc.setPointerCapture(e.pointerId);
   if (y < TL.RULER && x >= TL.LW) { TL.drag = { type: 'scrub' }; setTime(x2t(x)); return; }
+  if (y < tlTop() && x >= TL.LW) {            // 장면 띠 클릭 → 그 장면의 시작으로 이동
+    const marks = curClip().markers || [], t = x2t(x);
+    const m = [...marks].reverse().find((mm) => mm.t <= t + 1e-6);
+    if (m) setTime(m.t);
+    return;
+  }
   const hit = tlHit(x, y);
   if (x < TL.LW) { if (hit.idx !== undefined) select(S.nodes.get(hit.idx)); return; }
   if (hit.idx !== undefined && S.nodes.get(hit.idx) !== S.sel) select(S.nodes.get(hit.idx));
@@ -791,7 +818,7 @@ tlc.addEventListener('wheel', (e) => {
   } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
     TL.sx = Math.max(0, TL.sx + (e.deltaX || e.deltaY));
   } else {
-    const max = Math.max(0, tlRows().length * TL.RH - (TL.h - TL.RULER));
+    const max = Math.max(0, tlRows().length * TL.RH - (TL.h - tlTop()));
     TL.sy = Math.max(0, Math.min(max, TL.sy + e.deltaY));
   }
   drawTL();

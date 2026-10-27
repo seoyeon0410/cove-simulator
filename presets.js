@@ -4,13 +4,33 @@
 
 const k = (t, col, head, sw = 0, body = 0) => [t, col, head, sw, body];
 
+/* 기둥이 다 움직인 뒤에 헤드가 움직이게 한다.
+   기둥과 머리가 함께 크게 변하는 구간(키 사이)을 둘로 쪼갠다:
+   기둥이 올라갈 때는 [기둥 먼저 → 헤드], 내려올 때는 [헤드 먼저 → 기둥]. 나머지 값(스위블·몸통)은 구간 내내 보간한다. */
+const SEQ_MIN = 3, SEQ_FRAC = 0.6;
+function sequenceNeck(keys) {
+  const out = [keys[0]];
+  for (let i = 1; i < keys.length; i++) {
+    const a = keys[i - 1], b = keys[i];
+    const dCol = b[1] - a[1], dHead = b[2] - a[2];
+    if (Math.abs(dCol) >= SEQ_MIN && Math.abs(dHead) >= SEQ_MIN) {
+      const rising = dCol > 0, f = rising ? SEQ_FRAC : 1 - SEQ_FRAC;
+      const t = +(a[0] + (b[0] - a[0]) * f).toFixed(3);
+      const lerp = (x, y) => (x ?? 0) + ((y ?? 0) - (x ?? 0)) * f;
+      out.push([t, rising ? b[1] : a[1], rising ? a[2] : b[2], lerp(a[3], b[3]), lerp(a[4], b[4])]);
+    }
+    out.push(b);
+  }
+  return out;
+}
+
 /* ───── 시나리오 (스토리보드): 단계별 키는 t=0이 이전 단계의 끝 포즈와 같도록 맞춘다 ───── */
 const WAKE = [k(0, 0, 0), k(1.2, 14, -20), k(2.2, 27, -37), k(3, 25, -34)];
 
 
 /* 시나리오2·3은 실제 코브 시연 영상에서 목 높이(기둥)와 머리 기울기를 읽어 만든 키다.
    머리 각도는 목이 높을수록 같이 더 꺾이므로 "수평 기준 + 기울기(왼쪽이 올라가면 +)"로 표기한 뒤 변환한다: head = 기울기 - 1.2 × 기둥 */
-const videoKeys = (rows) => rows.map(([t, col, tilt]) => [t, col, Math.max(-48, Math.min(8, tilt - 1.2 * col))]);
+const videoKeys = (rows) => sequenceNeck(rows.map(([t, col, tilt]) => [t, col, Math.max(-48, Math.min(8, tilt - 1.2 * col))]));
 
 function videoSteps(rows, bounds) {
   const v = videoKeys(rows);
@@ -48,7 +68,40 @@ const SNACK_VIDEO = [
   [16, 20, -3], [17.5, 24, -12], [19, 24, -12], [20.5, 22, -12], [22, 20, -5], [23.5, 20, 0], [25, 20, 10], [26, 18, 30],
   [27, 20, 22], [28, 22, 4], [29, 22, -8], [30, 22, -3], [31, 22, -8], [32, 22, -5], [33, 22, -3], [34, 20, -5], [34.8, 16, 0], [35.2, 16, 0],
 ];
-const SNACK_STEPS = [[0, 3, '01 사용자 인식'], [3, 9, '02 관심 유도'], [9, 14, '03 사료 접근'], [14, 20, '04 간식 기대'], [20, 27, '05 간식 먹기'], [27, 35.2, '06 작별 인사']];
+
+/* 시나리오3 간식주기: 영상(SNACK_VIDEO)의 목 높이·머리 기울기를 바탕으로, 간식 프롬프트의 동작을 얹었다.
+   바라보며 기둥 올리기 → 헤드 좌우 탐색 → 까딱이며 "이건 뭐지" → 고개·허리 최대로 → 씹기 → 만족 → 기분 좋게 까딱.
+   0.1초 간격으로 구워서 만든다. 키: [t, 기둥, 머리, 스위블, 몸통] */
+const SNACK_SECTIONS = [[0, 3, '01 사용자 바라보기 · 기둥 올리기'], [3, 9, '02 헤드 좌우 탐색'], [9, 14, '03 까딱까딱 · 이건 뭐지'], [14, 20, '04 고개 · 허리 최대로'], [20, 25, '05 씹기'], [25, 27, '06 만족'], [27, 35.2, '07 기분 좋은 까딱']];
+function snackMergedSteps() {
+  const base = videoKeys(SNACK_VIDEO);
+  const at = (t) => {
+    if (t <= base[0][0]) return base[0].slice(1);
+    for (let i = 1; i < base.length; i++) if (t <= base[i][0]) {
+      const f = (t - base[i - 1][0]) / (base[i][0] - base[i - 1][0]);
+      return [base[i - 1][1] + (base[i][1] - base[i - 1][1]) * f, base[i - 1][2] + (base[i][2] - base[i - 1][2]) * f];
+    }
+    return base[base.length - 1].slice(1);
+  };
+  const bell = (t, a, b) => (t <= a || t >= b ? 0 : Math.sin((Math.PI * (t - a)) / (b - a)));
+  const wave = (t, a, period) => Math.sin((2 * Math.PI * (t - a)) / period);
+  const keys = [];
+  const N = Math.round(35.2 * 10);
+  for (let i = 0; i <= N; i++) {
+    const t = +(i / 10).toFixed(3);
+    let [col, head] = at(t), sw = 0, body = 0;
+    if (t >= 4 && t <= 7) sw += -18 * wave(t, 4, 3) * Math.min(1, bell(t, 4, 7) * 2.2);                // 02 좌우 탐색
+    if (t > 9.5 && t < 13.5) { const e = bell(t, 9.5, 13.5); sw += 10 * wave(t, 9.5, 0.9) * e; head += 3 * wave(t, 9.5, 0.9) * e; } // 03 까딱
+    if (t >= 14.5 && t <= 19.5) col += 5 * bell(t, 14.5, 19.5);                                          // 04 허리를 최대로 세움
+    if (t > 20.5 && t < 25) head += 7 * wave(t, 20.5, 0.55) * bell(t, 20.5, 25);                        // 05 씹기
+    if (t > 27 && t < 34) { const e = bell(t, 27, 34); sw += 22 * wave(t, 27, 1.6) * e; body += 6 * wave(t, 27, 1.6) * e; col += 1.5 * wave(t, 27, 0.8) * e; } // 07 기분 좋은 까딱
+    keys.push([t, col, Math.max(-50, Math.min(8, head)), sw, body]);
+  }
+  return SNACK_SECTIONS.map(([a, b, name]) => ({
+    name, duration: +(b - a).toFixed(3),
+    keys: keys.filter(([t]) => t >= a - 1e-6 && t <= b + 1e-6).map(([t, ...r]) => [+(t - a).toFixed(3), ...r]),
+  }));
+}
 
 const SCENARIOS = [
   { name: '시나리오1 휴식', steps: [
@@ -60,7 +113,7 @@ const SCENARIOS = [
     { name: '06 휴식 종료', duration: 4, keys: [k(0, 30, -8), k(1.5, 25, -34), k(2.2, 25, -34, 10), k(3, 25, -34, -10), k(4, 25, -34)] },
   ] },
   { name: '시나리오2 간지럽히기 (영상)', interp: 'linear', steps: videoSteps(TICKLE_VIDEO, TICKLE_STEPS) },
-  { name: '시나리오3 간식주기 (영상)', interp: 'linear', steps: videoSteps(SNACK_VIDEO, SNACK_STEPS) },
+  { name: '시나리오3 간식주기', interp: 'linear', steps: snackMergedSteps() },
 ];
 
 const whole = SCENARIOS.map((s) => {
@@ -72,30 +125,8 @@ const whole = SCENARIOS.map((s) => {
   });
   return { name: s.name, duration: t0, keys, markers, interp: s.interp };
 });
-whole.push(promptSnack());
 const steps = SCENARIOS.flatMap((s) => s.steps.map((st) => ({ name: `${s.name} · ${st.name}`, duration: st.duration, keys: st.keys, interp: s.interp })));
 
-
-/* 간식 프롬프트: 사용자를 바라보며 기둥을 올림 → 헤드 좌우 탐색 → 까딱이며 "이건 뭐지" → 고개·허리를 최대로 세움 →
-   헤드를 위아래로 흔들며 씹기 → 만족 → 고개를 양옆으로 까딱이며 기분 좋은 행동. 키: [t, 기둥, 머리, 스위블, 몸통] */
-function promptSnack() {
-  const sections = [];
-  const sec = (name, keys) => sections.push({ name, keys });
-  sec('01 사용자 바라보기 · 기둥 올리기', [k(0, 0, 0), k(1.2, 16, -20), k(2.2, 34, -41), k(3, 32, -38)]);
-  sec('02 헤드 좌우 탐색', [k(4, 32, -38, -18, -4), k(5.5, 32, -38, 18, 4), k(6.5, 32, -38, 0, 0)]);
-  sec('03 까딱까딱 · 이건 뭐지', [k(7, 30, -33, 10), k(7.5, 30, -30, -10), k(8, 30, -33, 10), k(8.5, 30, -30, -10), k(9.2, 31, -36, 0)]);
-  sec('04 고개 · 허리 최대로 세우기', [k(10.2, 35, -44, 0, 0), k(11.2, 35, -44)]);
-  const chew = [];
-  for (let i = 0; i < 8; i++) chew.push(k(12 + i * 0.4, 34, i % 2 ? -44 : -30, 0, 0));
-  sec('05 씹기', chew);
-  sec('06 만족', [k(16, 31, -38), k(17, 30, -36, 0, 0), k(18, 31, -38)]);
-  const happy = [];
-  for (let i = 0; i < 6; i++) happy.push(k(18.8 + i * 0.7, 31 + (i % 2 ? 0 : 2), -38, i % 2 ? -22 : 22, i % 2 ? -6 : 6));
-  sec('07 기분 좋은 까딱', [...happy, k(23.4, 28, -36), k(25, 25, -34)]);
-  const keys = sections.flatMap((x) => x.keys);
-  const markers = sections.map((x) => ({ t: x.keys[0][0], label: x.name }));
-  return { name: '간식 (프롬프트)', duration: 25, keys, markers };
-}
 
 const BASIC = [
   { name: '숨쉬기', duration: 4, keys: [[0, 0, 0, 0], [2, 5, -6, 0], [4, 0, 0, 0]] },
@@ -111,8 +142,10 @@ const BASIC = [
   { name: '잘자', duration: 4, keys: [[0, 25, -34, 0], [1.5, 12, -16, 0], [3, 0, 0, 0], [4, 0, 0, 0]] },
 ];
 
+const seq = (items) => items.map((d) => ({ ...d, keys: sequenceNeck(d.keys) }));
+
 export const PRESET_GROUPS = [
-  { label: '시나리오 전체', items: whole },
-  { label: '시나리오 단계', items: steps },
-  { label: '기본 모션', items: BASIC },
+  { label: '시나리오 전체', items: seq(whole) },
+  { label: '시나리오 단계', items: seq(steps) },
+  { label: '기본 모션', items: seq(BASIC) },
 ];
