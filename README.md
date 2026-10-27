@@ -4,7 +4,7 @@ GLB 리그(본)를 조작하고 키프레임으로 애니메이션을 만드는 
 
 ## 실행
 ```bash
-python3 -m http.server 5173
+python3 server.py 5173
 ```
 브라우저에서 http://localhost:5173 을 연다. 다른 GLB는 끌어다 놓거나 [GLB 열기].
 

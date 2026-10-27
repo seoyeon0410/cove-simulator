@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
-import { PRESETS } from './presets.js';
+import { PRESET_GROUPS } from './presets.js';
 import { Muxer, ArrayBufferTarget } from './lib/mp4-muxer.mjs';
 
 const $ = (s) => document.querySelector(s);
@@ -152,7 +152,7 @@ function loadGLB(buffer, name) {
 
       setupIK();
       const saved = loadSaved();
-      S.clips = saved?.clips || [...importClips(), ...PRESETS.map(buildPresetClip)];
+      S.clips = saved?.clips || [...importClips(), ...PRESET_GROUPS[0].items.map(buildPresetClip)];
       S.clip = Math.min(saved?.clip || 0, Math.max(S.clips.length - 1, 0));
       if (!S.clips.length) S.clips = [newClipData('새 클립')];
       S.time = 0;
@@ -328,10 +328,14 @@ function importClips() {
   });
 }
 
-/* 프리셋: [시간, 기둥°, 머리°, 갸웃°] 키 목록 → 클립 (기본 포즈 기준 상대 각도, IK_타겟은 머리 끝에 맞춰 계산) */
+/* 프리셋: [시간, 기둥°, 머리°, 갸웃°, 몸통°] 키 목록 → 클립 (기본 포즈 기준 상대 각도, IK_타겟은 머리 끝에 맞춰 계산) */
 function buildPresetClip(def) {
   const clip = newClipData(def.name, def.duration);
+  if (def.markers) clip.markers = def.markers;
   const ids = { col: S.boneIdx.find((i) => nodeName(i) === '기둥'), head: S.boneIdx.find((i) => nodeName(i) === '머리'), tilt: S.boneIdx.find((i) => /갸웃/.test(nodeName(i))) };
+  let rootObj = S.nodes.get(ids.col);
+  while (rootObj.parent && S.idxOf.has(rootObj.parent)) rootObj = rootObj.parent;
+  ids.body = rootObj === S.nodes.get(ids.col) ? undefined : S.idxOf.get(rootObj);
   const target = IK?.target ? S.idxOf.get(IK.target) : undefined;
   const q = new THREE.Quaternion(), r = new THREE.Quaternion(), axisZ = new THREE.Vector3(0, 0, 1), axisY = new THREE.Vector3(0, 1, 0);
   const pose = (idx, deg, axis) => {
@@ -340,10 +344,11 @@ function buildPresetClip(def) {
     o.quaternion.copy(q); o.position.fromArray(rest.p); o.scale.fromArray(rest.s);
   };
   const snap = (idx) => { const o = S.nodes.get(idx); return { p: o.position.toArray(), q: o.quaternion.toArray(), s: o.scale.toArray() }; };
-  for (const [t, a, b, c] of def.keys) {
+  for (const [t, a, b, c, d = 0] of def.keys) {
     pose(ids.col, a, axisZ); pose(ids.head, b, axisZ); if (ids.tilt !== undefined) pose(ids.tilt, c, axisY);
+    if (ids.body !== undefined) pose(ids.body, d, axisY);
     if (target !== undefined) { const o = S.nodes.get(target), rest = S.rest.get(target); o.quaternion.fromArray(rest.q); o.scale.fromArray(rest.s); syncTarget(); }
-    for (const idx of [ids.col, ids.head, ids.tilt, target]) {
+    for (const idx of [ids.col, ids.head, ids.tilt, ids.body, target]) {
       if (idx === undefined) continue;
       (clip.tracks[idx] ||= []).push({ t, i: 'smooth', ...snap(idx) });
     }
@@ -685,6 +690,15 @@ function drawTL() {
     ctx.strokeStyle = '#555a64'; ctx.beginPath(); ctx.moveTo(x, RULER - 12); ctx.lineTo(x, h); ctx.globalAlpha = 0.35; ctx.stroke(); ctx.globalAlpha = 1;
     ctx.fillStyle = C('--dim'); ctx.fillText(t.toFixed(major < 1 ? 2 : 0) + 's', x + 4, 9);
   }
+  // 구간 마커
+  (clip.markers || []).forEach((m) => {
+    const x = Math.round(t2x(m.t)) + 0.5;
+    if (x < LW || x > w) return;
+    ctx.strokeStyle = '#555a64'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(x, RULER); ctx.lineTo(x, h); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = C('--text'); ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle';
+    ctx.fillText(m.label, x + 5, RULER - 7, 150);
+  });
+
   // 길이 끝 선
   ctx.strokeStyle = '#666'; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(endX + 0.5, RULER); ctx.lineTo(endX + 0.5, h); ctx.stroke(); ctx.globalAlpha = 1;
 
@@ -927,12 +941,17 @@ $('#clipDel').onclick = () => {
 $('#clipDur').onchange = (e) => { curClip().duration = Math.max(0.1, +e.target.value || 1); setTime(S.time); snapshot(); };
 $('#clipFps').onchange = (e) => { curClip().fps = +e.target.value; setTime(S.time); snapshot(); };
 $('#presetAdd').onchange = (e) => {
-  const def = PRESETS[+e.target.value]; e.target.value = '';
+  const [g, i] = e.target.value.split(':').map(Number);
+  const def = PRESET_GROUPS[g]?.items[i]; e.target.value = '';
   if (!def) return;
   S.clips.push(buildPresetClip(def)); S.clip = S.clips.length - 1; S.selKeys.clear(); S.time = 0;
   applyPose(0); refreshClipUI(); snapshot(); toast(`'${def.name}' 추가`);
 };
-PRESETS.forEach((d, i) => $('#presetAdd').add(new Option(d.name, i)));
+PRESET_GROUPS.forEach((grp, g) => {
+  const og = document.createElement('optgroup'); og.label = grp.label;
+  grp.items.forEach((d, i) => og.appendChild(new Option(d.name, `${g}:${i}`)));
+  $('#presetAdd').appendChild(og);
+});
 $('#presetAdd').value = '';
 document.fonts?.ready.then(drawTL);
 $('#clipReimport').onclick = () => {
