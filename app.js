@@ -344,13 +344,13 @@ function buildPresetClip(def) {
     o.quaternion.copy(q); o.position.fromArray(rest.p); o.scale.fromArray(rest.s);
   };
   const snap = (idx) => { const o = S.nodes.get(idx); return { p: o.position.toArray(), q: o.quaternion.toArray(), s: o.scale.toArray() }; };
-  for (const [t, a, b, c, d = 0] of def.keys) {
+  for (const [t, a, b, c = 0, d = 0] of def.keys) {
     pose(ids.col, a, axisZ); pose(ids.head, b, axisZ); if (ids.tilt !== undefined) pose(ids.tilt, c, axisY);
     if (ids.body !== undefined) pose(ids.body, d, axisY);
     if (target !== undefined) { const o = S.nodes.get(target), rest = S.rest.get(target); o.quaternion.fromArray(rest.q); o.scale.fromArray(rest.s); syncTarget(); }
     for (const idx of [ids.col, ids.head, ids.tilt, ids.body, target]) {
       if (idx === undefined) continue;
-      (clip.tracks[idx] ||= []).push({ t, i: 'smooth', ...snap(idx) });
+      (clip.tracks[idx] ||= []).push({ t, i: def.interp || 'smooth', ...snap(idx) });
     }
   }
   return clip;
@@ -1117,4 +1117,4 @@ requestAnimationFrame(frame);
   }
 })();
 addEventListener('beforeunload', () => { try { if (S.glb) snapshot(true); } catch { /* */ } });
-window.__cove = { S, exportGLB };
+window.__cove = { S, exportGLB, camera, orbit, THREE, renderer, scene, setTime };

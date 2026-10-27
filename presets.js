@@ -7,6 +7,34 @@ const k = (t, col, head, sw = 0, body = 0) => [t, col, head, sw, body];
 /* ───── 시나리오 (스토리보드): 단계별 키는 t=0이 이전 단계의 끝 포즈와 같도록 맞춘다 ───── */
 const WAKE = [k(0, 0, 0), k(1.2, 14, -20), k(2.2, 27, -37), k(3, 25, -34)];
 
+
+/* 시나리오3은 실제 코브 시연 영상(35초)에서 목 높이(기둥)와 머리 각도를 읽어 만든 키다.
+   머리 각도는 목이 높을수록 같이 더 꺾이므로 "수평 기준 + 기울기"로 표기한 뒤 변환한다: head = 기울기 - 1.2 × 기둥 */
+const SNACK_VIDEO = [
+  [0, 0, 0], [0.5, 0, 0], [1.5, 5, -8], [2.5, 8, -14], [3.5, 10, -14], [4.2, 12, -14], [4.7, 12, -14], [5.2, 14, -20],
+  [6.2, 24, -5], [6.7, 28, -10], [7.2, 28, -5], [8.5, 28, -10], [10, 28, -8], [11.5, 18, 0], [13, 18, -2], [14.5, 20, -5],
+  [16, 20, -3], [17.5, 24, -12], [19, 24, -12], [20.5, 22, -12], [22, 20, -5], [23.5, 20, 0], [25, 20, 10], [26, 18, 30],
+  [27, 20, 22], [28, 22, 4], [29, 22, -8], [30, 22, -3], [31, 22, -8], [32, 22, -5], [33, 22, -3], [34, 20, -5], [34.8, 16, 0], [35.2, 16, 0],
+].map(([t, col, tilt]) => [t, col, Math.max(-48, Math.min(8, tilt - 1.2 * col))]);
+
+function snackAt(t) {
+  const v = SNACK_VIDEO;
+  if (t <= v[0][0]) return v[0].slice(1);
+  for (let i = 1; i < v.length; i++) if (t <= v[i][0]) {
+    const f = (t - v[i - 1][0]) / (v[i][0] - v[i - 1][0]);
+    return [v[i - 1][1] + (v[i][1] - v[i - 1][1]) * f, v[i - 1][2] + (v[i][2] - v[i - 1][2]) * f];
+  }
+  return v[v.length - 1].slice(1);
+}
+const SNACK_STEPS = [[0, 3, '01 사용자 인식'], [3, 9, '02 관심 유도'], [9, 14, '03 사료 접근'], [14, 20, '04 간식 기대'], [20, 27, '05 간식 먹기'], [27, 35.2, '06 작별 인사']];
+function snackSteps() {
+  return SNACK_STEPS.map(([a, b, name]) => {
+    const mid = SNACK_VIDEO.filter(([t]) => t > a && t < b).map(([t, c, h]) => [+(t - a).toFixed(3), c, h]);
+    const [c0, h0] = snackAt(a), [c1, h1] = snackAt(b);
+    return { name, duration: +(b - a).toFixed(3), keys: [[0, c0, h0], ...mid, [+(b - a).toFixed(3), c1, h1]] };
+  });
+}
+
 const SCENARIOS = [
   { name: '시나리오1 휴식', steps: [
     { name: '01 사용자 인식', duration: 3, keys: WAKE },
@@ -24,14 +52,7 @@ const SCENARIOS = [
     { name: '05 깊은 교감', duration: 4, keys: [k(0, 25, -34), k(1, 35, -40), k(2.5, 35, -40, 6), k(3, 35, -40, -6), k(3.5, 35, -40, 6), k(4, 35, -40)] },
     { name: '06 놀이 마무리', duration: 3, keys: [k(0, 35, -40), k(0.75, 28, -30), k(1.2, 28, -24), k(1.7, 28, -32), k(2.2, 28, -24), k(3, 25, -34)] },
   ] },
-  { name: '시나리오3 간식주기', steps: [
-    { name: '01 사용자 인식', duration: 3, keys: WAKE },
-    { name: '02 관심 유도', duration: 3, keys: [k(0, 25, -34), k(0.75, 25, -34, 12), k(1.5, 25, -34, -12), k(2.25, 25, -34, 8), k(3, 25, -34)] },
-    { name: '03 사료 접근', duration: 3, keys: [k(0, 25, -34), k(0.5, 27, -30, 15), k(1, 27, -30, -15), k(1.5, 27, -30, 15), k(2, 27, -30, -15), k(3, 26, -30)] },
-    { name: '04 간식 기대', duration: 3, keys: [k(0, 26, -30), k(1, 35, -40), k(2, 35, -40, 3), k(3, 35, -40)] },
-    { name: '05 간식 먹기', duration: 5, keys: [k(0, 35, -40), k(0.5, 32, -20), k(1, 32, -34), k(1.5, 32, -20), k(2, 32, -34), k(2.5, 32, -20), k(3, 32, -34), k(4, 28, -30, 0, 3), k(5, 26, -34)] },
-    { name: '06 작별 인사', duration: 4, keys: [k(0, 26, -34), k(0.5, 26, -34, 15, 5), k(1.5, 26, -34, -15, -5), k(2.5, 26, -34, 15, 5), k(3.5, 25, -34), k(4, 25, -34)] },
-  ] },
+  { name: '시나리오3 간식주기 (영상)', interp: 'linear', steps: snackSteps() },
 ];
 
 const whole = SCENARIOS.map((s) => {
@@ -41,9 +62,9 @@ const whole = SCENARIOS.map((s) => {
     st.keys.forEach((kk, j) => { if (i > 0 && j === 0) return; keys.push([kk[0] + t0, ...kk.slice(1)]); });
     t0 += st.duration;
   });
-  return { name: s.name, duration: t0, keys, markers };
+  return { name: s.name, duration: t0, keys, markers, interp: s.interp };
 });
-const steps = SCENARIOS.flatMap((s) => s.steps.map((st) => ({ name: `${s.name} · ${st.name}`, duration: st.duration, keys: st.keys })));
+const steps = SCENARIOS.flatMap((s) => s.steps.map((st) => ({ name: `${s.name} · ${st.name}`, duration: st.duration, keys: st.keys, interp: s.interp })));
 
 const BASIC = [
   { name: '숨쉬기', duration: 4, keys: [[0, 0, 0, 0], [2, 5, -6, 0], [4, 0, 0, 0]] },
