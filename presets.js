@@ -24,6 +24,35 @@ function sequenceNeck(keys) {
   return out;
 }
 
+/* 키 사이를 속도가 끊기지 않게 잇는다(단조 3차 보간, 오버슈트 없음) — 0.1초 간격으로 샘플링한다.
+   기둥→헤드로 쪼갠 구간처럼 멈췄다 출발하는 곳은 자연스럽게 서서히 가속/감속된다. */
+function pchipResample(keys, dt = 0.1) {
+  const n = keys.length;
+  if (n < 3) return keys;
+  const T = keys.map((x) => x[0]);
+  const chans = [1, 2, 3, 4].map((c) => {
+    const y = keys.map((x) => x[c] ?? 0), h = [], d = [];
+    for (let i = 0; i < n - 1; i++) { h[i] = T[i + 1] - T[i]; d[i] = h[i] > 1e-9 ? (y[i + 1] - y[i]) / h[i] : 0; }
+    const m = new Array(n).fill(0);
+    for (let i = 1; i < n - 1; i++) {
+      if (d[i - 1] * d[i] <= 0) m[i] = 0;
+      else { const w1 = 2 * h[i] + h[i - 1], w2 = h[i] + 2 * h[i - 1]; m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i]); }
+    }
+    return { y, m };
+  });
+  const out = [], total = Math.round((T[n - 1] - T[0]) / dt);
+  let seg = 0;
+  for (let i = 0; i <= total; i++) {
+    const t = i === total ? T[n - 1] : +(T[0] + i * dt).toFixed(3);
+    while (seg < n - 2 && t > T[seg + 1] + 1e-9) seg++;
+    const h = T[seg + 1] - T[seg], sN = h > 1e-9 ? Math.max(0, Math.min(1, (t - T[seg]) / h)) : 0;
+    const s2 = sN * sN, s3 = s2 * sN;
+    const h00 = 2 * s3 - 3 * s2 + 1, h10 = s3 - 2 * s2 + sN, h01 = -2 * s3 + 3 * s2, h11 = s3 - s2;
+    out.push([t, ...chans.map(({ y, m }) => h00 * y[seg] + h10 * h * m[seg] + h01 * y[seg + 1] + h11 * h * m[seg + 1])]);
+  }
+  return out;
+}
+
 /* ───── 시나리오 (스토리보드): 단계별 키는 t=0이 이전 단계의 끝 포즈와 같도록 맞춘다 ───── */
 const WAKE = [k(0, 0, 0), k(1.2, 14, -20), k(2.2, 27, -37), k(3, 25, -34)];
 
@@ -43,22 +72,14 @@ const TICKLE_SECTIONS = [
   [14, 22, '04 손 떼면 · 바디 좌우 흔들기'], [22, 39, '05 뒤로 최대한 젖히기 · 헤드 앞뒤'], [39, 49.2, '06 제자리 · 헤드 끄덕'],
 ];
 function tickleMergedSteps() {
-  const base = videoKeys(TICKLE_BASE);
-  const at = (t) => {
-    if (t <= base[0][0]) return base[0].slice(1);
-    for (let i = 1; i < base.length; i++) if (t <= base[i][0]) {
-      const f = (t - base[i - 1][0]) / (base[i][0] - base[i - 1][0]);
-      return [base[i - 1][1] + (base[i][1] - base[i - 1][1]) * f, base[i - 1][2] + (base[i][2] - base[i - 1][2]) * f];
-    }
-    return base[base.length - 1].slice(1);
-  };
+  const base = pchipResample(videoKeys(TICKLE_BASE));   // 0.1초 격자, 속도가 이어지는 곡선
   const wave = (t, a, period) => Math.sin((2 * Math.PI * (t - a)) / period);
   const env = (t, a, b, r = 0.5) => Math.max(0, Math.min(1, (t - a) / r, (b - t) / r));   // 양 끝을 부드럽게 줄이는 포락선
   const keys = [];
   const N = Math.round(49.2 * 10);
   for (let i = 0; i <= N; i++) {
     const t = +(i / 10).toFixed(3);
-    let [col, head] = at(t), sw = 0, body = 0;
+    let [col, head] = base[i].slice(1, 3), sw = 0, body = 0;
     sw += 5 * wave(t, 4, 1.0) * env(t, 4.2, 7.8);                                   // 02 헤드 좌우 5°
     { const phi = (2 * Math.PI * (t - 8.8)) / 1.7, e = env(t, 8.8, 12.2);             // 03 목 돌리기 2바퀴: 앞→옆→뒤→옆 (앞뒤 끄덕임 + 좌우 갸웃을 90° 어긋나게)
       head += 10 * Math.cos(phi) * e; sw += 15 * Math.sin(phi) * e; }
@@ -87,22 +108,14 @@ const SNACK_VIDEO = [
    0.1초 간격으로 구워서 만든다. 키: [t, 기둥, 머리, 스위블, 몸통] */
 const SNACK_SECTIONS = [[0, 3, '01 사용자 바라보기 · 기둥 올리기'], [3, 9, '02 헤드 좌우 탐색'], [9, 14, '03 까딱까딱 · 이건 뭐지'], [14, 20, '04 고개 · 허리 최대로'], [20, 25, '05 씹기'], [25, 27, '06 만족'], [27, 35.2, '07 기분 좋은 까딱']];
 function snackMergedSteps() {
-  const base = videoKeys(SNACK_VIDEO);
-  const at = (t) => {
-    if (t <= base[0][0]) return base[0].slice(1);
-    for (let i = 1; i < base.length; i++) if (t <= base[i][0]) {
-      const f = (t - base[i - 1][0]) / (base[i][0] - base[i - 1][0]);
-      return [base[i - 1][1] + (base[i][1] - base[i - 1][1]) * f, base[i - 1][2] + (base[i][2] - base[i - 1][2]) * f];
-    }
-    return base[base.length - 1].slice(1);
-  };
+  const base = pchipResample(videoKeys(SNACK_VIDEO));   // 0.1초 격자, 속도가 이어지는 곡선
   const bell = (t, a, b) => (t <= a || t >= b ? 0 : Math.sin((Math.PI * (t - a)) / (b - a)));
   const wave = (t, a, period) => Math.sin((2 * Math.PI * (t - a)) / period);
   const keys = [];
   const N = Math.round(35.2 * 10);
   for (let i = 0; i <= N; i++) {
     const t = +(i / 10).toFixed(3);
-    let [col, head] = at(t), sw = 0, body = 0;
+    let [col, head] = base[i].slice(1, 3), sw = 0, body = 0;
     if (t >= 4 && t <= 7) sw += -18 * wave(t, 4, 3) * Math.min(1, bell(t, 4, 7) * 2.2);                // 02 좌우 탐색
     if (t > 9.5 && t < 13.5) { const e = bell(t, 9.5, 13.5); sw += 10 * wave(t, 9.5, 0.9) * e; head += 3 * wave(t, 9.5, 0.9) * e; } // 03 까딱
     if (t >= 14.5 && t <= 19.5) col += 5 * bell(t, 14.5, 19.5);                                          // 04 허리를 최대로 세움
@@ -140,7 +153,7 @@ const whole = SCENARIOS.map((s) => {
 });
 
 
-const seq = (items) => items.map((d) => ({ ...d, keys: sequenceNeck(d.keys) }));
+const seq = (items) => items.map((d) => ({ ...d, keys: pchipResample(sequenceNeck(d.keys)) }));
 
 export const PRESET_GROUPS = [
   { label: '시나리오', items: seq(whole) },

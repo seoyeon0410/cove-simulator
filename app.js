@@ -328,6 +328,70 @@ function importClips() {
   });
 }
 
+/* 헤드가 하부 폼 안으로 파고들지 않게 한다.
+   하부 폼은 수직축 대칭이라, 반지름별 윗면 높이(프로파일)를 만들어 두고 헤드 외피(상판·쿠션·하부판)의 점들이
+   그 아래로 파고드는 깊이를 잰다. 파고들면 헤드 각도를 가장 적게 바꿔서 빼내고,
+   보정값은 키 사이에서 급하게 변하지 않도록 퍼뜨려 부드럽게 한다. 접힌 기본 자세(헤드가 폼에 얹힌 상태)는 기준으로 허용한다. */
+let collisionCache = null;
+function collisionData() {
+  if (collisionCache?.model === S.model) return collisionCache;
+  S.model.updateMatrixWorld(true);
+  const shell = [], foam = [];
+  const shellNames = ['새_헤드_하부판', '새_쿠션', '새_헤드_상판'];
+  const sample = (o, max) => {
+    const p = o.geometry.attributes.position, stride = Math.max(1, Math.floor(p.count / max)), pts = [];
+    for (let i = 0; i < p.count; i += stride) pts.push(new THREE.Vector3().fromBufferAttribute(p, i));
+    return pts;
+  };
+  let foamMesh = null;
+  S.model.traverse((o) => {
+    if (!o.isMesh) return;
+    if (shellNames.includes(o.name)) shell.push({ mesh: o, pts: sample(o, 1500) });
+    if (o.name === '새_하부_폼') foamMesh = o;
+  });
+  // 폼 윗면 프로파일 (1mm 단위 반지름)
+  const box = new THREE.Box3().setFromObject(foamMesh, true), c = box.getCenter(new THREE.Vector3());
+  const prof = new Float32Array(160).fill(-Infinity), v = new THREE.Vector3(), p = foamMesh.geometry.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i).applyMatrix4(foamMesh.matrixWorld);
+    const r = Math.min(159, Math.floor(Math.hypot(v.x - c.x, v.z - c.z) * 1000));
+    if (v.y > prof[r]) prof[r] = v.y;
+  }
+  return (collisionCache = { model: S.model, shell, prof, cx: c.x, cz: c.z });
+}
+const _hp = new THREE.Vector3();
+function headPenetration() {
+  const { shell, prof, cx, cz } = collisionData();
+  S.model.updateMatrixWorld(true);
+  let worst = 0;
+  for (const { mesh, pts } of shell) for (const q of pts) {
+    _hp.copy(q).applyMatrix4(mesh.matrixWorld);
+    const r = Math.floor(Math.hypot(_hp.x - cx, _hp.z - cz) * 1000);
+    if (r >= prof.length) continue;
+    const pen = prof[r] - _hp.y;
+    if (pen > worst) worst = pen;
+  }
+  return worst;
+}
+function clearHeadFromBody(keys, applyPose4) {
+  for (const [i, o] of S.nodes) { const r = S.rest.get(i); o.position.fromArray(r.p); o.quaternion.fromArray(r.q); o.scale.fromArray(r.s); }
+  const tol = headPenetration() + 0.0005;          // 기본 자세에서 이미 닿아 있는 만큼은 허용
+  const fix = keys.map(([, a, b, c = 0, d = 0]) => {
+    applyPose4(a, b, c, d);
+    if (headPenetration() <= tol) return 0;
+    for (let k = 1; k <= 40; k++) for (const sgn of [-1, 1]) {   // 가장 작은 보정부터, 같으면 고개를 드는(−) 쪽 먼저
+      applyPose4(a, b + sgn * k, c, d);
+      if (headPenetration() <= tol) return sgn * k;
+    }
+    return 0;
+  });
+  const n = fix.length, W = 3;
+  const wide = fix.map((_, i) => { let best = 0; for (let j = Math.max(0, i - W); j <= Math.min(n - 1, i + W); j++) if (Math.abs(fix[j]) > Math.abs(best)) best = fix[j]; return best; });
+  const soft = wide.map((_, i) => { let s = 0, c = 0; for (let j = Math.max(0, i - W); j <= Math.min(n - 1, i + W); j++) { s += wide[j]; c++; } return s / c; });
+  (window.__headFix ||= []).push({ n, tol: +tol.toFixed(4), corrected: fix.filter((x) => x).length, maxFix: Math.max(0, ...fix.map(Math.abs)) });
+  return keys.map(([, , b], i) => b + soft[i]);
+}
+
 /* 프리셋: [시간, 기둥°, 머리°, 갸웃°, 몸통°] 키 목록 → 클립 (기본 포즈 기준 상대 각도, IK_타겟은 머리 끝에 맞춰 계산) */
 function buildPresetClip(def) {
   const clip = newClipData(def.name, def.duration);
@@ -344,7 +408,12 @@ function buildPresetClip(def) {
     o.quaternion.copy(q); o.position.fromArray(rest.p); o.scale.fromArray(rest.s);
   };
   const snap = (idx) => { const o = S.nodes.get(idx); return { p: o.position.toArray(), q: o.quaternion.toArray(), s: o.scale.toArray() }; };
-  for (const [t, a, b, c = 0, d = 0] of def.keys) {
+  const heads = clearHeadFromBody(def.keys, (a, b, c, d) => {
+    pose(ids.col, a, axisZ); pose(ids.head, b, axisZ); if (ids.tilt !== undefined) pose(ids.tilt, c, axisY);
+    if (ids.body !== undefined) pose(ids.body, d, axisY);
+  });
+  for (const [ki, [t, a, , c = 0, d = 0]] of def.keys.entries()) {
+    const b = heads[ki];
     pose(ids.col, a, axisZ); pose(ids.head, b, axisZ); if (ids.tilt !== undefined) pose(ids.tilt, c, axisY);
     if (ids.body !== undefined) pose(ids.body, d, axisY);
     if (target !== undefined) { const o = S.nodes.get(target), rest = S.rest.get(target); o.quaternion.fromArray(rest.q); o.scale.fromArray(rest.s); syncTarget(); }
@@ -357,7 +426,7 @@ function buildPresetClip(def) {
 }
 
 /* ───────────── 저장 / 실행취소 ───────────── */
-const SAVE_VERSION = 4; // 저장 형식/기본 클립 구성이 바뀌면 올린다 (이전 자동 저장은 새 기본 클립으로 교체됨)
+const SAVE_VERSION = 7; // 저장 형식/기본 클립 구성이 바뀌면 올린다 (이전 자동 저장은 새 기본 클립으로 교체됨)
 let hist = [], hi = -1;
 const storeKey = () => `cove-anim:${S.glb.name}:${S.nodes.size}`;
 function loadSaved() {
