@@ -204,3 +204,9 @@ h3{color:#c9c2b5}
 /* 클립 목록의 묶음 제목 */
 #clipList .grp{margin:10px 0 2px;font-size:11px;letter-spacing:.06em;color:var(--dim)}
 #clipList .grp:first-child{margin-top:0}
+
+/* 편집 패널(오른쪽): 평소에는 숨기고, 헤더의 [편집] 버튼으로 펼친다. 펼쳐져 있는 동안 버튼이 강조 색으로 표시된다. */
+body:not(.edit-open){grid-template-columns:minmax(0,46fr) minmax(0,54fr)}
+body:not(.edit-open) #right{display:none}
+body:not(.edit-open) footer{grid-column:2/3}
+#btnEdit{font-weight:600}

@@ -105,7 +105,7 @@ new ResizeObserver(resizeView).observe(viewEl);
 
 function fitCamera() {
   const { center, size } = fitInfo;
-  camera.position.copy(center).add(new THREE.Vector3(1, 0.6, 1).normalize().multiplyScalar(size * 1.5));
+  camera.position.copy(center).add(new THREE.Vector3(1, 0.6, 1).normalize().multiplyScalar(size * 1.85));
   camera.near = size / 200; camera.far = size * 200;
   camera.updateProjectionMatrix();
   orbit.target.copy(center);
@@ -1209,6 +1209,17 @@ $('#clipReimport').onclick = () => {
   S.clip = 0; S.selKeys.clear(); applyPose(0); S.time = 0; refreshClipUI(); snapshot();
 };
 
+// 편집 패널 열기/닫기 (선택을 기억한다). 열려 있으면 [편집] 버튼이 강조 색, 닫혀 있으면 평범한 버튼
+function setEditOpen(on) {
+  document.body.classList.toggle('edit-open', on);
+  $('#btnEdit').classList.toggle('on', on);
+  $('#btnEdit').textContent = on ? '✎ 편집 중' : '✎ 편집';
+  try { localStorage.setItem('cove-edit-open', on ? '1' : '0'); } catch { /* 무시 */ }
+  requestAnimationFrame(() => { resizeView(); resizeTL(); });
+}
+$('#btnEdit').onclick = () => setEditOpen(!document.body.classList.contains('edit-open'));
+let editWas = false; try { editWas = localStorage.getItem('cove-edit-open') === '1'; } catch { /* 무시 */ }
+setEditOpen(editWas);
 $('#btnOpen').onclick = () => $('#fileGlb').click();
 $('#fileGlb').onchange = (e) => openFile(e.target.files[0]);
 async function openFile(f) {
