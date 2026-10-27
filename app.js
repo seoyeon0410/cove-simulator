@@ -454,6 +454,7 @@ function clearHeadFromBody(keys, applyPose4) {
 function buildPresetClip(def) {
   const clip = newClipData(def.name, def.duration);
   if (def.markers) clip.markers = def.markers;
+  if (def.group) clip.group = def.group;
   if (def.eyes) clip.eyes = def.eyes.map(([t, e, gx = 0, gy = 0]) => ({ t, e, gx, gy }));
   const ids = { col: S.boneIdx.find((i) => nodeName(i) === '기둥'), head: S.boneIdx.find((i) => nodeName(i) === '머리'), tilt: S.boneIdx.find((i) => /갸웃/.test(nodeName(i))) };
   let rootObj = S.nodes.get(ids.col);
@@ -485,7 +486,7 @@ function buildPresetClip(def) {
 }
 
 /* ───────────── 저장 / 실행취소 ───────────── */
-const SAVE_VERSION = 14; // 저장 형식/기본 클립 구성이 바뀌면 올린다 (이전 자동 저장은 새 기본 클립으로 교체됨)
+const SAVE_VERSION = 19; // 저장 형식/기본 클립 구성이 바뀌면 올린다 (이전 자동 저장은 새 기본 클립으로 교체됨)
 let hist = [], hi = -1;
 const storeKey = () => `cove-anim:${S.glb.name}:${S.nodes.size}`;
 function loadSaved() {
@@ -656,6 +657,10 @@ function frame(now) {
   if (S.playing) {
     const c = curClip();
     S.time += dt;
+    if (S.sceneLoop && c.markers?.length) {            // 장면 반복: 지금 보고 있는 장면의 끝에 닿으면 그 장면의 처음으로
+      const [a0, b0] = sceneRange(sceneIndex(S.time - dt));
+      if (S.time >= b0) S.time = a0 + (S.time - b0);
+    }
     if (S.time >= c.duration) {
       if (S.loop) S.time %= c.duration; else { S.time = c.duration; stopPlay(); }
     }
@@ -734,7 +739,10 @@ function refreshClipUI() {
   sel.value = S.clip;
   const list = $('#clipList');
   list.innerHTML = '';
+  let lastGroup = null;
   S.clips.forEach((c, i) => {                    // 시나리오를 한눈에 보이는 목록으로 (select는 숨겨 두고 값만 동기화)
+    const g = c.group || '시나리오';
+    if (g !== lastGroup) { lastGroup = g; const h = document.createElement('div'); h.className = 'grp'; h.textContent = g; list.appendChild(h); }
     const el = document.createElement('button');
     el.className = 'clip-item' + (i === S.clip ? ' on' : '');
     el.innerHTML = '<span class="nm"></span><span class="du"></span>';
@@ -748,17 +756,40 @@ function refreshClipUI() {
   refreshAll();
 }
 function refreshAll() { buildTree(); updateProps(); updateTimeLabel(); drawTL(); }
+/* 장면(구간) 버튼: 버튼을 누르면 그 장면으로 가서 바로 움직인다(그 장면만 반복). [전체]를 누르면 처음부터 끝까지 이어서 재생한다. */
+const sceneMarks = () => curClip()?.markers || [];
+const sceneIndex = (t) => { let i = 0; sceneMarks().forEach((m, k) => { if (t >= m.t - 1e-6) i = k; }); return i; };
+const sceneRange = (i) => { const m = sceneMarks(); return [m[i].t, i + 1 < m.length ? m[i + 1].t : curClip().duration]; };
+function gotoScene(i) {
+  const m = sceneMarks(); if (!m.length) return;
+  setTime(m[Math.max(0, Math.min(m.length - 1, i))].t);
+}
+function stepScene(dir) {
+  const i = sceneIndex(S.time);
+  if (dir < 0) gotoScene(S.time - sceneRange(i)[0] > 0.5 ? i : i - 1); else gotoScene(i + 1);
+}
+function playScene(i) { S.sceneLoop = true; gotoScene(i); if (!S.playing) togglePlay(); updateSceneTag(); }
+function playAll() { S.sceneLoop = false; setTime(0); if (!S.playing) togglePlay(); updateSceneTag(); }
+let chipKey = '';
 function updateSceneTag() {
-  const el = $('#sceneTag'), marks = curClip()?.markers;
+  const el = $('#sceneTag'), marks = sceneMarks();
   if (!el) return;
-  if (!marks?.length) { el.hidden = true; return; }
-  let i = 0; marks.forEach((m, k) => { if (S.time >= m.t - 1e-6) i = k; });
+  if (!marks.length) { el.hidden = true; return; }
+  const i = sceneIndex(S.time), byName = curClip().group === '표정';
   el.hidden = false;
-  el.querySelector('.no').textContent = `장면 ${i + 1} / ${marks.length}`;
-  const dots = el.querySelector('.dots');
-  if (dots.children.length !== marks.length) dots.innerHTML = marks.map(() => '<i></i>').join('');
-  [...dots.children].forEach((d, k) => { d.className = k === i ? 'on' : (k < i ? 'done' : ''); });
-  el.querySelector('.nm').textContent = marks[i].label.replace(/^\d+\s*/, '');
+  const box = $('#sceneChips'), key = `${S.clip}|${marks.length}`;
+  if (chipKey !== key) {                                   // 칩은 클립이 바뀔 때만 다시 만든다
+    chipKey = key; box.innerHTML = '';
+    const all = document.createElement('button'); all.className = 'chip all'; all.textContent = '전체'; all.onclick = playAll; box.appendChild(all);
+    marks.forEach((m, k) => {
+      const b = document.createElement('button'); b.className = 'chip'; b.textContent = byName ? m.label : String(k + 1);
+      b.onclick = () => playScene(k); box.appendChild(b);
+    });
+  }
+  box.children[0].classList.toggle('on', !S.sceneLoop);
+  [...box.children].slice(1).forEach((b, k) => { b.classList.toggle('on', S.sceneLoop && k === i); b.classList.toggle('cur', k === i); });
+  const mk = marks[i];
+  el.querySelector('.desc').textContent = mk.desc || mk.label;
 }
 function updateTimeLabel() {
   updateSceneTag();
@@ -1313,6 +1344,8 @@ addEventListener('keydown', (e) => {
     case ' ': e.preventDefault(); togglePlay(); break;
     case 'ArrowLeft': e.preventDefault(); stopPlay(); setTime(S.time - (e.shiftKey ? 10 : 1) / fps()); break;
     case 'ArrowRight': e.preventDefault(); stopPlay(); setTime(S.time + (e.shiftKey ? 10 : 1) / fps()); break;
+    case '[': stepScene(-1); break;
+    case ']': stepScene(1); break;
     case 'Home': setTime(0); break;
     case 'End': setTime(curClip().duration); break;
     case 'i': case 'I': insertKeys(e.shiftKey); break;

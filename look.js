@@ -52,6 +52,11 @@ const HAPPY = ['00000000', '00000000', '00011000', '00100100', '01000010', '0000
 const CHEVRON = ['00000000', '01100000', '00011000', '00001100', '00011000', '01100000', '00000000', '00000000']; // >
 const SAD_L = ['00000000', '00000011', '00001110', '00111100', '01110000', '00000000', '00000000', '00000000'];   // 바깥쪽이 처진 눈
 const SPARK = (off) => OVAL.map((r, y) => r.split('').map((v, x) => (off.some(([oy, ox]) => oy === y && ox === x) ? '0' : v)).join(''));
+const STAR = ['00011000', '00011000', '11111111', '01111110', '00111100', '01100110', '01000010', '00000000'];        // ★
+const STAR_SM = ['00000000', '00000000', '00011000', '00111100', '00011000', '00000000', '00000000', '00000000'];   // 작게 반짝
+const BIG = ['00000000', '00111100', '01001110', '01011110', '01111110', '01111110', '00111100', '00000000'];       // 하이라이트가 있는 큰 눈
+const withDrop = (rows, y, x) => rows.map((r, i) => (i === y ? r.split('').map((v, j) => (j === x ? '1' : v)).join('') : r));
+const TEAR = (frame) => ({ L: frame < 2 ? withDrop(OVAL, 6 + frame, 2) : OVAL, R: frame < 2 ? withDrop(OVAL, 6 + frame, 5) : OVAL });   // 바깥쪽으로 눈물 방울이 또르르
 const PATTERNS = {
   '뜬 눈': OVAL,
   '감은 눈': ['00000000', '00000000', '00000000', '01000010', '00111100', '00000000', '00000000', '00000000'],   // ∪ 편안히 감은 눈
@@ -64,6 +69,11 @@ const PATTERNS = {
   '신난 눈': { L: CHEVRON, R: mirror(CHEVRON) },                                                                  // > <
   '윙크': { L: OVAL, R: HAPPY },                                                                                  // 한쪽 눈만 ^
   '편안한 눈': ['00000000', '00000011', '00000110', '00001100', '00011000', '00110000', '00000000', '00000000'],   // ↗ 느긋한 눈
+  '별 눈': { frames: [STAR, STAR, STAR_SM], step: 0.3 },                                                          // ★ 반짝반짝
+  '초롱 눈': BIG,                                                                                                  // 하이라이트가 있는 초롱초롱한 큰 눈
+  '눈물 눈': { frames: [TEAR(0), TEAR(1), TEAR(2), TEAR(2)], step: 0.4 },                                          // 눈물 한 방울이 또르르
+  '점 눈': ['00000000', '00000000', '00000000', '00011000', '00011000', '00000000', '00000000', '00000000'],       // 동글동글 점 두 개
+  '또렷한 눈': ['00000000', '00111100', '01000010', '01011010', '01011010', '01000010', '00111100', '00000000'],   // ◎
 };
 export const EXPRESSIONS = Object.keys(PATTERNS);
 
@@ -120,7 +130,7 @@ function framePattern(name, gx, gy, stage, t) {
   const def = PATTERNS[name] || PATTERNS['뜬 눈'];
   let L, R;
   if (Array.isArray(def)) L = R = def;
-  else if (def.frames) { L = R = def.frames[Math.floor(t / def.step) % def.frames.length]; }
+  else if (def.frames) { const f = def.frames[Math.floor(t / def.step) % def.frames.length]; if (Array.isArray(f)) L = R = f; else { L = f.L; R = f.R; } }
   else { L = def.L; R = def.R; }
   if (name === '뜬 눈' && BLINK[stage]) L = R = BLINK[stage];
   return [shiftRows(L, gx, gy), shiftRows(R, gx, gy)];
