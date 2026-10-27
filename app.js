@@ -784,9 +784,9 @@ function updateSceneTag() {
   const box = $('#sceneChips'), key = `${S.clip}|${marks.length}`;
   if (chipKey !== key) {                                   // 칩은 클립이 바뀔 때만 다시 만든다
     chipKey = key; box.innerHTML = '';
-    const all = document.createElement('button'); all.className = 'chip all'; all.textContent = '전체'; all.onclick = playAll; box.appendChild(all);
+    const all = document.createElement('button'); all.className = 'chip all'; all.textContent = '▶ 전체'; all.onclick = playAll; box.appendChild(all);
     marks.forEach((m, k) => {
-      const b = document.createElement('button'); b.className = 'chip'; b.textContent = byName ? m.label : String(k + 1);
+      const b = document.createElement('button'); b.className = byName ? 'chip' : 'chip num'; b.textContent = byName ? m.label : String(k + 1);
       b.onclick = () => playScene(k); box.appendChild(b);
     });
   }
@@ -1260,8 +1260,7 @@ $('#clipReimport').onclick = () => {
 // 편집 패널 열기/닫기 (선택을 기억한다). 열려 있으면 [편집] 버튼이 강조 색, 닫혀 있으면 평범한 버튼
 function setEditOpen(on) {
   document.body.classList.toggle('edit-open', on);
-  $('#btnEdit').classList.toggle('on', on);
-  $('#btnEdit').textContent = on ? '✎ 편집 중' : '✎ 편집';
+  $('#editSw').checked = on;
   try { localStorage.setItem('cove-edit-open', on ? '1' : '0'); } catch { /* 무시 */ }
   requestAnimationFrame(() => { resizeView(); resizeTL(); });
 }
@@ -1274,7 +1273,7 @@ function setClipOpen(open) {
 $('#clipHead').onclick = () => setClipOpen($('#clipBody').classList.contains('closed'));
 let clipOpenSaved = true; try { clipOpenSaved = localStorage.getItem('cove-clip-open') !== '0'; } catch { /* 무시 */ }
 setClipOpen(clipOpenSaved);
-$('#btnEdit').onclick = () => setEditOpen(!document.body.classList.contains('edit-open'));
+$('#editSw').onchange = (e) => setEditOpen(e.target.checked);
 let editWas = false; try { editWas = localStorage.getItem('cove-edit-open') === '1'; } catch { /* 무시 */ }
 setEditOpen(editWas);
 $('#btnOpen').onclick = () => $('#fileGlb').click();

@@ -35,8 +35,6 @@ input[type=number]::-webkit-inner-spin-button{display:none}
 /* 체크박스 → 작은 점 */
 .check{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);white-space:nowrap;cursor:pointer;user-select:none}
 .check:has(input:checked){color:var(--text)}
-input[type=checkbox]{appearance:none;width:7px;height:7px;border-radius:50%;background:#5a564e;margin:0;cursor:pointer}
-input[type=checkbox]:checked{background:var(--accent)}
 
 /* 슬라이더 */
 input[type=range]{appearance:none;background:transparent;width:90px;height:16px;margin:0;cursor:pointer}
@@ -177,23 +175,29 @@ h3{color:#c9c2b5}
 .glass button.on{background:rgba(255,255,255,.95);color:#1f1a12;font-weight:700;box-shadow:inset 0 0 0 1px rgba(255,255,255,.9)}
 .glass .check{margin:0;padding:6px 10px;border-radius:var(--r-ctl);background:transparent;color:var(--g-dim);box-shadow:none;font-weight:500}
 .glass .check:has(input:checked){color:var(--g-text)}
-.glass input[type=checkbox]{background:rgba(43,38,32,.28)}
-.glass input[type=checkbox]:checked{background:var(--g-deep)}
-.glass .opac input[type=range]{width:84px}
+.glass .glass .glass .opac input[type=range]{width:84px}
 .glass input[type=range]::-webkit-slider-runnable-track{background:rgba(43,38,32,.2)}
 .glass input[type=range]::-webkit-slider-thumb{background:#fff}
 
 /* 현재 장면 카드 */
 
 
-/* 장면 버튼: 숫자(표정 모음은 표정 이름)를 누르면 그 장면이 바로 움직인다 — 버튼만 둥글게 */
-#sceneTag{position:absolute;left:14px;bottom:14px;z-index:3;flex-direction:column;align-items:stretch;gap:8px;padding:8px;max-width:calc(100% - 28px);pointer-events:auto}
+/* 장면 카드: 유리 위에 얇은 스텝 표시줄 — 동그란 번호가 이어진 선 위에 놓이고, 지금 장면만 채워진다 */
+#sceneTag{
+  position:absolute;left:14px;bottom:14px;z-index:3;flex-direction:column;align-items:stretch;gap:10px;
+  padding:12px 16px 14px;max-width:calc(100% - 28px);pointer-events:auto;
+}
 #sceneTag[hidden]{display:none}
-#sceneChips{display:flex;flex-wrap:wrap;gap:4px}
-#sceneChips .chip{padding:5px 12px;min-width:32px;font-size:12.5px;font-weight:600;border-radius:999px}
-#sceneChips .chip.cur:not(.on){box-shadow:inset 0 0 0 1px rgba(43,38,32,.35)}
-#sceneChips .chip.all{padding:5px 14px;color:var(--g-dim)}
-#sceneTag .desc{padding:0 6px 4px;font-size:15px;font-weight:700;color:#1f1a12;min-height:22px}
+#sceneChips{display:flex;flex-wrap:wrap;align-items:center;gap:6px 4px}
+#sceneChips .chip{height:22px;padding:0 10px;font-size:11px;font-weight:600;letter-spacing:.02em;color:rgba(43,38,32,.62);border-radius:999px;background:transparent;box-shadow:none;font-variant-numeric:tabular-nums}
+#sceneChips .chip.num{width:22px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center}
+#sceneChips .chip:hover{background:rgba(43,38,32,.08);color:#2b2620;box-shadow:none}
+#sceneChips .chip.cur:not(.on){color:#2b2620;box-shadow:inset 0 0 0 1.5px rgba(43,38,32,.45)}
+#sceneChips .chip.on{background:#e6cd96;color:#3b2412;box-shadow:inset 0 0 0 1px rgba(179,130,58,.55)}
+#sceneChips .chip.all{margin-right:8px;padding:0 11px;background:rgba(43,38,32,.07);color:#2b2620;position:relative}
+#sceneChips .chip.all::after{content:"";position:absolute;right:-8px;top:4px;bottom:4px;width:1px;background:rgba(43,38,32,.2)}
+#sceneChips .chip.all.on{background:#e6cd96;color:#3b2412;box-shadow:inset 0 0 0 1px rgba(179,130,58,.55)}
+#sceneTag .desc{padding:0 2px;font-size:16px;font-weight:600;letter-spacing:-.01em;color:#2b2620;min-height:22px}
 /* 클립 목록의 묶음 제목 */
 #clipList .grp{margin:10px 0 2px;font-size:11px;letter-spacing:.06em;color:var(--dim)}
 #clipList .grp:first-child{margin-top:0}
@@ -236,3 +240,34 @@ body:not(.edit-open) footer{grid-column:2/3}
 .sec-body{display:grid;grid-template-rows:1fr;transition:grid-template-rows .28s ease}
 .sec-body.closed{grid-template-rows:0fr}
 .sec-inner{overflow:hidden;min-height:0}
+
+/* 토글 스위치: 둥근 트랙 안에 ON/OFF 글자와 동그란 손잡이. 켜지면 샴페인색으로 채워지고 손잡이가 오른쪽으로 간다. 안쪽 그늘/하이라이트로만 입체감을 낸다(바깥 그림자 없음). */
+input[type=checkbox]{
+  --sw-off:#2b2a27; --sw-off-text:#7b766c; --sw-on-a:#ead4a0; --sw-on-b:#cfb274; --sw-on-text:#6a5226;
+  appearance:none;-webkit-appearance:none;position:relative;flex:none;width:46px;height:22px;margin:0;border-radius:999px;cursor:pointer;
+  background:var(--sw-off);box-shadow:inset 0 2px 4px rgba(0,0,0,.45),inset 0 -1px 0 rgba(255,255,255,.08);
+  transition:background .2s;
+}
+input[type=checkbox]::after{                                   /* ON / OFF 글자 */
+  content:"OFF";position:absolute;right:7px;top:50%;transform:translateY(-50%);
+  font:700 8.5px/1 var(--font);letter-spacing:.06em;color:var(--sw-off-text);
+}
+input[type=checkbox]::before{                                  /* 손잡이 */
+  content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;
+  background:linear-gradient(180deg,#f6f3ec,#cfcac0);box-shadow:inset 0 1px 0 #fff,inset 0 -1px 0 rgba(0,0,0,.18),0 0 0 1px rgba(0,0,0,.12);
+  transition:left .2s;z-index:1;
+}
+input[type=checkbox]:checked{background:linear-gradient(180deg,var(--sw-on-b),var(--sw-on-a));box-shadow:inset 0 2px 4px rgba(90,60,15,.4),inset 0 -1px 0 rgba(255,255,255,.25)}
+input[type=checkbox]:checked::after{content:"ON";right:auto;left:7px;color:var(--sw-on-text)}
+input[type=checkbox]:checked::before{left:26px}
+input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.glass input[type=checkbox]{--sw-off:rgba(43,38,32,.16);--sw-off-text:rgba(43,38,32,.45);--sw-on-a:#dcb86c;--sw-on-b:#c39a52;--sw-on-text:rgba(255,255,255,.9)}
+.glass input[type=checkbox]{box-shadow:inset 0 2px 3px rgba(43,38,32,.28),inset 0 -1px 0 rgba(255,255,255,.5)}
+.glass input[type=checkbox]:checked{box-shadow:inset 0 2px 3px rgba(90,60,15,.35),inset 0 -1px 0 rgba(255,255,255,.3)}
+.check{gap:9px}
+/* 헤더의 편집 스위치 */
+header .edit-switch{margin-right:4px;font-weight:600;color:var(--text)}
+#timeLabel{min-width:84px}
+#transport{gap:4px}
+#transport .check{margin:0 2px}
+#zoom{width:56px}

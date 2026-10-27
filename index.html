@@ -23,7 +23,7 @@
   <button id="btnUndo" title="실행 취소 (Ctrl+Z)">↶</button>
   <button id="btnRedo" title="다시 실행 (Ctrl+Shift+Z)">↷</button>
   <span class="sep"></span>
-  <button id="btnEdit" title="본을 숫자로 조작하고 키프레임을 찍는 편집 패널 열기/닫기">✎ 편집</button>
+  <label class="check edit-switch" id="editLabel" title="본을 숫자로 조작하고 키프레임을 찍는 편집 패널 열기/닫기"><input type="checkbox" id="editSw"> 편집</label>
   <button id="btnOpen">GLB 열기</button>
   <button id="btnSaveProj">프로젝트 저장</button>
   <button id="btnLoadProj">프로젝트 불러오기</button>
@@ -36,8 +36,8 @@
 <main>
   <aside id="left">
     <section id="clipSec">
-      <button class="sec-head" id="clipHead" aria-expanded="true" title="시나리오 목록 접기/펼치기">
-        <span class="lbl">시나리오</span><span class="cur"></span><span class="chev">▾</span>
+      <button class="sec-head" id="clipHead" aria-expanded="true" title="동작 목록 접기/펼치기">
+        <span class="lbl">동작 목록</span><span class="cur"></span><span class="chev">▾</span>
       </button>
       <div class="sec-body" id="clipBody"><div class="sec-inner">
       <div id="clipList"></div>
