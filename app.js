@@ -485,7 +485,7 @@ function buildPresetClip(def) {
 }
 
 /* ───────────── 저장 / 실행취소 ───────────── */
-const SAVE_VERSION = 10; // 저장 형식/기본 클립 구성이 바뀌면 올린다 (이전 자동 저장은 새 기본 클립으로 교체됨)
+const SAVE_VERSION = 11; // 저장 형식/기본 클립 구성이 바뀌면 올린다 (이전 자동 저장은 새 기본 클립으로 교체됨)
 let hist = [], hi = -1;
 const storeKey = () => `cove-anim:${S.glb.name}:${S.nodes.size}`;
 function loadSaved() {

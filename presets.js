@@ -74,7 +74,7 @@ const TICKLE_SECTIONS = [
 function tickleMergedSteps() {
   const base = pchipResample(videoKeys(TICKLE_BASE));   // 0.1초 격자, 속도가 이어지는 곡선
   const wave = (t, a, period) => Math.sin((2 * Math.PI * (t - a)) / period);
-  const env = (t, a, b, r = 0.5) => Math.max(0, Math.min(1, (t - a) / r, (b - t) / r));   // 양 끝을 부드럽게 줄이는 포락선
+  const env = (t, a, b, r = 0.5) => { const x = Math.max(0, Math.min(1, (t - a) / r, (b - t) / r)); return x * x * (3 - 2 * x); };   // 양 끝을 부드럽게(속도가 이어지게) 줄이는 포락선
   const keys = [];
   const N = Math.round(49.2 * 10);
   for (let i = 0; i <= N; i++) {
@@ -180,7 +180,21 @@ const whole = SCENARIOS.map((s) => {
 });
 
 
-const seq = (items) => items.map((d) => ({ ...d, keys: pchipResample(sequenceNeck(d.keys)) }));
+/* 반복 재생할 때 끝 자세에서 처음(접힌) 자세로 튀지 않도록, 끝에 "제자리로" 구간을 붙여 처음 자세로 부드럽게 돌아온다. */
+const TAIL = 1.8;
+function withTail(d) {
+  const first = d.keys[0], last = d.keys[d.keys.length - 1];
+  if ([1, 2, 3, 4].every((c) => Math.abs((last[c] ?? 0) - (first[c] ?? 0)) < 0.5)) return d;
+  const end = last[0];
+  return {
+    ...d,
+    duration: +(d.duration + TAIL).toFixed(3),
+    keys: [...d.keys, [+(end + TAIL).toFixed(3), first[1], first[2], first[3] ?? 0, first[4] ?? 0]],
+    markers: d.markers ? [...d.markers, { t: end, label: '마무리 · 제자리로' }] : d.markers,
+    eyes: d.eyes ? [...d.eyes, [+(end + 0.9).toFixed(2), '졸린 눈']] : d.eyes,
+  };
+}
+const seq = (items) => items.map((d) => { const t = withTail(d); return { ...t, keys: pchipResample(sequenceNeck(t.keys)) }; });
 
 export const PRESET_GROUPS = [
   { label: '시나리오', items: seq(whole) },
