@@ -163,11 +163,7 @@ h3{color:#c9c2b5}
 #treeSec{border-top:1px solid var(--line);margin-top:4px}
 
 /* 뷰포트 위 UI: 글래스모피즘 — 밝은 반투명 유리 + 강한 블러, 뒤의 색이 은은하게 번져 보인다 */
-#viewWrap{background:
-  radial-gradient(520px 380px at 12% 8%, rgba(255,214,170,.55), transparent 70%),
-  radial-gradient(560px 420px at 92% 88%, rgba(176,204,214,.5), transparent 70%),
-  radial-gradient(420px 320px at 88% 6%, rgba(255,246,226,.9), transparent 70%),
-  #e9e3d8}
+#viewWrap{background:#e9e3d8}
 .glass{
   --g-text:#2b2620; --g-dim:rgba(43,38,32,.58); --g-deep:#b3823a;
   display:flex;align-items:center;gap:2px;padding:5px;border-radius:var(--r-panel);
