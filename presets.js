@@ -64,7 +64,30 @@ const whole = SCENARIOS.map((s) => {
   });
   return { name: s.name, duration: t0, keys, markers, interp: s.interp };
 });
+whole.push(promptSnack());
 const steps = SCENARIOS.flatMap((s) => s.steps.map((st) => ({ name: `${s.name} · ${st.name}`, duration: st.duration, keys: st.keys, interp: s.interp })));
+
+
+/* 간식 프롬프트: 사용자를 바라보며 기둥을 올림 → 헤드 좌우 탐색 → 까딱이며 "이건 뭐지" → 고개·허리를 최대로 세움 →
+   헤드를 위아래로 흔들며 씹기 → 만족 → 고개를 양옆으로 까딱이며 기분 좋은 행동. 키: [t, 기둥, 머리, 스위블, 몸통] */
+function promptSnack() {
+  const sections = [];
+  const sec = (name, keys) => sections.push({ name, keys });
+  sec('01 사용자 바라보기 · 기둥 올리기', [k(0, 0, 0), k(1.2, 16, -20), k(2.2, 34, -41), k(3, 32, -38)]);
+  sec('02 헤드 좌우 탐색', [k(4, 32, -38, -18, -4), k(5.5, 32, -38, 18, 4), k(6.5, 32, -38, 0, 0)]);
+  sec('03 까딱까딱 · 이건 뭐지', [k(7, 30, -33, 10), k(7.5, 30, -30, -10), k(8, 30, -33, 10), k(8.5, 30, -30, -10), k(9.2, 31, -36, 0)]);
+  sec('04 고개 · 허리 최대로 세우기', [k(10.2, 35, -44, 0, 0), k(11.2, 35, -44)]);
+  const chew = [];
+  for (let i = 0; i < 8; i++) chew.push(k(12 + i * 0.4, 34, i % 2 ? -44 : -30, 0, 0));
+  sec('05 씹기', chew);
+  sec('06 만족', [k(16, 31, -38), k(17, 30, -36, 0, 0), k(18, 31, -38)]);
+  const happy = [];
+  for (let i = 0; i < 6; i++) happy.push(k(18.8 + i * 0.7, 31 + (i % 2 ? 0 : 2), -38, i % 2 ? -22 : 22, i % 2 ? -6 : 6));
+  sec('07 기분 좋은 까딱', [...happy, k(23.4, 28, -36), k(25, 25, -34)]);
+  const keys = sections.flatMap((x) => x.keys);
+  const markers = sections.map((x) => ({ t: x.keys[0][0], label: x.name }));
+  return { name: '간식 (프롬프트)', duration: 25, keys, markers };
+}
 
 const BASIC = [
   { name: '숨쉬기', duration: 4, keys: [[0, 0, 0, 0], [2, 5, -6, 0], [4, 0, 0, 0]] },
