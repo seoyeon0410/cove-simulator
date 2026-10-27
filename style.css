@@ -219,3 +219,8 @@ body:not(.edit-open) footer{grid-column:2/3}
 
 /* 클립 이름 바꾸기 입력칸 */
 .clip-item input.rename{width:100%;min-width:0;padding:3px 6px;font-size:13px;background:var(--bg);color:var(--text);box-shadow:inset 0 0 0 1px var(--accent)}
+
+/* 클립 도구 버튼: 2×2로 크고 읽기 쉽게 */
+#clipSec .tools{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:0}
+#clipSec .tools button{padding:8px 6px;font-size:12.5px;font-weight:500}
+#clipSec .tools #clipDel{color:#e7b4a6}
