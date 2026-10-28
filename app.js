@@ -880,7 +880,7 @@ function limitToRobot() {
     o.quaternion.fromArray(rest.q).multiply(new THREE.Quaternion().setFromAxisAngle(JOINT_AXES[j], lim[j] * D2R));
   });
 }
-/* [로봇 동기] 켜져 있으면 웹에서 재생하는 동안 0.1초마다 지금 보이는 자세(로봇 한계 적용)를 로봇에 보낸다. 눈은 로봇에 있는 4가지만 따라간다. */
+/* [로봇 동기] 켜져 있으면 웹에서 재생하는 동안 0.1초마다 지금 보이는 자세(로봇 한계 적용)를 로봇에 보낸다. 눈도 따라간다(뜬·감은·웃는·하트는 로봇 기본 이름, 나머지는 로봇에 넣은 한글 표정 이름). */
 const ROBOT_EYES = { '뜬 눈': 'idle', '감은 눈': 'closed', '웃는 눈': 'happy', '하트 눈': 'heart' };
 let syncEye = '';
 setInterval(() => {
@@ -891,7 +891,7 @@ setInterval(() => {
   for (const j of ['neck', 'head', 'tilt', 'body']) f[j] = jointDeg(clip, ids[j], JOINT_AXES[j], t);
   const l = limitFrames([f], { tiltSign: +($('#rpTiltSign')?.value || 1) })[0], r1 = (v) => Math.round(v * 10) / 10;
   robot.pose({ neck: r1(l.neck), head: r1(l.head), tilt: r1(l.tilt), body: r1(l.body) });
-  const cur = (clip.eyes || []).filter((x) => x.t <= S.time + 1e-6).pop(), mode = cur && !cur.eL && !cur.eR && ROBOT_EYES[cur.e];
+  const cur = (clip.eyes || []).filter((x) => x.t <= S.time + 1e-6).pop(), mode = cur && !cur.eL && !cur.eR && (ROBOT_EYES[cur.e] || cur.e);   // 4가지는 로봇 기본 이름, 나머지는 로봇에 넣은 표정 이름(한글) 그대로
   if (mode && mode !== syncEye) { syncEye = mode; robot.eyes(mode); }
 }, 100);
 function sampleJoints(clip) {                                 // 0.1초 간격 {t, neck, head, tilt, body}
@@ -956,7 +956,8 @@ function updateSceneTag() {
     const all = document.createElement('button'); all.className = 'chip all'; all.textContent = '▶ 전체'; all.onclick = playAll; box.appendChild(all);
     marks.forEach((m, k) => {
       const b = document.createElement('button'); b.className = byName ? 'chip' : 'chip num'; b.textContent = byName ? m.label : String(k + 1);
-      b.onclick = () => playScene(k); box.appendChild(b);
+      b.onclick = () => { playScene(k); if (byName && robot.connected) robot.eyes(ROBOT_EYES[m.label] || m.label, true); };   // 표정 버튼은 연결된 로봇의 눈도 바로 바꾼다
+      box.appendChild(b);
     });
   }
   box.children[0].classList.toggle('on', !S.sceneLoop);

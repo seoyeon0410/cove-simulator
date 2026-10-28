@@ -41,7 +41,7 @@ export const robot = {
   },
   // 첫 전송만 기록에 남기고 이후는 조용히 보낸다
   pose(deg) { if (!sync) return false; const first = !poseLogged; poseLogged = true; return send({ cmd: 'pose', deg }, { quiet: !first }); },
-  eyes(mode) { return send({ cmd: 'eyes', mode }, { quiet: true }); },
+  eyes(mode, loud = false) { return send({ cmd: 'eyes', mode }, { quiet: !loud }); },
   openPanel() { openPanel(); },
 };
 let poseLogged = false;
