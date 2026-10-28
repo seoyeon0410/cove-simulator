@@ -5,6 +5,7 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { PRESET_GROUPS } from './presets.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { applyLook, buildEyes, EXPRESSIONS } from './look.js';
+import { initRobotPanel } from './robot.js';
 import { Muxer, ArrayBufferTarget } from './lib/mp4-muxer.mjs';
 
 const $ = (s) => document.querySelector(s);
@@ -1426,6 +1427,7 @@ addEventListener('keydown', (e) => {
 });
 
 /* ───────────── 시작 ───────────── */
+initRobotPanel();
 resizeView();
 requestAnimationFrame(frame);
 (async () => {

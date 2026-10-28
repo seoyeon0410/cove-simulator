@@ -23,6 +23,8 @@
   <button id="btnUndo" title="실행 취소 (Ctrl+Z)">↶</button>
   <button id="btnRedo" title="다시 실행 (Ctrl+Shift+Z)">↷</button>
   <span class="sep"></span>
+  <button id="robotStop" class="danger" title="연결된 로봇을 바로 정지 (그 자리에서 힘 유지)" hidden>■ 정지</button>
+  <button id="btnRobot" title="실제 로봇과 연결해서 씬 실행·정지·표정 보내기"><span class="dot" id="robotDot"></span> 로봇 연결</button>
   <label class="check edit-switch" id="editLabel" title="본을 숫자로 조작하고 키프레임을 찍는 편집 패널 열기/닫기"><input type="checkbox" id="editSw"> 편집</label>
   <button id="btnOpen">GLB 열기</button>
   <button id="btnSaveProj">프로젝트 저장</button>
@@ -163,6 +165,53 @@
   <div class="row"><button id="mdClose">닫기</button><button id="mdGo" class="primary">PNG 저장</button></div>
 </dialog>
 <div id="toast"></div>
+<aside id="robotPanel" hidden>
+  <div class="rp-head"><strong>로봇 연결</strong><span class="rp-state" id="rpState">연결 안 됨</span><button id="rpClose" title="닫기">✕</button></div>
+  <div class="rp-body">
+    <section>
+      <h4>연결</h4>
+      <label class="rp-row"><span>브로커 주소</span><input type="text" id="rpUrl" spellcheck="false" placeholder="ws://192.168.1.232:9001"></label>
+      <label class="rp-row"><span>로봇 이름</span><input type="text" id="rpRobot" spellcheck="false" placeholder="robot2"></label>
+      <div class="rp-btns"><button id="rpConnect" class="primary">연결</button></div>
+      <p class="rp-hint" id="rpHint">부스 공유기(HIDELAB_ROBOWORLD)에 연결된 PC에서 사용하세요. 이 화면은 연결하기 전까지 로봇에 아무 명령도 보내지 않아요.</p>
+    </section>
+    <section>
+      <h4>안전</h4>
+      <div class="rp-btns two">
+        <button id="rpStop" class="danger">■ 정지</button>
+        <button id="rpStopAll" class="danger">■ 전체 정지</button>
+      </div>
+      <div class="rp-btns two">
+        <button id="rpTorqueOff">토크 해제</button>
+        <button id="rpTorqueOn">토크 켜기</button>
+      </div>
+      <label class="check rp-ok"><input type="checkbox" id="rpSafe"> 로봇 주변을 확인했어요 (움직이는 명령 허용)</label>
+    </section>
+    <section>
+      <h4>씬 실행</h4>
+      <div class="rp-scenes" id="rpScenes"><span class="dim">연결하면 로봇의 씬 목록이 나타나요</span></div>
+      <div class="rp-row2"><input type="text" id="rpSceneName" spellcheck="false" placeholder="씬 이름 직접 입력"><button id="rpRun">실행</button></div>
+    </section>
+    <section>
+      <h4>눈 표정</h4>
+      <div class="rp-chips" id="rpEyes"></div>
+    </section>
+    <section>
+      <h4>센서 반응 모드</h4>
+      <div class="rp-chips" id="rpModes"></div>
+    </section>
+    <section>
+      <h4>로봇 상태</h4>
+      <div class="rp-status" id="rpStatus"><span class="dim">상태 정보가 아직 없어요</span></div>
+    </section>
+    <section>
+      <h4>기록</h4>
+      <div class="rp-log" id="rpLog"></div>
+      <div class="rp-btns"><button id="rpReload" title="로봇이 씬 파일을 다시 읽게 해요">씬 파일 다시 읽기</button></div>
+    </section>
+  </div>
+</aside>
+<script src="lib/mqtt.min.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
