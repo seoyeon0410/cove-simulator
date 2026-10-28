@@ -198,6 +198,12 @@ function loadGLB(buffer, name) {
       setupIK();
       const saved = loadSaved();
       S.clips = saved?.clips || PRESET_GROUPS[0].items.map(buildPresetClip);
+      // 없앤 표정("초롱 눈")이 저장된 클립에 남아 있으면 바꿔 준다: 표정 모음은 새로 만들고, 나머지는 '반짝 눈'으로 대체
+      if (saved) S.clips = S.clips.map((c) => {
+        if (c.group === '표정' && (c.markers || []).some((m) => m.label === '초롱 눈')) { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); return d ? buildPresetClip(d) : c; }
+        (c.eyes || []).forEach((k) => { for (const f of ['e', 'eL', 'eR']) if (k[f] === '초롱 눈') k[f] = '반짝 눈'; });
+        return c;
+      });
       S.clip = Math.min(saved?.clip || 0, Math.max(S.clips.length - 1, 0));
       if (!S.clips.length) S.clips = [newClipData('새 클립')];
       S.time = 0;
