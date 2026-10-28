@@ -10,7 +10,7 @@ const EYES = [['idle', '뜬 눈'], ['blink', '깜빡'], ['look_left', '왼쪽 �
 const MODES = [['rest', '휴식'], ['tickle', '간지럽히기'], ['snack', '간식'], ['track', '따라보기'], ['off', '반응 끄기']];
 
 let client = null, st = 'off', lastStatus = 0, torqueArm = 0, statusTimer = null;
-let scenes = [], current = null, sig = '';
+let scenes = [], current = null, sig = '', sync = false;
 const listeners = new Set();
 const isOn = () => st === 'online' || st === 'live';
 // 동작 목록 같은 다른 화면이 쓸 수 있게: 연결 여부 · 씬 목록 · 지금 도는 씬이 바뀔 때만 알린다
@@ -30,9 +30,28 @@ export const robot = {
     if (!$('#rpSafe').checked) { openPanel(); const l = $('#rpSafe').closest('label'); l.classList.remove('flash'); void l.offsetWidth; l.classList.add('flash'); return 'unsafe'; }
     return send({ cmd: 'scene', name }) ? 'ok' : 'offline';
   },
-  stop() { return send({ cmd: 'stop' }); },
+  stop() { setSync(false); return send({ cmd: 'stop' }); },
+  get sync() { return sync; },
+  // 웹 재생을 로봇이 실시간으로 따라 하게 한다(pose 명령, 10Hz). 연결 + "주변 확인" 체크가 있어야 켜진다.
+  setSync(on) {
+    if (!on) { setSync(false); return 'ok'; }
+    if (!isOn()) { openPanel(); return 'offline'; }
+    if (!$('#rpSafe').checked) { openPanel(); const l = $('#rpSafe').closest('label'); l.classList.remove('flash'); void l.offsetWidth; l.classList.add('flash'); return 'unsafe'; }
+    setSync(true); return 'ok';
+  },
+  // 첫 전송만 기록에 남기고 이후는 조용히 보낸다
+  pose(deg) { if (!sync) return false; const first = !poseLogged; poseLogged = true; return send({ cmd: 'pose', deg }, { quiet: !first }); },
+  eyes(mode) { return send({ cmd: 'eyes', mode }, { quiet: true }); },
   openPanel() { openPanel(); },
 };
+let poseLogged = false;
+function setSync(on) {
+  if (sync === on) return;
+  sync = on; poseLogged = false;
+  $('#robotSync').classList.toggle('on', on);
+  log('sys', on ? '웹 재생을 로봇이 따라 해요 (실시간 동기)' : '실시간 동기를 껐어요');
+  notify();
+}
 function openPanel() { $('#robotPanel').hidden = false; $('#btnRobot').classList.add('on'); }
 
 const cfg = () => ({ url: $('#rpUrl').value.trim() || DEFAULT_URL, robot: $('#rpRobot').value.trim() || 'robot2' });
@@ -50,12 +69,12 @@ function log(kind, text) {
 
 function setState(next, msg) {
   st = next;
-  if (next !== 'online' && next !== 'live') $('#rpSafe').checked = false;   // 연결이 끊기면 안전 확인도 다시 받는다
+  if (next !== 'online' && next !== 'live') { $('#rpSafe').checked = false; setSync(false); }   // 연결이 끊기면 안전 확인도 다시 받는다
   const names = { off: '연결 안 됨', connecting: '연결 중…', online: '연결됨', live: '상태 수신 중', error: '오류' };
   $('#rpState').textContent = msg || names[next];
   $('#rpState').dataset.s = next;
   $('#robotDot').dataset.s = next;
-  $('#robotStop').hidden = !(next === 'online' || next === 'live');
+  $('#robotStop').hidden = $('#robotSync').hidden = !(next === 'online' || next === 'live');
   $('#rpConnect').textContent = next === 'off' || next === 'error' ? '연결' : '연결 해제';
   updateEnabled();
   notify();
@@ -63,6 +82,7 @@ function setState(next, msg) {
 
 function updateEnabled() {
   const on = st === 'online' || st === 'live', safe = $('#rpSafe').checked;
+  if (!(on && safe)) setSync(false);
   ['rpStop', 'rpStopAll', 'rpTorqueOff', 'rpTorqueOn', 'rpReload'].forEach((id) => ($('#' + id).disabled = !on));
   // 움직이는 명령은 연결 + 주변 확인 체크가 모두 있어야 한다
   document.querySelectorAll('#rpScenes button, #rpModes button, #rpRun').forEach((b) => (b.disabled = !(on && safe)));
@@ -70,11 +90,11 @@ function updateEnabled() {
   $('#rpSceneName').disabled = !(on && safe);
 }
 
-function send(obj, { all = false } = {}) {
-  if (!client || !client.connected) { log('err', '연결되어 있지 않아요'); return false; }
+function send(obj, { all = false, quiet = false } = {}) {
+  if (!client || !client.connected) { if (!quiet) log('err', '연결되어 있지 않아요'); return false; }
   const t = all ? 'booth/all/cmd' : topic('cmd');
   client.publish(t, JSON.stringify(obj), { qos: 0 });
-  log('out', `${all ? '[전체] ' : ''}${JSON.stringify(obj)}`);
+  if (!quiet) log('out', `${all ? '[전체] ' : ''}${JSON.stringify(obj)}`);
   return true;
 }
 
@@ -156,9 +176,9 @@ export function initRobotPanel({ exportFiles } = {}) {
   $('#btnRobot').onclick = () => { panel.hidden = !panel.hidden; $('#btnRobot').classList.toggle('on', !panel.hidden); };
   $('#rpClose').onclick = () => { panel.hidden = true; $('#btnRobot').classList.remove('on'); };
   $('#rpConnect').onclick = connect;
-  const stop = () => send({ cmd: 'stop' });
+  const stop = () => { setSync(false); send({ cmd: 'stop' }); };
   $('#rpStop').onclick = stop; $('#robotStop').onclick = stop;
-  $('#rpStopAll').onclick = () => send({ cmd: 'stop' }, { all: true });
+  $('#rpStopAll').onclick = () => { setSync(false); send({ cmd: 'stop' }, { all: true }); };
   $('#rpTorqueOn').onclick = () => send({ cmd: 'torque', on: true });
   $('#rpTorqueOff').onclick = () => {                         // 머리가 처질 수 있어서 두 번 눌러야 실행
     const b = $('#rpTorqueOff');
@@ -171,6 +191,10 @@ export function initRobotPanel({ exportFiles } = {}) {
   $('#rpSceneName').onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') $('#rpRun').click(); };
   $('#rpUrl').onkeydown = $('#rpRobot').onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') connect(); };
   $('#rpSafe').onchange = updateEnabled;
+  $('#robotSync').onclick = () => {
+    const r = robot.setSync(!sync);
+    if (r === 'unsafe') log('err', '"로봇 주변을 확인했어요"를 체크하면 동기를 켤 수 있어요');
+  };
   $('#rpExport').onclick = () => {
     if (!exportFiles) return;
     const { blob, lines } = exportFiles({ tiltSign: +$('#rpTiltSign').value, bodySign: +$('#rpBodySign').value });

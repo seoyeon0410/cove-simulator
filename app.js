@@ -8,6 +8,8 @@ import { applyLook, buildEyes, EXPRESSIONS } from './look.js';
 import { initRobotPanel, robot } from './robot.js';
 import { linkFor, restrictTo, robotOnlyGroups, webSceneName } from './robotmap.js';
 import { csvOf, report, zip, limitFrames, STEP } from './robotexport.js';
+import { eyesJson } from './roboteyes.js';
+import { initEyeDock, EYE_MIME } from './eyedock.js';
 import { Muxer, ArrayBufferTarget } from './lib/mp4-muxer.mjs';
 
 const $ = (s) => document.querySelector(s);
@@ -189,6 +191,8 @@ function loadGLB(buffer, name) {
         },
         resetPose: () => { for (const [i, o] of S.nodes) { const r = S.rest.get(i); o.position.fromArray(r.p); o.quaternion.fromArray(r.q); o.scale.fromArray(r.s); } },
       });
+      eyes.onFrame = (pl, pr) => eyeDock.draw(pl, pr);
+      if (eyes.rows) eyeDock.draw(...eyes.rows);
       applyOpacity();
 
       setupIK();
@@ -297,14 +301,18 @@ function eyeKeyAt(t) {
 function applyEyes(t) {
   if (!eyes) return;
   const k = eyeKeyAt(t);
-  eyes.show(k.e, k.gx || 0, k.gy || 0, t);
+  eyes.show(k.e, k.gx || 0, k.gy || 0, t, k.eL || '', k.eR || '');
   const sel = $('#eyeSel');
   if (document.activeElement !== sel && sel.value !== k.e) sel.value = k.e;
+  eyeDock.setLabel(k);
 }
-function setEyeKey(t, e) {
+// 눈 키를 만들거나 고친다. patch = { e } (양쪽, 눈별 선택은 지워짐) | { eL } | { eR } (그 눈만 따로, '' 이면 양쪽과 같게)
+function setEyeKey(t, patch) {
   const clip = curClip(); clip.eyes ||= [];
-  const ex = clip.eyes.find((x) => Math.abs(x.t - t) < EPS);
-  if (ex) ex.e = e; else { clip.eyes.push({ t, e, gx: 0, gy: 0 }); clip.eyes.sort((a, b) => a.t - b.t); }
+  let ex = clip.eyes.find((x) => Math.abs(x.t - t) < EPS);
+  if (!ex) { const cur = eyeKeyAt(t); ex = { t, e: cur.e, gx: 0, gy: 0 }; if (cur.eL) ex.eL = cur.eL; if (cur.eR) ex.eR = cur.eR; clip.eyes.push(ex); clip.eyes.sort((x, y) => x.t - y.t); }
+  if ('e' in patch) { ex.e = patch.e; delete ex.eL; delete ex.eR; }
+  for (const side of ['eL', 'eR']) if (side in patch) { if (patch[side]) ex[side] = patch[side]; else delete ex[side]; }
 }
 
 function applyPose(t) {
@@ -872,6 +880,20 @@ function limitToRobot() {
     o.quaternion.fromArray(rest.q).multiply(new THREE.Quaternion().setFromAxisAngle(JOINT_AXES[j], lim[j] * D2R));
   });
 }
+/* [로봇 동기] 켜져 있으면 웹에서 재생하는 동안 0.1초마다 지금 보이는 자세(로봇 한계 적용)를 로봇에 보낸다. 눈은 로봇에 있는 4가지만 따라간다. */
+const ROBOT_EYES = { '뜬 눈': 'idle', '감은 눈': 'closed', '웃는 눈': 'happy', '하트 눈': 'heart' };
+let syncEye = '';
+setInterval(() => {
+  if (!robot.sync) { syncEye = ''; return; }
+  if (!S.model || !S.playing) return;
+  if (!jointCache || jointCache.model !== S.model) jointCache = { model: S.model, ids: jointIds() };
+  const clip = curClip(), t = Math.min(S.time + 0.1, clip.duration), ids = jointCache.ids, f = { t };      // 0.1초 앞의 자세 (로봇이 0.15초에 걸쳐 따라오므로)
+  for (const j of ['neck', 'head', 'tilt', 'body']) f[j] = jointDeg(clip, ids[j], JOINT_AXES[j], t);
+  const l = limitFrames([f], { tiltSign: +($('#rpTiltSign')?.value || 1) })[0], r1 = (v) => Math.round(v * 10) / 10;
+  robot.pose({ neck: r1(l.neck), head: r1(l.head), tilt: r1(l.tilt), body: r1(l.body) });
+  const cur = (clip.eyes || []).filter((x) => x.t <= S.time + 1e-6).pop(), mode = cur && !cur.eL && !cur.eR && ROBOT_EYES[cur.e];
+  if (mode && mode !== syncEye) { syncEye = mode; robot.eyes(mode); }
+}, 100);
 function sampleJoints(clip) {                                 // 0.1초 간격 {t, neck, head, tilt, body}
   const ids = jointIds(), out = [], n = Math.round(clip.duration / STEP);
   for (let i = 0; i <= n; i++) {
@@ -882,20 +904,23 @@ function sampleJoints(clip) {                                 // 0.1초 간격 {
   return out;
 }
 function buildRobotExport(opt) {
-  const used = new Set(), files = [], lines = [], scenes = [];
+  const used = new Set(), files = [], lines = [], scenes = [], sceneEyes = {};
   S.clips.forEach((c, i) => {
     let name = webSceneName(c.name, i); while (used.has(name)) name += '_' + i; used.add(name);
     const fr = sampleJoints(c), rp = report(fr, opt);
     files.push({ name: `motions/${name}.csv`, text: csvOf(fr, opt) });
+    if (c.eyes?.length) sceneEyes[name] = c.eyes.map(({ t, e, gx, eL, eR }) => ({ t, e, gx, eL, eR }));
     scenes.push(`    "${name}": [{"motion": "${name}"}],   # ${c.name}`);
     const cut = ['neck', 'head', 'tilt', 'body'].filter((j) => rp.secs[j] > 0).map((j) => `${{ neck: '기둥', head: '머리', tilt: '갸웃', body: '몸통' }[j]} ${rp.secs[j].toFixed(1)}초(최대 ${rp.diff[j].toFixed(0)}°)`);
     lines.push({ name: c.name, file: name, sec: +c.duration.toFixed(1), cut, fast: rp.fast, acc: rp.acc });
   });
+  files.push({ name: 'cove_eyes.json', text: JSON.stringify(eyesJson(sceneEyes), null, 1) });
   files.push({ name: 'cove_scenes_web.py', text: `# 웹 모션(motions/*.csv)을 재생하는 씬. cove_scenes.py 에 합치거나 이름만 옮겨 쓰세요.\n# 재생 확인용: python3 cove_cmd.py web_rest\nWEB_SCENES = {\n${scenes.join('\n')}\n}\n` });
   files.push({ name: '읽어보세요.txt', text: [
     '웹 모션 → 로봇 파일', '',
     '1) motions/*.csv 를 로봇의 ~/robot-booth/motions/ 에 넣습니다. (첫 줄 t,id1,id2,id3,id4 · 0.1초 간격 · 절대 틱)',
     '2) cove_scenes_web.py 의 씬을 cove_scenes.py 에 추가합니다. (저장하면 자동 반영)',
+    '   (눈 표정: cove_eyes.json — 4줄 비트맵 16종 + 깜빡임 + 씬별 표정 시간표. 로봇 기준 좌우입니다)',
     '3) 웹 동작 목록에서 "▶ 웹과 같은 모션"을 누르면 실행됩니다.', '',
     `갸웃(ID4) 방향: 웹 tilt + 일 때 ID4 ${opt.tiltSign > 0 ? '+' : '-'}  /  몸통(ID1) 방향: 웹 body + 일 때 ID1 ${opt.bodySign > 0 ? '+' : '-'}  (확정 전이면 check_tilt / check_body 결과로 맞추세요)`, '',
     '로봇 한계로 잘린 구간', ...lines.map((l) => `- ${l.name} (${l.file}, ${l.sec}초): ${l.cut.length ? l.cut.join(', ') : '잘림 없음'}`),
@@ -1049,7 +1074,7 @@ function drawTL() {
         ctx.fillStyle = C('--accent'); ctx.fillRect(l, y + 4, 2, RH - 8);
         ctx.save(); ctx.beginPath(); ctx.rect(l, y, Math.max(2, x1 - l - 1), RH); ctx.clip();
         ctx.fillStyle = C('--text'); ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle';
-        ctx.fillText(k.e + ((k.gx || k.gy) ? ` (${k.gx || 0},${k.gy || 0})` : ''), l + 6, y + RH / 2);
+        ctx.fillText((k.eL || k.eR ? `왼 ${k.eL || k.e} · 오 ${k.eR || k.e}` : k.e) + ((k.gx || k.gy) ? ` (${k.gx || 0},${k.gy || 0})` : ''), l + 6, y + RH / 2);
         ctx.restore();
       });
     }
@@ -1118,6 +1143,9 @@ function drawTL() {
   }
   ctx.fillStyle = C('--panel'); ctx.fillRect(0, 0, LW, RULER);
   if (marks.length) { ctx.fillStyle = C('--dim'); ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle'; ctx.fillText('장면', 12, RUL + BAND / 2); }
+
+  // 눈 그림을 끌어 놓을 위치 표시
+  if (TL.dropT != null) { const dx = t2x(TL.dropT); ctx.strokeStyle = C('--accent'); ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(dx, 0); ctx.lineTo(dx, h); ctx.stroke(); ctx.setLineDash([]); }
 
   // 플레이헤드
   const px = t2x(S.time);
@@ -1331,10 +1359,33 @@ $('#rpTiltSign')?.addEventListener('change', () => applyPose(S.time));
 $('#opacity').oninput = applyOpacity;
 $('#camReset').onclick = fitCamera;
 EXPRESSIONS.forEach((n) => $('#eyeSel').add(new Option(n, n)));
+// 양쪽 표정 선택 / 눈 만들기 독 (눈 그림을 끌어 놓기)
 $('#eyeSel').onchange = (e) => {                 // 선택한 표정을 현재 시간의 눈 키로 기록한다
   if (!curClip()) return;
-  setEyeKey(S.time, e.target.value); applyEyes(S.time); snapshot();
+  setEyeKey(S.time, { e: e.target.value }); applyEyes(S.time); snapshot();
 };
+const eyeDock = initEyeDock({
+  getKey: () => eyeKeyAt(S.time),
+  edit: (patch) => { if (!curClip()) return; setEyeKey(S.time, patch); applyEyes(S.time); snapshot(); },
+  toast,
+});
+// 타임라인의 눈 줄에 눈 그림을 끌어 놓으면 그 시간(0.1초 단위)부터 바뀐다
+const eyeRowAt = (y) => { const top = TL.RULER + (curClip()?.markers?.length ? BAND : 0) + tlRows().length * TL.RH - TL.sy; return y >= top && y < top + TL.RH; };
+tlc.addEventListener('dragover', (e) => {
+  if (!e.dataTransfer.types.includes(EYE_MIME)) return;
+  const r = tlc.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  if (x < TL.LW || !eyeRowAt(y)) { if (TL.dropT != null) { TL.dropT = null; drawTL(); } return; }
+  e.preventDefault(); TL.dropT = Math.max(0, Math.min(curClip().duration, Math.round(x2t(x) * 10) / 10)); drawTL();
+});
+tlc.addEventListener('dragleave', () => { if (TL.dropT != null) { TL.dropT = null; drawTL(); } });
+tlc.addEventListener('drop', (e) => {
+  const t = TL.dropT; TL.dropT = null;
+  let d = null; try { d = JSON.parse(e.dataTransfer.getData(EYE_MIME)); } catch { /* 무시 */ }
+  if (t == null || !d) { drawTL(); return; }
+  e.preventDefault();
+  if (d.e) setEyeKey(t, { e: d.e }); else if (d.eL) { setEyeKey(t, { e: d.eL }); setEyeKey(t, { eL: d.eL, eR: d.eR }); }
+  setTime(t); applyEyes(t); snapshot(); toast(`${t.toFixed(1)}초부터 눈이 바뀌어요`);
+});
 $('#btnKey').onclick = () => insertKeys(false);
 $('#btnKeyAll').onclick = () => insertKeys(true);
 $('#btnDelKey').onclick = deleteKeys;

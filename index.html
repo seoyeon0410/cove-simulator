@@ -23,6 +23,7 @@
   <button id="btnUndo" title="실행 취소 (Ctrl+Z)">↶</button>
   <button id="btnRedo" title="다시 실행 (Ctrl+Shift+Z)">↷</button>
   <span class="sep"></span>
+  <button id="robotSync" title="웹에서 재생하는 동작을 로봇이 실시간으로 따라 해요 (켜기 전에 주변을 확인하세요)" hidden>로봇 동기</button>
   <button id="robotStop" class="danger" title="연결된 로봇을 바로 정지 (그 자리에서 힘 유지)" hidden>■ 정지</button>
   <button id="btnRobot" title="실제 로봇과 연결해서 씬 실행·정지·표정 보내기"><span class="dot" id="robotDot"></span> 로봇 연결</button>
   <label class="check edit-switch" id="editLabel" title="본을 숫자로 조작하고 키프레임을 찍는 편집 패널 열기/닫기"><input type="checkbox" id="editSw"> 편집</label>
@@ -61,6 +62,28 @@
       <select id="clipSel" hidden></select>
     </div></div>
     </section>
+    <section id="eyeSec">
+      <button class="sec-head" id="eyeHead" aria-expanded="false" title="눈 그림을 끌어서 표정 만들기 (접기/펼치기)">
+        <span class="lbl">눈 만들기</span><span class="cur" id="eyeCur"></span><span class="chev">▾</span>
+      </button>
+      <div class="sec-body closed" id="eyeBody"><div class="sec-inner">
+        <div id="eyeDock">
+          <p class="ed-hint" title="타임라인 맨 아래 눈 줄에 놓으면 그 시간부터 표정이 바뀌어요">눈 그림을 끌어서 왼쪽·오른쪽 눈에 넣어요. 클릭하면 양쪽 눈, 타임라인의 눈 줄에 놓으면 그 시간부터 바뀌어요.</p>
+          <div class="ed-main">
+            <div class="ed-slots">
+              <div class="ed-slot" id="edSlotL" title="끌어서 넣기 · 이 눈을 다른 칸으로 끌어서 복사"><canvas width="96" height="96"></canvas><span class="lb">왼쪽 눈</span><span class="nm"></span></div>
+              <div class="ed-slot" id="edSlotR" title="끌어서 넣기 · 이 눈을 다른 칸으로 끌어서 복사"><canvas width="96" height="96"></canvas><span class="lb">오른쪽 눈</span><span class="nm"></span></div>
+            </div>
+            <div class="ed-btns">
+              <button id="edSwap" title="왼쪽·오른쪽 눈 바꾸기">좌우 바꾸기</button>
+              <button id="edReset" title="오른쪽 눈도 왼쪽 눈과 같게">양쪽 같게</button>
+              <button id="edSave" title="지금 두 눈 조합을 눈 목록에 저장">내 표정 저장</button>
+            </div>
+          </div>
+          <div class="ed-pal" id="edPal"></div>
+        </div>
+      </div></div>
+    </section>
     <section id="treeSec">
       <h3>본 / 노드</h3>
       <div id="tree"></div>
@@ -87,16 +110,19 @@
       </div>
       <span class="spacer"></span>
       <div class="glass">
-        <select id="eyeSel" title="눈 표정"></select>
+        <select id="eyeSel" title="눈 표정 (양쪽)"></select>
+        <button id="btnEyeMaker" title="눈 그림을 끌어서 표정 직접 만들기">눈 만들기</button>
         <span class="vr"></span>
         <label class="check opac">투명도 <input type="range" id="opacity" autocomplete="off" min="0.1" max="1" step="0.05" value="1"></label>
         <span class="vr"></span>
         <button id="camReset">카메라 리셋</button>
       </div>
     </div>
-    <div id="sceneTag" class="glass" hidden>
-      <div class="chips" id="sceneChips"></div>
-      <div class="desc"></div>
+    <div id="viewBottom">
+      <div id="sceneTag" class="glass" hidden>
+        <div class="chips" id="sceneChips"></div>
+        <div class="desc"></div>
+      </div>
     </div>
     <div id="drop">GLB 파일을 여기에 놓으세요</div>
   </div>

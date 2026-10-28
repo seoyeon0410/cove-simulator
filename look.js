@@ -74,12 +74,17 @@ const PATTERNS = {
   '눈물 눈': { frames: [TEAR(0), TEAR(1), TEAR(2), TEAR(2)], step: 0.4 },                                          // 눈물 한 방울이 또르르
   '점 눈': ['00000000', '00000000', '00000000', '00011000', '00011000', '00000000', '00000000', '00000000'],       // 동글동글 점 두 개
   '또렷한 눈': ['00000000', '00111100', '01000010', '01011010', '01011010', '01000010', '00111100', '00000000'],   // ◎
+  // 가로로 긴 눈 (8칸 폭을 다 쓴다)
+  '가로 눈': ['00000000', '00000000', '01111110', '11111111', '01111110', '00000000', '00000000', '00000000'],        // 납작한 타원 ⬬
+  '일자 눈': ['00000000', '00000000', '00000000', '01111110', '01111110', '00000000', '00000000', '00000000'],        // ▬ 가늘고 긴 눈
+  '반달 눈': ['00000000', '00000000', '11111111', '01111110', '00111100', '00000000', '00000000', '00000000'],        // 윗눈꺼풀이 평평한 느긋한 눈
+  '가로 웃는 눈': ['00000000', '00111100', '01000010', '10000001', '00000000', '00000000', '00000000', '00000000'],     // 넓게 웃는 ⌒
 };
 export const EXPRESSIONS = Object.keys(PATTERNS);
 
 // LED 한 칸마다 또렷한 동그란 점(밝은 중심 + 얇은 헤일로)을 찍고, 천 뒤에서 은은하게 번지도록 두 겹으로 합성한다.
 // 꺼진 칸은 아무것도 그리지 않는다(천 뒤라 보이지 않음).
-function drawPattern(canvas, rows) {
+export function drawPattern(canvas, rows) {
   const S = canvas.width, cell = S / 8, ctx = canvas.getContext('2d');
   const dots = document.createElement('canvas'); dots.width = dots.height = S;
   const g = dots.getContext('2d');
@@ -125,6 +130,17 @@ const shiftRows = (rows, gx, gy) => {
   }
   return out.map((r) => r.join(''));
 };
+// 눈 한쪽만 따로 고른 표정의 프레임 (side 0 = 보는 사람 기준 왼쪽 눈, 1 = 오른쪽 눈). 윙크는 어느 쪽에 골라도 그 눈이 윙크한다.
+function soloPattern(name, side, gx, gy, stage, t) {
+  const def = PATTERNS[name] || PATTERNS['뜬 눈'];
+  let f = def;
+  if (!Array.isArray(def) && def.frames) f = def.frames[Math.floor(t / def.step) % def.frames.length];
+  let rows = Array.isArray(f) ? f : name === '윙크' ? f.R : side === 0 ? f.L : f.R;
+  if (name === '뜬 눈' && BLINK[stage]) rows = BLINK[stage];
+  return shiftRows(rows, gx, gy);
+}
+// 팔레트용: 눈 한 개짜리 그림 (side 0/1 = 보는 사람 기준 왼쪽/오른쪽 눈)
+export const eyeRows = (name, side = 0, t = 0) => soloPattern(name, side, 0, 0, 0, t);
 // 반환: [보는 사람 기준 왼쪽 눈 프레임, 오른쪽 눈 프레임]
 function framePattern(name, gx, gy, stage, t) {
   const def = PATTERNS[name] || PATTERNS['뜬 눈'];
@@ -192,17 +208,23 @@ export function buildEyes(S, { setPose, resetPose }) {
   const api = {
     group,
     // 표정 이름·시선(도트 칸 수)·시각 t(깜빡임용)에 맞는 프레임을 그린다. 같은 프레임이면 다시 그리지 않는다.
-    show(name, gx = 0, gy = 0, t = 0) {
-      const def = PATTERNS[name];
-      const stage = name === '뜬 눈' ? blinkStage(t) : 0;
-      const frame = def && def.frames ? Math.floor(t / def.step) % def.frames.length : 0;
-      const key = `${name}|${gx}|${gy}|${stage}|${frame}`;
+    // nameL / nameR 를 주면 그 눈만 따로 그 표정으로 그린다 (없으면 name과 같음).
+    show(name, gx = 0, gy = 0, t = 0, nameL = '', nameR = '') {
+      const solo = !!(nameL || nameR);
+      const names = [nameL || name, nameR || name];
+      const stage = names.includes('뜬 눈') ? blinkStage(t) : 0;
+      const frames = names.map((n) => { const d = PATTERNS[n]; return d && d.frames ? Math.floor(t / d.step) % d.frames.length : 0; });
+      const key = `${solo ? names.join('/') : name}|${gx}|${gy}|${stage}|${frames.join(',')}`;
       if (key === lastKey) return;
       lastKey = key;
-      const [pl, pr] = framePattern(name, gx, gy, stage, t);
+      const [pl, pr] = solo ? [soloPattern(names[0], 0, gx, gy, stage, t), soloPattern(names[1], 1, gx, gy, stage, t)] : framePattern(name, gx, gy, stage, t);
       canvases.forEach((cv, i) => { drawPattern(cv, i === 0 ? pl : pr); textures[i].needsUpdate = true; });
+      api.rows = [pl, pr];
+      if (api.onFrame) api.onFrame(pl, pr);
     },
     count: canvases.length,
+    rows: null,                                           // 지금 그려진 [왼쪽 눈, 오른쪽 눈] 도트
+    onFrame: null,                                        // 프레임이 바뀔 때마다 (왼쪽, 오른쪽) 도트를 받는 콜백
   };
   api.show('뜬 눈');
   return api;
