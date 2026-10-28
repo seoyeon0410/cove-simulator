@@ -6,7 +6,8 @@ import { PRESET_GROUPS } from './presets.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { applyLook, buildEyes, EXPRESSIONS } from './look.js';
 import { initRobotPanel, robot } from './robot.js';
-import { linkFor, restrictTo, robotOnlyGroups } from './robotmap.js';
+import { linkFor, restrictTo, robotOnlyGroups, webSceneName } from './robotmap.js';
+import { csvOf, report, zip, limitFrames, STEP } from './robotexport.js';
 import { Muxer, ArrayBufferTarget } from './lib/mp4-muxer.mjs';
 
 const $ = (s) => document.querySelector(s);
@@ -319,6 +320,7 @@ function applyPose(t) {
       obj.position.fromArray(r.p); obj.quaternion.fromArray(r.q); obj.scale.fromArray(r.s);
     }
   }
+  if ($('#robotLimit').checked && !tc.dragging) limitToRobot();
 }
 
 function upsertKey(idx, t, interp) {
@@ -761,21 +763,24 @@ function sceneChip(name, label) {
   b.onclick = (e) => { e.stopPropagation(); runOnRobot(name); };
   return b;
 }
-function robotBlock(link) {
+function robotBlock(link, clipIdx) {
   const box = document.createElement('div'); box.className = 'rb-block';
   if (!robot.connected) {
     const p = document.createElement('div'); p.className = 'rb-hint'; p.textContent = '실제 로봇에서도 이 동작을 실행할 수 있어요';
     const b = document.createElement('button'); b.className = 'rbc'; b.textContent = '로봇 연결'; b.onclick = (e) => { e.stopPropagation(); robot.openPanel(); };
     box.append(p, b); return box;
   }
-  const l = restrictTo(link, robot.scenes);
+  const l = restrictTo(link, robot.scenes), web = webSceneName(S.clips[clipIdx].name, clipIdx);
   const row = (title, nodes) => {
     if (!nodes.length) return;
     const r = document.createElement('div'); r.className = 'rb-row';
     const t = document.createElement('span'); t.className = 'rb-t'; t.textContent = title;
     const c = document.createElement('div'); c.className = 'rb-c'; c.append(...nodes); r.append(t, c); box.appendChild(r);
   };
-  if (l.main) { const b = sceneChip(l.main, '▶ 전체 실행'); b.classList.add('main'); row('로봇', [b]); }
+  const top = [];
+  if (robot.scenes.includes(web)) { const b = sceneChip(web, '▶ 웹과 같은 모션'); b.classList.add('main'); b.title = '뷰포트에 보이는 동작 그대로 (웹에서 만든 모션 파일)'; top.push(b); }
+  if (l.main) { const b = sceneChip(l.main, '▶ 로봇 기본 씬'); top.push(b); }
+  row('로봇', top);
   row('장면별', l.steps.map((n) => sceneChip(n, n.replace(/^[a-z]+_(\d+)_/, '$1 '))));
   row('관련', l.more.map((n) => sceneChip(n)));
   if (!box.children.length) { box.className = 'rb-block'; box.textContent = '이 로봇에는 연결된 씬이 아직 없어요'; box.classList.add('rb-hint'); }
@@ -807,7 +812,7 @@ function renderClipList() {
       wrap.appendChild(rb);
     }
     list.appendChild(wrap);
-    if (i === S.clip && link) list.appendChild(robotBlock(link));
+    if (i === S.clip && link) list.appendChild(robotBlock(link, i));
   });
   if (robot.connected && robot.scenes.length) {
     const groups = robotOnlyGroups(robot.scenes);
@@ -828,6 +833,76 @@ function renderClipList() {
   }
 }
 robot.onChange(() => { if (!document.querySelector('#clipList input.rename')) renderClipList(); });
+/* ───────────── 로봇용 내보내기 (뷰포트에 보이는 각도 그대로) ───────────── */
+const JOINT_AXES = { neck: new THREE.Vector3(0, 0, 1), head: new THREE.Vector3(0, 0, 1), tilt: new THREE.Vector3(0, 1, 0), body: new THREE.Vector3(0, 1, 0) };
+function jointIds() {
+  const col = S.boneIdx.find((i) => nodeName(i) === '기둥'), head = S.boneIdx.find((i) => nodeName(i) === '머리'), tilt = S.boneIdx.find((i) => /갸웃/.test(nodeName(i)));
+  let root = S.nodes.get(col);
+  while (root.parent && S.idxOf.has(root.parent)) root = root.parent;
+  return { neck: col, head, tilt, body: root === S.nodes.get(col) ? undefined : S.idxOf.get(root) };
+}
+function jointDeg(clip, idx, axis, t) {                       // 쉬는 자세 대비 회전각(도)
+  if (idx === undefined) return 0;
+  const rest = S.rest.get(idx), keys = clip.tracks[idx];
+  const qc = new THREE.Quaternion().fromArray(keys?.length ? sampleAt(keys, t).q : rest.q);
+  const qr = new THREE.Quaternion().fromArray(rest.q).invert().multiply(qc);
+  let a = 2 * Math.atan2(axis.x * qr.x + axis.y * qr.y + axis.z * qr.z, qr.w);
+  if (a > Math.PI) a -= 2 * Math.PI; else if (a < -Math.PI) a += 2 * Math.PI;
+  return a / D2R;
+}
+/* [로봇 한계] 켜져 있으면 뷰포트의 기둥·머리·갸웃을 로봇이 실제로 움직일 수 있는 범위로 잘라서 보여 준다 (키 값은 그대로). */
+let jointCache = null;
+function limitToRobot() {
+  if (!S.model) return;
+  if (!jointCache || jointCache.model !== S.model) jointCache = { model: S.model, ids: jointIds() };
+  const ids = jointCache.ids, cur = {};
+  const read = (j) => {
+    if (ids[j] === undefined) return 0;
+    const rest = S.rest.get(ids[j]), o = S.nodes.get(ids[j]), ax = JOINT_AXES[j];
+    const qr = new THREE.Quaternion().fromArray(rest.q).invert().multiply(o.quaternion);
+    let a = 2 * Math.atan2(ax.x * qr.x + ax.y * qr.y + ax.z * qr.z, qr.w);
+    if (a > Math.PI) a -= 2 * Math.PI; else if (a < -Math.PI) a += 2 * Math.PI;
+    return a / D2R;
+  };
+  ['neck', 'head', 'tilt'].forEach((j) => { cur[j] = read(j); });
+  const lim = limitFrames([{ t: 0, neck: cur.neck, head: cur.head, tilt: cur.tilt, body: 0 }], { tiltSign: +($('#rpTiltSign')?.value || 1) })[0];
+  ['neck', 'head', 'tilt'].forEach((j) => {
+    if (ids[j] === undefined || Math.abs(lim[j] - cur[j]) < 1e-3) return;
+    const rest = S.rest.get(ids[j]), o = S.nodes.get(ids[j]);
+    o.quaternion.fromArray(rest.q).multiply(new THREE.Quaternion().setFromAxisAngle(JOINT_AXES[j], lim[j] * D2R));
+  });
+}
+function sampleJoints(clip) {                                 // 0.1초 간격 {t, neck, head, tilt, body}
+  const ids = jointIds(), out = [], n = Math.round(clip.duration / STEP);
+  for (let i = 0; i <= n; i++) {
+    const t = Math.min(i * STEP, clip.duration), f = { t: +(i * STEP).toFixed(1) };
+    for (const j of ['neck', 'head', 'tilt', 'body']) f[j] = jointDeg(clip, ids[j], JOINT_AXES[j], t);
+    out.push(f);
+  }
+  return out;
+}
+function buildRobotExport(opt) {
+  const used = new Set(), files = [], lines = [], scenes = [];
+  S.clips.forEach((c, i) => {
+    let name = webSceneName(c.name, i); while (used.has(name)) name += '_' + i; used.add(name);
+    const fr = sampleJoints(c), rp = report(fr, opt);
+    files.push({ name: `motions/${name}.csv`, text: csvOf(fr, opt) });
+    scenes.push(`    "${name}": [{"motion": "${name}"}],   # ${c.name}`);
+    const cut = ['neck', 'head', 'tilt', 'body'].filter((j) => rp.secs[j] > 0).map((j) => `${{ neck: '기둥', head: '머리', tilt: '갸웃', body: '몸통' }[j]} ${rp.secs[j].toFixed(1)}초(최대 ${rp.diff[j].toFixed(0)}°)`);
+    lines.push({ name: c.name, file: name, sec: +c.duration.toFixed(1), cut, fast: rp.fast, acc: rp.acc });
+  });
+  files.push({ name: 'cove_scenes_web.py', text: `# 웹 모션(motions/*.csv)을 재생하는 씬. cove_scenes.py 에 합치거나 이름만 옮겨 쓰세요.\n# 재생 확인용: python3 cove_cmd.py web_rest\nWEB_SCENES = {\n${scenes.join('\n')}\n}\n` });
+  files.push({ name: '읽어보세요.txt', text: [
+    '웹 모션 → 로봇 파일', '',
+    '1) motions/*.csv 를 로봇의 ~/robot-booth/motions/ 에 넣습니다. (첫 줄 t,id1,id2,id3,id4 · 0.1초 간격 · 절대 틱)',
+    '2) cove_scenes_web.py 의 씬을 cove_scenes.py 에 추가합니다. (저장하면 자동 반영)',
+    '3) 웹 동작 목록에서 "▶ 웹과 같은 모션"을 누르면 실행됩니다.', '',
+    `갸웃(ID4) 방향: 웹 tilt + 일 때 ID4 ${opt.tiltSign > 0 ? '+' : '-'}  /  몸통(ID1) 방향: 웹 body + 일 때 ID1 ${opt.bodySign > 0 ? '+' : '-'}  (확정 전이면 check_tilt / check_body 결과로 맞추세요)`, '',
+    '로봇 한계로 잘린 구간', ...lines.map((l) => `- ${l.name} (${l.file}, ${l.sec}초): ${l.cut.length ? l.cut.join(', ') : '잘림 없음'}`),
+  ].join('\n') + '\n' });
+  return { blob: zip(files), lines };
+}
+
 function refreshAll() { buildTree(); updateProps(); updateTimeLabel(); drawTL(); }
 /* 장면(구간) 버튼: 버튼을 누르면 그 장면으로 가서 바로 움직인다(그 장면만 반복). [전체]를 누르면 처음부터 끝까지 이어서 재생한다. */
 const sceneMarks = () => curClip()?.markers || [];
@@ -1251,6 +1326,8 @@ $('#loop').onchange = (e) => (S.loop = e.target.checked);
 $('#autoKey').onchange = (e) => (S.autoKey = e.target.checked);
 $('#showAll').onchange = (e) => { S.showAll = e.target.checked; buildTree(); };
 $('#showBones').onchange = () => {};
+$('#robotLimit').onchange = () => { applyPose(S.time); refreshAll(); };
+$('#rpTiltSign')?.addEventListener('change', () => applyPose(S.time));
 $('#opacity').oninput = applyOpacity;
 $('#camReset').onclick = fitCamera;
 EXPRESSIONS.forEach((n) => $('#eyeSel').add(new Option(n, n)));
@@ -1495,7 +1572,7 @@ addEventListener('keydown', (e) => {
 });
 
 /* ───────────── 시작 ───────────── */
-initRobotPanel();
+initRobotPanel({ exportFiles: buildRobotExport });
 resizeView();
 requestAnimationFrame(frame);
 (async () => {
@@ -1509,4 +1586,4 @@ requestAnimationFrame(frame);
   }
 })();
 addEventListener('beforeunload', () => { try { if (S.glb) snapshot(true); } catch { /* */ } });
-window.__cove = { S, exportGLB, getEyes: () => eyes, camera, orbit, THREE, renderer, scene, setTime };
+window.__cove = { S, exportGLB, getEyes: () => eyes, camera, orbit, THREE, renderer, scene, setTime, sampleJoints, buildRobotExport };

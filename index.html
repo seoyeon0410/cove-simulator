@@ -83,6 +83,7 @@
       <div class="glass">
         <label class="check"><input type="checkbox" id="showBones" checked> 본</label>
         <label class="check"><input type="checkbox" id="ikOn" checked> IK</label>
+        <label class="check" title="로봇이 실제로 움직일 수 있는 범위로 제한해서 보기 (로봇과 똑같이 보여요)"><input type="checkbox" id="robotLimit" checked> 로봇 한계</label>
       </div>
       <span class="spacer"></span>
       <div class="glass">
@@ -191,6 +192,14 @@
       <h4>씬 직접 실행</h4>
       <p class="rp-hint" id="rpScenes">연결하면 로봇의 씬을 왼쪽 동작 목록에서 동작별로 실행할 수 있어요.</p>
       <div class="rp-row2"><input type="text" id="rpSceneName" spellcheck="false" placeholder="씬 이름 직접 입력"><button id="rpRun">실행</button></div>
+    </section>
+    <section>
+      <h4>웹 모션을 로봇 파일로</h4>
+      <p class="rp-hint" style="margin-top:0">뷰포트에 보이는 각도 그대로 로봇용 모션 파일(.csv, 절대 틱)을 만들어요. 로봇 한계(기둥 0~34°, 머리 −46~0°, 갸웃은 머리 각도별)를 넘는 구간은 잘리고, 아래에 알려 줘요.</p>
+      <label class="rp-row"><span>갸웃 방향</span><select id="rpTiltSign"><option value="1">웹 + → ID4 + (기본)</option><option value="-1">웹 + → ID4 −</option></select></label>
+      <label class="rp-row"><span>몸통 방향</span><select id="rpBodySign"><option value="1">웹 + → ID1 + (기본)</option><option value="-1">웹 + → ID1 −</option></select></label>
+      <div class="rp-btns"><button id="rpExport" class="primary">로봇용 파일 받기 (.zip)</button></div>
+      <div class="rp-status" id="rpExpReport"></div>
     </section>
     <section>
       <h4>눈 표정</h4>

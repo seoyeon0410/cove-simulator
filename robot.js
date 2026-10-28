@@ -145,7 +145,7 @@ function buildScenes(list) {
   updateEnabled();
 }
 
-export function initRobotPanel() {
+export function initRobotPanel({ exportFiles } = {}) {
   let saved = {}; try { saved = JSON.parse(localStorage.getItem('cove-robot') || '{}'); } catch { /* 무시 */ }
   $('#rpUrl').value = saved.url || DEFAULT_URL; $('#rpRobot').value = saved.robot || 'robot2';
 
@@ -171,6 +171,20 @@ export function initRobotPanel() {
   $('#rpSceneName').onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') $('#rpRun').click(); };
   $('#rpUrl').onkeydown = $('#rpRobot').onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') connect(); };
   $('#rpSafe').onchange = updateEnabled;
+  $('#rpExport').onclick = () => {
+    if (!exportFiles) return;
+    const { blob, lines } = exportFiles({ tiltSign: +$('#rpTiltSign').value, bodySign: +$('#rpBodySign').value });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cove_web_motions.zip'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    const box = $('#rpExpReport'); box.innerHTML = '';
+    lines.forEach((l) => {
+      const r = document.createElement('div'); r.className = 'kv'; r.innerHTML = '<span class="k"></span><span class="v"></span>';
+      r.children[0].textContent = `${l.name.replace(/^시나리오\d+\s*/, '')} (${l.file})`;
+      r.children[1].textContent = l.cut.length ? '잘림 · ' + l.cut.join(', ') : '그대로';
+      box.appendChild(r);
+    });
+    log('sys', `로봇용 모션 ${lines.length}개 파일을 만들었어요`);
+  };
   setState('off');
   window.__robot = { send, robot, connect, disconnect, get state() { return st; } };
 }
