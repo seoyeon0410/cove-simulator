@@ -10,6 +10,30 @@ const EYES = [['idle', '뜬 눈'], ['blink', '깜빡'], ['look_left', '왼쪽 �
 const MODES = [['rest', '휴식'], ['tickle', '간지럽히기'], ['snack', '간식'], ['track', '따라보기'], ['off', '반응 끄기']];
 
 let client = null, st = 'off', lastStatus = 0, torqueArm = 0, statusTimer = null;
+let scenes = [], current = null, sig = '';
+const listeners = new Set();
+const isOn = () => st === 'online' || st === 'live';
+// 동작 목록 같은 다른 화면이 쓸 수 있게: 연결 여부 · 씬 목록 · 지금 도는 씬이 바뀔 때만 알린다
+function notify() {
+  const next = `${isOn()}|${current}|${scenes.join(',')}`;
+  if (next === sig) return;
+  sig = next; listeners.forEach((f) => f());
+}
+export const robot = {
+  get connected() { return isOn(); },
+  get scenes() { return scenes; },
+  get current() { return current; },
+  onChange(f) { listeners.add(f); },
+  // 'ok' | 'offline'(연결 안 됨) | 'unsafe'(주변 확인 체크 전). 체크 전에는 연결 창을 열어 체크를 안내한다.
+  run(name) {
+    if (!isOn()) { openPanel(); return 'offline'; }
+    if (!$('#rpSafe').checked) { openPanel(); const l = $('#rpSafe').closest('label'); l.classList.remove('flash'); void l.offsetWidth; l.classList.add('flash'); return 'unsafe'; }
+    return send({ cmd: 'scene', name }) ? 'ok' : 'offline';
+  },
+  stop() { return send({ cmd: 'stop' }); },
+  openPanel() { openPanel(); },
+};
+function openPanel() { $('#robotPanel').hidden = false; $('#btnRobot').classList.add('on'); }
 
 const cfg = () => ({ url: $('#rpUrl').value.trim() || DEFAULT_URL, robot: $('#rpRobot').value.trim() || 'robot2' });
 const topic = (suffix, robot = cfg().robot) => `booth/${robot}/${suffix}`;
@@ -34,6 +58,7 @@ function setState(next, msg) {
   $('#robotStop').hidden = !(next === 'online' || next === 'live');
   $('#rpConnect').textContent = next === 'off' || next === 'error' ? '연결' : '연결 해제';
   updateEnabled();
+  notify();
 }
 
 function updateEnabled() {
@@ -84,6 +109,8 @@ function connect() {
 function disconnect() {
   if (client) { try { client.end(true); } catch { /* 무시 */ } client = null; }
   clearInterval(statusTimer);
+  scenes = []; current = null; sceneKey = '';
+  $('#rpScenes').textContent = '연결하면 로봇의 씬을 왼쪽 동작 목록에서 동작별로 실행할 수 있어요.';
   setState('off'); log('sys', '연결을 끊었어요');
   $('#rpStatus').innerHTML = '<span class="dim">상태 정보가 아직 없어요</span>';
 }
@@ -106,19 +133,15 @@ function onStatus(msg) {
     const list = rows(msg);
     box.innerHTML = '';
     list.slice(0, 40).forEach(([k, v]) => { const r = document.createElement('div'); r.className = 'kv'; r.innerHTML = '<span class="k"></span><span class="v"></span>'; r.children[0].textContent = k; r.children[1].textContent = v; box.appendChild(r); });
-    const scenes = Array.isArray(msg.scenes) ? msg.scenes.map((x) => (typeof x === 'string' ? x : x.name)).filter(Boolean) : null;
-    if (scenes && scenes.join('|') !== sceneKey) { sceneKey = scenes.join('|'); buildScenes(scenes); }
+    const list2 = Array.isArray(msg.scenes) ? msg.scenes.map((x) => (typeof x === 'string' ? x : x.name)).filter(Boolean) : null;
+    if (list2 && list2.join('|') !== sceneKey) { sceneKey = list2.join('|'); scenes = list2; buildScenes(list2); }
+    current = typeof msg.scene === 'string' && msg.scene ? msg.scene : null;
+    notify();
   } else box.textContent = String(msg);
 }
 
 function buildScenes(list) {
-  const box = $('#rpScenes'); box.innerHTML = '';
-  list.forEach((n) => {
-    const b = document.createElement('button'); b.className = 'chip'; b.textContent = n; b.title = `씬 "${n}" 실행`;
-    b.onclick = () => send({ cmd: 'scene', name: n });
-    box.appendChild(b);
-  });
-  if (!list.length) box.innerHTML = '<span class="dim">씬이 없어요</span>';
+  $('#rpScenes').textContent = list.length ? `로봇에 씬 ${list.length}개가 있어요. 왼쪽 동작 목록에서 동작별로 실행하세요.` : '로봇에 씬이 없어요';
   updateEnabled();
 }
 
@@ -149,5 +172,5 @@ export function initRobotPanel() {
   $('#rpUrl').onkeydown = $('#rpRobot').onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') connect(); };
   $('#rpSafe').onchange = updateEnabled;
   setState('off');
-  window.__robot = { send, connect, disconnect, get state() { return st; } };
+  window.__robot = { send, robot, connect, disconnect, get state() { return st; } };
 }

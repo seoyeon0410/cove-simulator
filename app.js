@@ -5,7 +5,8 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { PRESET_GROUPS } from './presets.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { applyLook, buildEyes, EXPRESSIONS } from './look.js';
-import { initRobotPanel } from './robot.js';
+import { initRobotPanel, robot } from './robot.js';
+import { linkFor, restrictTo, robotOnlyGroups } from './robotmap.js';
 import { Muxer, ArrayBufferTarget } from './lib/mp4-muxer.mjs';
 
 const $ = (s) => document.querySelector(s);
@@ -738,12 +739,56 @@ function refreshClipUI() {
   sel.innerHTML = '';
   S.clips.forEach((c, i) => sel.add(new Option(c.name, i)));
   sel.value = S.clip;
-  const list = $('#clipList');
+  renderClipList();
+  { const m = curClip().name.match(/^시나리오(\d+)\s*(.*)$/); $('#clipHead .cur').textContent = m ? `${m[1].padStart(2, '0')} ${m[2]}` : curClip().name; }
+  $('#clipDur').value = curClip().duration;
+  $('#clipFps').value = curClip().fps;
+  refreshAll();
+}
+/* 동작 목록: 시나리오를 한눈에 보이는 목록으로 (select는 숨겨 두고 값만 동기화).
+   로봇이 연결되어 있으면 각 동작 오른쪽의 ▶로 같은 동작의 로봇 씬을 바로 실행하고,
+   선택한 동작 아래에는 그 동작에 묶인 로봇 씬(전체 · 장면별 · 관련)이 펼쳐진다. */
+const rbOpen = new Set();                                  // 펼쳐 둔 "로봇 전용" 묶음
+function runOnRobot(name) {
+  const r = robot.run(name);
+  if (r === 'unsafe') toast('연결 창에서 "로봇 주변을 확인했어요"를 체크하면 실행돼요');
+  else if (r === 'offline') toast('먼저 로봇을 연결해 주세요');
+  return r;
+}
+function sceneChip(name, label) {
+  const b = document.createElement('button'); b.className = 'rbc' + (robot.current === name ? ' run' : '');
+  b.textContent = label || name; b.title = `로봇에서 씬 "${name}" 실행`;
+  b.onclick = (e) => { e.stopPropagation(); runOnRobot(name); };
+  return b;
+}
+function robotBlock(link) {
+  const box = document.createElement('div'); box.className = 'rb-block';
+  if (!robot.connected) {
+    const p = document.createElement('div'); p.className = 'rb-hint'; p.textContent = '실제 로봇에서도 이 동작을 실행할 수 있어요';
+    const b = document.createElement('button'); b.className = 'rbc'; b.textContent = '로봇 연결'; b.onclick = (e) => { e.stopPropagation(); robot.openPanel(); };
+    box.append(p, b); return box;
+  }
+  const l = restrictTo(link, robot.scenes);
+  const row = (title, nodes) => {
+    if (!nodes.length) return;
+    const r = document.createElement('div'); r.className = 'rb-row';
+    const t = document.createElement('span'); t.className = 'rb-t'; t.textContent = title;
+    const c = document.createElement('div'); c.className = 'rb-c'; c.append(...nodes); r.append(t, c); box.appendChild(r);
+  };
+  if (l.main) { const b = sceneChip(l.main, '▶ 전체 실행'); b.classList.add('main'); row('로봇', [b]); }
+  row('장면별', l.steps.map((n) => sceneChip(n, n.replace(/^[a-z]+_(\d+)_/, '$1 '))));
+  row('관련', l.more.map((n) => sceneChip(n)));
+  if (!box.children.length) { box.className = 'rb-block'; box.textContent = '이 로봇에는 연결된 씬이 아직 없어요'; box.classList.add('rb-hint'); }
+  return box;
+}
+function renderClipList() {
+  const sel = $('#clipSel'), list = $('#clipList');
   list.innerHTML = '';
   let lastGroup = null;
-  S.clips.forEach((c, i) => {                    // 시나리오를 한눈에 보이는 목록으로 (select는 숨겨 두고 값만 동기화)
+  S.clips.forEach((c, i) => {
     const g = c.group || (c.markers?.length ? '시나리오' : '내 클립');
     if (g !== lastGroup) { lastGroup = g; const h = document.createElement('div'); h.className = 'grp'; h.textContent = g; list.appendChild(h); }
+    const wrap = document.createElement('div'); wrap.className = 'clip-row';
     const el = document.createElement('button');
     el.className = 'clip-item' + (i === S.clip ? ' on' : '');
     const m = c.name.match(/^시나리오(\d+)\s*(.*)$/);                      // "시나리오1 휴식" → 번호 01 + 제목 "휴식"
@@ -753,13 +798,36 @@ function refreshClipUI() {
     el.children[2].textContent = `${+c.duration.toFixed(1)}초`;
     el.onclick = () => { sel.value = i; sel.dispatchEvent(new Event('change')); };
     el.ondblclick = () => startRename(i);
-    list.appendChild(el);
+    wrap.appendChild(el);
+    const link = linkFor(c.name), main = link && robot.connected && restrictTo(link, robot.scenes).main;
+    if (main) {
+      const rb = document.createElement('button'); rb.className = 'rb' + (robot.current === main ? ' run' : ''); rb.textContent = '▶';
+      rb.title = `로봇에서 "${main}" 실행`;
+      rb.onclick = () => { if (runOnRobot(main) === 'ok' && i !== S.clip) { sel.value = i; sel.dispatchEvent(new Event('change')); } };
+      wrap.appendChild(rb);
+    }
+    list.appendChild(wrap);
+    if (i === S.clip && link) list.appendChild(robotBlock(link));
   });
-  { const m = curClip().name.match(/^시나리오(\d+)\s*(.*)$/); $('#clipHead .cur').textContent = m ? `${m[1].padStart(2, '0')} ${m[2]}` : curClip().name; }
-  $('#clipDur').value = curClip().duration;
-  $('#clipFps').value = curClip().fps;
-  refreshAll();
+  if (robot.connected && robot.scenes.length) {
+    const groups = robotOnlyGroups(robot.scenes);
+    if (groups.length) { const h = document.createElement('div'); h.className = 'grp'; h.textContent = '로봇 전용'; list.appendChild(h); }
+    groups.forEach((g) => {
+      const open = rbOpen.has(g.label);
+      const el = document.createElement('button'); el.className = 'clip-item rb-only';
+      el.innerHTML = '<span class="no"></span><span class="nm"></span><span class="du"></span>';
+      el.children[0].textContent = open ? '−' : '+'; el.children[1].textContent = g.label; el.children[2].textContent = `${g.scenes.length}개`;
+      el.onclick = () => { if (open) rbOpen.delete(g.label); else rbOpen.add(g.label); renderClipList(); };
+      list.appendChild(el);
+      if (open) {
+        const box = document.createElement('div'); box.className = 'rb-block';
+        const c = document.createElement('div'); c.className = 'rb-c'; c.append(...g.scenes.map((n) => sceneChip(n))); box.appendChild(c);
+        list.appendChild(box);
+      }
+    });
+  }
 }
+robot.onChange(() => { if (!document.querySelector('#clipList input.rename')) renderClipList(); });
 function refreshAll() { buildTree(); updateProps(); updateTimeLabel(); drawTL(); }
 /* 장면(구간) 버튼: 버튼을 누르면 그 장면으로 가서 바로 움직인다(그 장면만 반복). [전체]를 누르면 처음부터 끝까지 이어서 재생한다. */
 const sceneMarks = () => curClip()?.markers || [];
