@@ -31,6 +31,8 @@ export const robot = {
     return send({ cmd: 'scene', name }) ? 'ok' : 'offline';
   },
   stop() { setSync(false); return send({ cmd: 'stop' }); },
+  // 정지 명령만 보내고 동기는 그대로 둔다 (웹을 일시정지했다가 다시 재생하면 이어서 따라 한다)
+  hold() { return send({ cmd: 'stop' }); },
   get sync() { return sync; },
   // 웹 재생을 로봇이 실시간으로 따라 하게 한다(pose 명령, 10Hz). 연결 + "주변 확인" 체크가 있어야 켜진다.
   setSync(on) {

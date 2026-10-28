@@ -657,7 +657,12 @@ function setTime(t, snap = true) {
   applyPose(t);
   updateProps(); updateTimeLabel(); drawTL();
 }
-function stopPlay() { S.playing = false; $('#tPlay').textContent = '▶'; updateProps(); }
+function stopPlay() {
+  const was = S.playing;
+  S.playing = false; $('#tPlay').textContent = '▶'; updateProps();
+  // 웹 재생을 멈추면 로봇도 바로 멈춘다: 동기 중이거나 로봇이 씬을 재생 중일 때 정지 명령을 보낸다 (동기는 켜진 채로 둔다)
+  if (was && robot.connected && (robot.sync || robot.current)) robot.hold();
+}
 function togglePlay() {
   if (S.playing) return stopPlay();
   if (S.time >= curClip().duration - EPS) S.time = 0;
@@ -881,7 +886,7 @@ function limitToRobot() {
   });
 }
 /* [로봇 동기] 켜져 있으면 웹에서 재생하는 동안 0.1초마다 지금 보이는 자세(로봇 한계 적용)를 로봇에 보낸다. 눈도 따라간다(뜬·감은·웃는·하트는 로봇 기본 이름, 나머지는 로봇에 넣은 한글 표정 이름). */
-const ROBOT_EYES = { '뜬 눈': 'idle', '감은 눈': 'closed', '웃는 눈': 'happy', '하트 눈': 'heart' };
+// 로봇에 넣은 눈 파일(cove_eyes.json)의 표정 이름(한글) 그대로 보낸다. (로봇 기본 이름 idle/happy/heart 는 옛 모양이라 쓰지 않는다)
 let syncEye = '';
 setInterval(() => {
   if (!robot.sync) { syncEye = ''; return; }
@@ -891,7 +896,7 @@ setInterval(() => {
   for (const j of ['neck', 'head', 'tilt', 'body']) f[j] = jointDeg(clip, ids[j], JOINT_AXES[j], t);
   const l = limitFrames([f], { tiltSign: +($('#rpTiltSign')?.value || 1) })[0], r1 = (v) => Math.round(v * 10) / 10;
   robot.pose({ neck: r1(l.neck), head: r1(l.head), tilt: r1(l.tilt), body: r1(l.body) });
-  const cur = (clip.eyes || []).filter((x) => x.t <= S.time + 1e-6).pop(), mode = cur && !cur.eL && !cur.eR && (ROBOT_EYES[cur.e] || cur.e);   // 4가지는 로봇 기본 이름, 나머지는 로봇에 넣은 표정 이름(한글) 그대로
+  const cur = (clip.eyes || []).filter((x) => x.t <= S.time + 1e-6).pop(), mode = cur && !cur.eL && !cur.eR && cur.e;
   if (mode && mode !== syncEye) { syncEye = mode; robot.eyes(mode); }
 }, 100);
 function sampleJoints(clip) {                                 // 0.1초 간격 {t, neck, head, tilt, body}
@@ -956,7 +961,7 @@ function updateSceneTag() {
     const all = document.createElement('button'); all.className = 'chip all'; all.textContent = '▶ 전체'; all.onclick = playAll; box.appendChild(all);
     marks.forEach((m, k) => {
       const b = document.createElement('button'); b.className = byName ? 'chip' : 'chip num'; b.textContent = byName ? m.label : String(k + 1);
-      b.onclick = () => { playScene(k); if (byName && robot.connected) robot.eyes(ROBOT_EYES[m.label] || m.label, true); };   // 표정 버튼은 연결된 로봇의 눈도 바로 바꾼다
+      b.onclick = () => { playScene(k); if (byName && robot.connected) robot.eyes(m.label, true); };   // 표정 버튼은 연결된 로봇의 눈도 바로 바꾼다
       box.appendChild(b);
     });
   }
