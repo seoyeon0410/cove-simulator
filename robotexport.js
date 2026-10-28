@@ -5,12 +5,13 @@ export const REST = { id1: 1600, id2: 3201, id3: 3074, id4: 2021 };
 export const STEP = 0.1;
 // 관절 한계(도). body는 ±180이지만 시험이 끝나기 전에는 ±90까지만 쓴다.
 const NECK = [0, 34], HEAD = [-46, 0], BODY = [-90, 90];
+export const LIMITS = { neck: NECK, head: HEAD, body: BODY };
 // head 각도별 tilt 허용 범위 (실측, ID4 + 방향 기준, 사이는 직선 보간)
 const TILT_ENV = [[-47.8, 0, 0], [-43.8, 0, 0], [-40.5, 0, 0], [-27.2, -6.5, 7.6], [-25.4, -15.3, 14.9], [-12, -13.9, 6.9], [-7.2, -8, 4.9], [-2.8, -7.1, 9.1], [0, 0, 0]];
 const MAXV = { neck: 200, head: 200, tilt: 200, body: 80 }, MAXA = 200;
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-function tiltRange(head) {
+export function tiltRange(head) {
   const e = TILT_ENV;
   if (head <= e[0][0]) return [e[0][1], e[0][2]];
   for (let i = 1; i < e.length; i++) if (head <= e[i][0]) {

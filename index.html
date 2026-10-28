@@ -84,6 +84,22 @@
         </div>
       </div></div>
     </section>
+    <section id="jointSec">
+      <button class="sec-head" id="jointHead" aria-expanded="false" title="관절을 슬라이더로 손으로 움직여 최소·최대 범위를 확인 (접기/펼치기)">
+        <span class="lbl">관절 조작</span><span class="cur" id="jointCur"></span><span class="chev">▾</span>
+      </button>
+      <div class="sec-body closed" id="jointBody"><div class="sec-inner">
+        <div id="jointBox">
+          <p class="ed-hint">슬라이더로 관절을 손으로 움직여 보세요. 양 끝이 <b>로봇이 실제로 움직일 수 있는 최소·최대</b>예요. 갸웃은 머리 각도에 따라 범위가 달라져요.</p>
+          <div id="jointRows"></div>
+          <div class="jt-btns">
+            <button id="jtRest" title="네 관절을 모두 처음(접힌) 자세로">처음 자세</button>
+            <button id="jtKey" title="지금 자세를 현재 시간의 키로 찍기">이 자세로 키 찍기</button>
+          </div>
+          <label class="check jt-robot" title="슬라이더를 움직이는 대로 연결된 로봇도 따라 움직여요 (연결과 주변 확인이 필요해요)"><input type="checkbox" id="jtRobot"> 로봇도 같이 움직이기</label>
+        </div>
+      </div></div>
+    </section>
     <section id="treeSec">
       <h3>본 / 노드</h3>
       <div id="tree"></div>

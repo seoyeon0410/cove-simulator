@@ -15,7 +15,7 @@ const listeners = new Set();
 const isOn = () => st === 'online' || st === 'live';
 // 동작 목록 같은 다른 화면이 쓸 수 있게: 연결 여부 · 씬 목록 · 지금 도는 씬이 바뀔 때만 알린다
 function notify() {
-  const next = `${isOn()}|${current}|${scenes.join(',')}`;
+  const next = `${isOn()}|${current}|${sync}|${scenes.join(',')}`;
   if (next === sig) return;
   sig = next; listeners.forEach((f) => f());
 }

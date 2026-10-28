@@ -7,7 +7,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { applyLook, buildEyes, EXPRESSIONS } from './look.js';
 import { initRobotPanel, robot } from './robot.js';
 import { linkFor, restrictTo, robotOnlyGroups, webSceneName } from './robotmap.js';
-import { csvOf, report, zip, limitFrames, STEP } from './robotexport.js';
+import { csvOf, report, zip, limitFrames, STEP, LIMITS, tiltRange } from './robotexport.js';
 import { eyesJson } from './roboteyes.js';
 import { initEyeDock, EYE_MIME } from './eyedock.js';
 import { Muxer, ArrayBufferTarget } from './lib/mp4-muxer.mjs';
@@ -336,6 +336,8 @@ function applyPose(t) {
     }
   }
   if ($('#robotLimit').checked && !tc.dragging) limitToRobot();
+  manualActive = false;                      // 재생·시간 이동이 자세를 정하면 손 조작은 끝난다
+  refreshJointUI();
 }
 
 function upsertKey(idx, t, interp) {
@@ -852,7 +854,7 @@ function renderClipList() {
     });
   }
 }
-robot.onChange(() => { if (!document.querySelector('#clipList input.rename')) renderClipList(); });
+robot.onChange(() => { if (!document.querySelector('#clipList input.rename')) renderClipList(); const cb = $('#jtRobot'); if (cb) cb.checked = robot.sync; });
 /* ───────────── 로봇용 내보내기 (뷰포트에 보이는 각도 그대로) ───────────── */
 const JOINT_AXES = { neck: new THREE.Vector3(0, 0, 1), head: new THREE.Vector3(0, 0, 1), tilt: new THREE.Vector3(0, 1, 0), body: new THREE.Vector3(0, 1, 0) };
 function jointIds() {
@@ -872,6 +874,8 @@ function jointDeg(clip, idx, axis, t) {                       // 쉬는 자세 �
 }
 /* [로봇 한계] 켜져 있으면 뷰포트의 기둥·머리·갸웃을 로봇이 실제로 움직일 수 있는 범위로 잘라서 보여 준다 (키 값은 그대로). */
 let jointCache = null;
+const jtVal = { neck: 0, head: 0, tilt: 0, body: 0 }, jtUI = {};
+let jtDrag = false, manualActive = false;
 function limitToRobot() {
   if (!S.model) return;
   if (!jointCache || jointCache.model !== S.model) jointCache = { model: S.model, ids: jointIds() };
@@ -897,7 +901,11 @@ function limitToRobot() {
 let syncEye = '';
 setInterval(() => {
   if (!robot.sync) { syncEye = ''; return; }
-  if (!S.model || !S.playing) return;
+  if (!S.model) return;
+  if (!S.playing) {                                              // 재생 중이 아니어도, 관절 조작 슬라이더를 움직였다면 그 자세를 계속 보낸다
+    if (manualActive) { const r1 = (v) => Math.round(v * 10) / 10; robot.pose({ neck: r1(jtVal.neck), head: r1(jtVal.head), tilt: r1(jtVal.tilt), body: r1(jtVal.body) }); }
+    return;
+  }
   if (!jointCache || jointCache.model !== S.model) jointCache = { model: S.model, ids: jointIds() };
   const clip = curClip(), t = Math.min(S.time + 0.1, clip.duration), ids = jointCache.ids, f = { t };      // 0.1초 앞의 자세 (로봇이 0.15초에 걸쳐 따라오므로)
   for (const j of ['neck', 'head', 'tilt', 'body']) f[j] = jointDeg(clip, ids[j], JOINT_AXES[j], t);
@@ -1377,6 +1385,94 @@ $('#eyeSel').onchange = (e) => {                 // 선택한 표정을 현재 �
   if (!curClip()) return;
   setEyeKey(S.time, { e: e.target.value }); applyEyes(S.time); snapshot();
 };
+/* ───────────── 관절 조작: 슬라이더로 관절을 손으로 움직여 최소·최대를 본다 ───────────── */
+const JT = [['neck', '기둥'], ['head', '머리'], ['tilt', '갸웃'], ['body', '몸통']];
+function jtLimits(k) {                                           // [최소, 최대] (도). 갸웃은 지금 머리 각도에 따라 달라진다
+  if (k === 'tilt') { const [lo, hi] = tiltRange(jtVal.head), sg = +($('#rpTiltSign')?.value || 1); return sg > 0 ? [lo, hi] : [-hi, -lo]; }
+  return LIMITS[k];
+}
+const jtOpen = () => !$('#jointBody').classList.contains('closed');
+function jtIds() { if (!jointCache || jointCache.model !== S.model) jointCache = { model: S.model, ids: jointIds() }; return jointCache.ids; }
+function readJointAngles() {                                     // 모델에 지금 보이는 각도
+  const ids = jtIds(), out = {};
+  for (const j of ['neck', 'head', 'tilt', 'body']) {
+    if (ids[j] === undefined) { out[j] = 0; continue; }
+    const rest = S.rest.get(ids[j]), ax = JOINT_AXES[j];
+    const qr = new THREE.Quaternion().fromArray(rest.q).invert().multiply(S.nodes.get(ids[j]).quaternion);
+    let a = 2 * Math.atan2(ax.x * qr.x + ax.y * qr.y + ax.z * qr.z, qr.w);
+    if (a > Math.PI) a -= 2 * Math.PI; else if (a < -Math.PI) a += 2 * Math.PI;
+    out[j] = a / D2R;
+  }
+  return out;
+}
+function renderJoint() {
+  for (const [k] of JT) {
+    const u = jtUI[k], [lo, hi] = jtLimits(k), v = jtVal[k];
+    u.sl.min = lo; u.sl.max = hi; u.sl.value = v;
+    if (document.activeElement !== u.num) u.num.value = (+v).toFixed(1);
+    u.lo.textContent = `최소 ${(+lo).toFixed(1)}°`; u.hi.textContent = `최대 ${(+hi).toFixed(1)}°`;
+    u.cur.textContent = v <= lo + 0.05 ? '최소에 닿음' : v >= hi - 0.05 ? '최대에 닿음' : v < lo - 0.05 || v > hi + 0.05 ? '로봇 범위 밖' : '';
+    u.row.classList.toggle('limit', !!u.cur.textContent);
+  }
+  $('#jointCur').textContent = JT.map(([k, n]) => `${n} ${(+jtVal[k]).toFixed(0)}°`).join(' · ');
+}
+function refreshJointUI() { if (!S.model || jtDrag || !jtOpen()) return; Object.assign(jtVal, readJointAngles()); renderJoint(); }
+function applyManual() {                                         // 슬라이더 값을 네 관절에 적용 (키는 만들지 않는다)
+  const ids = jtIds();
+  for (const j of ['neck', 'head', 'tilt', 'body']) {
+    if (ids[j] === undefined) continue;
+    S.nodes.get(ids[j]).quaternion.fromArray(S.rest.get(ids[j]).q).multiply(new THREE.Quaternion().setFromAxisAngle(JOINT_AXES[j], jtVal[j] * D2R));
+  }
+  try { if (IK) syncTarget(); } catch { /* 무시 */ }
+  manualActive = true; drawTL();
+}
+function setJoint(k, v) {
+  if (!S.model) return;
+  if (S.playing) stopPlay();
+  Object.assign(jtVal, readJointAngles());                       // 다른 관절은 지금 모습 그대로 두고 한 관절만 바꾼다
+  const [lo, hi] = jtLimits(k);
+  jtVal[k] = Math.max(lo, Math.min(hi, +v || 0));
+  if (k === 'head') { const [tl, th] = jtLimits('tilt'); jtVal.tilt = Math.max(tl, Math.min(th, jtVal.tilt)); }
+  applyManual(); renderJoint();
+}
+function initJointPanel() {
+  const box = $('#jointRows');
+  for (const [k, name] of JT) {
+    const row = document.createElement('div'); row.className = 'jt-row';
+    row.innerHTML = `<span class="nm">${name}</span><div class="track"><button class="mn" title="최소로">최소</button><input type="range" step="0.5"><button class="mx" title="최대로">최대</button></div><input type="number" step="0.5"><span class="rg"><span class="lo"></span><span class="cur"></span><span class="hi"></span></span>`;
+    const u = jtUI[k] = { row, sl: row.querySelector('input[type=range]'), num: row.querySelector('input[type=number]'), lo: row.querySelector('.lo'), hi: row.querySelector('.hi'), cur: row.querySelector('.cur') };
+    u.sl.oninput = () => { jtDrag = true; setJoint(k, u.sl.value); };
+    u.sl.onchange = u.sl.onblur = () => { jtDrag = false; };
+    u.num.onchange = () => setJoint(k, u.num.value);
+    u.num.onkeydown = (e) => e.stopPropagation();
+    row.querySelector('.mn').onclick = () => setJoint(k, jtLimits(k)[0]);
+    row.querySelector('.mx').onclick = () => setJoint(k, jtLimits(k)[1]);
+    box.appendChild(row);
+  }
+  $('#jtRest').onclick = () => { if (!S.model) return; if (S.playing) stopPlay(); Object.assign(jtVal, { neck: 0, head: 0, tilt: 0, body: 0 }); applyManual(); renderJoint(); };
+  $('#jtKey').onclick = () => {
+    if (!S.model || !curClip()) return;
+    const ids = jtIds(), tg = IK?.target ? S.idxOf.get(IK.target) : undefined;
+    [ids.neck, ids.head, ids.tilt, ids.body, tg].filter((i) => i !== undefined).forEach((i) => upsertKey(i, S.time));
+    snapshot(); toast(`${S.time.toFixed(2)}초에 지금 자세를 키로 찍었어요`);
+  };
+  $('#jtRobot').onchange = (e) => {
+    const r = robot.setSync(e.target.checked);
+    if (e.target.checked && r !== 'ok') { e.target.checked = false; toast(r === 'unsafe' ? '연결 창에서 "로봇 주변을 확인했어요"를 체크해 주세요' : '먼저 로봇을 연결해 주세요'); }
+  };
+  $('#jointHead').onclick = () => {
+    const open = !jtOpen();
+    $('#jointBody').classList.toggle('closed', !open); $('#jointHead').setAttribute('aria-expanded', open ? 'true' : 'false');
+    try { localStorage.setItem('cove-joint-open', open ? '1' : '0'); } catch { /* 무시 */ }
+    if (open) refreshJointUI();
+  };
+  let was = false; try { was = localStorage.getItem('cove-joint-open') === '1'; } catch { /* 무시 */ }
+  if (was) { $('#jointBody').classList.remove('closed'); $('#jointHead').setAttribute('aria-expanded', 'true'); }
+  $('#rpTiltSign')?.addEventListener('change', () => { if (jtOpen()) renderJoint(); });
+  renderJoint();
+}
+initJointPanel();
+
 const eyeDock = initEyeDock({
   getKey: () => eyeKeyAt(S.time),
   edit: (patch) => { if (!curClip()) return; setEyeKey(S.time, patch); applyEyes(S.time); snapshot(); },
@@ -1650,4 +1746,4 @@ requestAnimationFrame(frame);
   }
 })();
 addEventListener('beforeunload', () => { try { if (S.glb) snapshot(true); } catch { /* */ } });
-window.__cove = { S, exportGLB, getEyes: () => eyes, camera, orbit, THREE, renderer, scene, setTime, sampleJoints, buildRobotExport };
+window.__cove = { S, exportGLB, getEyes: () => eyes, camera, orbit, THREE, renderer, scene, setTime, sampleJoints, buildRobotExport, buildPresetByName: (n) => { const d = PRESET_GROUPS[0].items.find((i) => i.name === n); return d ? buildPresetClip(d) : null; }, snapshot };
