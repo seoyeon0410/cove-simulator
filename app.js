@@ -198,10 +198,11 @@ function loadGLB(buffer, name) {
       setupIK();
       const saved = loadSaved();
       S.clips = saved?.clips || PRESET_GROUPS[0].items.map(buildPresetClip);
-      // 없앤 표정("초롱 눈")이 저장된 클립에 남아 있으면 바꿔 준다: 표정 모음은 새로 만들고, 나머지는 '반짝 눈'으로 대체
+      // 없앤 표정이 저장된 클립에 남아 있으면 바꿔 준다: 표정 모음은 새로 만들고, 나머지는 비슷한 표정으로 대체
+      const GONE = { '초롱 눈': '반짝 눈', '또렷한 눈': '뜬 눈' };
       if (saved) S.clips = S.clips.map((c) => {
-        if (c.group === '표정' && (c.markers || []).some((m) => m.label === '초롱 눈')) { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); return d ? buildPresetClip(d) : c; }
-        (c.eyes || []).forEach((k) => { for (const f of ['e', 'eL', 'eR']) if (k[f] === '초롱 눈') k[f] = '반짝 눈'; });
+        if (c.group === '표정' && (c.markers || []).some((m) => GONE[m.label])) { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); return d ? buildPresetClip(d) : c; }
+        (c.eyes || []).forEach((k) => { for (const f of ['e', 'eL', 'eR']) if (GONE[k[f]]) k[f] = GONE[k[f]]; });
         return c;
       });
       S.clip = Math.min(saved?.clip || 0, Math.max(S.clips.length - 1, 0));
