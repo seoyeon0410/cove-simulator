@@ -25,7 +25,7 @@ export const EYES4 = {
   '슬픈 눈': { L: SAD_L, R: mirror(SAD_L) },
   '신난 눈': { L: CHEVRON, R: mirror(CHEVRON) },
   '윙크': { L: OVAL, R: HAPPY },
-  '편안한 눈': ['00000110', '00001100', '00011000', '00110000'],
+  '편안한 눈': ['00000000', '00111110', '00000000', '00000000'],
   '별 눈': { frames: [STAR, STAR, STAR_SM], ms: 300 },
   '눈물 눈': { frames: [{ L: drop(TEAR_EYE, 2), R: drop(TEAR_EYE, 5) }, { L: drop(TEAR_EYE, 2), R: drop(TEAR_EYE, 5) }, { L: TEAR_EYE, R: TEAR_EYE }, { L: TEAR_EYE, R: TEAR_EYE }], ms: 400 },
   '점 눈': ['00000000', '00011000', '00011000', '00000000'],
