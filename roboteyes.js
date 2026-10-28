@@ -20,7 +20,7 @@ export const EYES4 = {
   '웃는 눈': HAPPY,
   '졸린 눈': ['00000000', '00111100', '00111100', '00011000'],
   '놀란 눈': ['00111100', '01100110', '01100110', '00111100'],
-  '하트 눈': ['00100100', '00111100', '00011000', '00000000'],        // 가운데 4칸에 작게 (너무 크면 가장자리에서 깨져 보임)
+  '하트 눈': ['01100110', '01111110', '00111100', '00011000'],        // 봉우리가 두 칸씩 이어진 6칸 하트 (한 칸짜리 점이 따로 떨어져 보이지 않게)
   '반짝 눈': { frames: [hole(OVAL, [[1, 3]]), hole(OVAL, [[1, 3], [2, 2]]), hole(OVAL, [[1, 3]]), OVAL], ms: 300 },
   '슬픈 눈': { L: SAD_L, R: mirror(SAD_L) },
   '신난 눈': { L: CHEVRON, R: mirror(CHEVRON) },
@@ -36,8 +36,9 @@ export const EYES4 = {
 const BLINK = [['00000000', '00011000', '00111100', '00000000'], ['00000000', '00000000', '00111100', '00000000'], ['00000000', '00000000', '00111100', '00000000'], ['00000000', '00011000', '00111100', '00000000']];
 
 const pair = (d) => (Array.isArray(d) ? { L: d, R: d } : { L: d.L, R: d.R });
-// 웹(보는 사람 기준) → 로봇 기준: 로봇의 왼쪽 눈 = 보는 사람 기준 오른쪽 눈, 글자 순서도 좌우 반전
-const toRobot = (d) => { const { L, R } = pair(d); return { left: mirror(R), right: mirror(L) }; };
+// 웹(보는 사람 기준) → 로봇: 실물 시험으로 확인한 대로 left = 정면에서 볼 때 왼쪽 눈, right = 오른쪽 눈이고
+// 글자 순서도 정면에서 본 왼쪽→오른쪽 그대로다 (좌우를 뒤집지 않는다).
+const toRobot = (d) => { const { L, R } = pair(d); return { left: L, right: R }; };
 
 // 두 눈 사이를 최대한 벌린다: 로봇의 왼쪽 눈은 왼쪽(바깥)으로, 오른쪽 눈은 오른쪽(바깥)으로 밀어서
 // 켜진 점이 바깥 가장자리에서 OUTER_MARGIN 칸 떨어진 곳까지 가게 한다. (표정마다 그 표정에서 밀 수 있는 만큼)
@@ -49,6 +50,11 @@ const spreadFor = (frames) => ({                                // frames: [{lef
   left: Math.max(0, Math.min(...frames.map((f) => gapOf(f.left, 'left'))) - OUTER_MARGIN) % 8,
   right: Math.max(0, Math.min(...frames.map((f) => gapOf(f.right, 'right'))) - OUTER_MARGIN) % 8,
 });
+// 실물 LED는 적어 준 칸보다 한 칸 오른쪽에 켜지고, 맨 오른쪽 칸은 맨 왼쪽 칸으로 넘어간다(2026-10-28 시험).
+// 그래서 파일에는 미리 글자를 왼쪽으로 한 칸 돌려(맨 왼쪽 글자는 맨 오른쪽으로) 적어 둔다. 로봇 프로그램에서 이 어긋남을 고치면 HW_ROTATE 를 0으로 한다.
+const HW_ROTATE = 1;
+const rot = (rows) => (HW_ROTATE ? rows.map((r) => r.slice(HW_ROTATE) + r.slice(0, HW_ROTATE)) : rows);
+const hwFrame = (f) => ({ ...f, left: rot(f.left), right: rot(f.right) });
 const spreadFrame = (f, k) => ({ ...f, left: shiftOut(f.left, 'left', k.left), right: shiftOut(f.right, 'right', k.right) });
 
 export function eyesJson(sceneEyes) {                          // sceneEyes: { 씬이름: [{t, e, gx}] }
@@ -56,18 +62,24 @@ export function eyesJson(sceneEyes) {                          // sceneEyes: { �
   for (const [name, d] of Object.entries(EYES4)) {
     if (d.frames) {
       const fr = d.frames.map(toRobot), k = spreadFor(fr);
-      eyes[name] = { frames: fr.map((f) => ({ ...spreadFrame(f, k), ms: d.ms })), loop: true };
-    } else eyes[name] = spreadFrame(toRobot(d), spreadFor([toRobot(d)]));
+      eyes[name] = { frames: fr.map((f) => ({ ...hwFrame(spreadFrame(f, k)), ms: d.ms })), loop: true };
+    } else { const f = toRobot(d); eyes[name] = hwFrame(spreadFrame(f, spreadFor([f]))); }
   }
   const kOpen = spreadFor([toRobot(EYES4['뜬 눈'])]);            // 깜빡임은 뜬 눈과 같은 만큼 밀어서 눈 위치가 흔들리지 않게
-  const blink = { for: '뜬 눈', period_s: 3.8, first_s: 1.6, frames: BLINK.map((f) => ({ ...spreadFrame(toRobot(f), kOpen), ms: 60 })) };
+  const blink = { for: '뜬 눈', period_s: 3.8, first_s: 1.6, frames: BLINK.map((f) => ({ ...hwFrame(spreadFrame(toRobot(f), kOpen)), ms: 60 })) };
   const scenes = {};
-  // 눈을 한쪽씩 따로 고른 곳은 left / right 에 로봇 기준 표정 이름을 적는다 (웹의 왼쪽 눈 = 로봇의 오른쪽 눈).
+  // 눈을 한쪽씩 따로 고른 곳은 left / right 에 표정 이름을 적는다 (left = 정면에서 볼 때 왼쪽 눈).
   for (const [scene, list] of Object.entries(sceneEyes)) scenes[scene] = list.map((x) => {
     const o = { t: x.t, expr: x.e };
     if (x.gx) o.gx = x.gx;
-    if (x.eL || x.eR) { o.left = x.eR || x.e; o.right = x.eL || x.e; }
+    if (x.eL || x.eR) { o.left = x.eL || x.e; o.right = x.eR || x.e; }
     return o;
   });
-  return { version: 1, rows: 4, cols: 8, orientation: '로봇 기준 (left = 로봇의 왼쪽 눈 0x70, 맨 왼쪽 글자 = 로봇의 왼쪽 칸)', eyes, blink, scenes };
+  return {
+    version: 1, rows: 4, cols: 8,
+    orientation: '정면에서 볼 때 left = 왼쪽 눈, right = 오른쪽 눈. 글자 순서 = 정면에서 본 왼쪽→오른쪽.',
+    hw_rotate: HW_ROTATE,
+    note: HW_ROTATE ? '실물 LED가 한 칸 오른쪽으로 밀려 켜지고 맨 오른쪽 칸이 맨 왼쪽으로 넘어가서, 이 파일의 글자는 미리 왼쪽으로 한 칸 돌려 두었습니다. 로봇 프로그램에서 이 어긋남을 고친다면 글자를 오른쪽으로 한 칸 되돌려야 합니다.' : '',
+    eyes, blink, scenes,
+  };
 }
