@@ -383,3 +383,9 @@ button.rb.run,.rbc.run{background:var(--accent);color:#231b0c;opacity:1}
 .jt-btns{display:flex;gap:6px}
 .jt-btns button{flex:1;padding:7px 8px;font-size:12px}
 .jt-robot{margin:0;padding:4px 0;font-size:12px}
+
+/* 멈춤 지점 안내 (휴식: 머리를 숙이기 전) */
+#holdRow{display:flex;align-items:center;gap:10px;padding:2px 2px 0}
+#holdRow[hidden]{display:none}
+#holdGo{padding:7px 18px;font-size:13px;font-weight:700;border-radius:999px}
+#holdMsg{font-size:12px;color:var(--g-dim)}

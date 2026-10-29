@@ -201,6 +201,7 @@ function loadGLB(buffer, name) {
       // 없앤 표정이 저장된 클립에 남아 있으면 바꿔 준다: 표정 모음은 새로 만들고, 나머지는 비슷한 표정으로 대체
       const GONE = { '초롱 눈': '반짝 눈', '또렷한 눈': '뜬 눈' };
       if (saved) S.clips = S.clips.map((c) => {
+        if (!c.holds) { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.hold && c.markers?.length) c.holds = d.hold.map((h) => ({ t: c.markers[h.at].t, label: h.label || '숙이기' })); }
         if (c.group === '표정' && (c.markers || []).some((m) => GONE[m.label])) { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); return d ? buildPresetClip(d) : c; }
         (c.eyes || []).forEach((k) => { for (const f of ['e', 'eL', 'eR']) if (GONE[k[f]]) k[f] = GONE[k[f]]; });
         return c;
@@ -337,10 +338,12 @@ function applyPose(t) {
   }
   if ($('#robotLimit').checked && !tc.dragging) limitToRobot();
   manualActive = false;                      // 재생·시간 이동이 자세를 정하면 손 조작은 끝난다
+  if ($('#robotSpeed').checked && !exporting) RV.target = readJointAngles();   // 로봇 속도: 이 자세가 목표, 실제 모습은 아래 stepRobotView 가 따라간다
   refreshJointUI();
 }
 
 function upsertKey(idx, t, interp) {
+  snapRobotView();                              // 로봇 속도로 늦게 따라가는 중이면 키에는 목표 자세가 들어가게 맞춘다
   const keys = track(idx, true);
   const obj = S.nodes.get(idx);
   let k = keys.find((x) => Math.abs(x.t - t) < EPS);
@@ -475,6 +478,7 @@ function clearHeadFromBody(keys, applyPose4) {
 function buildPresetClip(def) {
   const clip = newClipData(def.name, def.duration);
   if (def.markers) clip.markers = def.markers;
+  if (def.hold && def.markers) clip.holds = def.hold.map((h) => ({ t: def.markers[h.at].t, label: h.label || '숙이기' }));   // 재생 중 여기서 멈추고 버튼을 눌러야 이어간다
   if (def.group) clip.group = def.group;
   if (def.eyes) clip.eyes = def.eyes.map(([t, e, gx = 0, gy = 0]) => ({ t, e, gx, gy }));
   const ids = { col: S.boneIdx.find((i) => nodeName(i) === '기둥'), head: S.boneIdx.find((i) => nodeName(i) === '머리'), tilt: S.boneIdx.find((i) => /갸웃/.test(nodeName(i))) };
@@ -663,10 +667,26 @@ function setTime(t, snap = true) {
   t = Math.max(0, Math.min(c.duration, t));
   if (snap) t = Math.round(t * c.fps) / c.fps;
   S.time = t;
+  S.released = new Set([...S.released].filter((x) => x <= t + 1e-6));            // 멈춤 지점 앞으로 돌아가면 다시 멈추게
+  if (S.heldAt != null && Math.abs(t - S.heldAt) > 1e-6) { S.heldAt = null; refreshHoldUI(); }
   applyPose(t);
   updateProps(); updateTimeLabel(); drawTL();
 }
-let homeTimer = 0;
+let homeTimer = 0, playStartedAt = 0;
+/* 멈춤 지점(휴식에서 머리를 숙이기 직전): 재생이 거기서 멈추고 [숙이기]를 눌러야 이어진다. 로봇 동기 중에는 멈춤 지점 너머의 자세를 미리 보내지 않는다. */
+S.released = new Set(); S.heldAt = null;
+const nextHold = (t = S.time) => (curClip()?.holds || []).filter((h) => !S.released.has(h.t) && h.t > t - 1e-6).sort((a, b) => a.t - b.t)[0] || null;
+function refreshHoldUI() {
+  const row = $('#holdRow'); if (!row) return;
+  const h = S.heldAt != null ? (curClip()?.holds || []).find((x) => Math.abs(x.t - S.heldAt) < 1e-6) : null;
+  row.hidden = !h; if (h) $('#holdGo').textContent = h.label;
+}
+function releaseHold() {
+  if (S.heldAt == null) return;
+  S.released.add(S.heldAt); S.heldAt = null; refreshHoldUI();
+  if (!S.playing) togglePlay();                                   // 이어서 재생 (로봇 동기 중이면 로봇도 이어서 따라 한다)
+}
+
 const cancelHome = () => { clearTimeout(homeTimer); homeTimer = 0; };
 // 동기 중에 웹 재생이 끝나거나 멈추면 로봇이 갑자기 서지 않고 원자세(home 씬)로 돌아온다.
 // 로봇은 마지막 pose 뒤 2초가 지나야 실시간 조작을 끝내고(조작 중에는 씬이 중단됨) 그 자세를 유지하므로, 그 뒤에 보낸다.
@@ -688,8 +708,10 @@ function stopPlay() {
 }
 function togglePlay() {
   if (S.playing) return stopPlay();
+  if (S.heldAt != null) { S.released.add(S.heldAt); S.heldAt = null; refreshHoldUI(); }
   if (S.time >= curClip().duration - EPS) S.time = 0;
   cancelHome();
+  playStartedAt = performance.now();
   S.playing = true; $('#tPlay').textContent = '❚❚'; updateProps();
 }
 let lastT = performance.now();
@@ -697,16 +719,23 @@ function frame(now) {
   const dt = Math.min((now - lastT) / 1000, 0.1); lastT = now;
   if (S.playing) {
     const c = curClip();
+    const prevT = S.time;
     S.time += dt;
+    const hp = S.sceneLoop ? null : nextHold(prevT);                    // 한 장면만 반복해서 볼 때는 멈추지 않는다
+    if (hp && prevT < hp.t - 1e-6 && S.time >= hp.t - 1e-6) {          // 멈춤 지점에 닿으면 정확히 거기서 멈춘다 (로봇은 원자세로 돌아가지 않고 그 자세를 유지)
+      S.time = hp.t; S.playing = false; $('#tPlay').textContent = '▶'; S.heldAt = hp.t; refreshHoldUI(); applyPose(S.time); updateProps(); updateTimeLabel(); drawTL();
+      toast(`'${hp.label}' 버튼을 누르면 이어서 움직여요`);
+    } else
     if (S.sceneLoop && c.markers?.length) {            // 장면 반복: 지금 보고 있는 장면의 끝에 닿으면 그 장면의 처음으로
       const [a0, b0] = sceneRange(sceneIndex(S.time - dt));
       if (S.time >= b0) S.time = a0 + (S.time - b0);
     }
     if (S.time >= c.duration) {
-      if (S.loop) S.time %= c.duration; else { S.time = c.duration; stopPlay(); }
+      if (S.loop) { S.time %= c.duration; S.released.clear(); } else { S.time = c.duration; stopPlay(); }
     }
     applyPose(S.time); updateProps(); updateTimeLabel(); drawTL();
   }
+  stepRobotView(dt);
   if (S.model) updateMarkers();
   orbit.update();
   renderer.render(scene, camera);
@@ -887,6 +916,35 @@ function jointDeg(clip, idx, axis, t) {                       // 쉬는 자세 �
   if (a > Math.PI) a -= 2 * Math.PI; else if (a < -Math.PI) a += 2 * Math.PI;
   return a / D2R;
 }
+/* [로봇 속도] 켜져 있으면 뷰포트의 네 관절이 로봇처럼 움직인다: 목표 자세(재생 중인 동작)를 최대 속도·가속도와 0.15초 지연으로 따라간다.
+   값은 엔지니어 답변서 기준(관절 약 206°/s · 215°/s², 몸통 약 79°/s · 83°/s²). 키 값과 내보내기에는 영향이 없다. */
+const RV = { cur: null, vel: { neck: 0, head: 0, tilt: 0, body: 0 }, target: null };
+const RV_VMAX = { neck: 206, head: 206, tilt: 206, body: 79 }, RV_AMAX = { neck: 215, head: 215, tilt: 215, body: 83 }, RV_TAU = 0.15;
+function writeJoints(vals) {
+  const ids = jtIds();
+  for (const j of ['neck', 'head', 'tilt', 'body']) {
+    if (ids[j] === undefined) continue;
+    S.nodes.get(ids[j]).quaternion.fromArray(S.rest.get(ids[j]).q).multiply(new THREE.Quaternion().setFromAxisAngle(JOINT_AXES[j], vals[j] * D2R));
+  }
+  try { if (IK) syncTarget(); } catch { /* 무시 */ }
+}
+function snapRobotView() {
+  if (!RV.cur || !RV.target) return;
+  writeJoints(RV.target); RV.cur = { ...RV.target }; RV.vel = { neck: 0, head: 0, tilt: 0, body: 0 };
+}
+function stepRobotView(dt) {
+  const on = $('#robotSpeed').checked && S.model && RV.target && !exporting && !tc.dragging && !manualActive && !jtDrag;
+  if (!on) { RV.cur = null; return; }                            // 꺼져 있거나 손으로 조작 중이면 따라가기를 멈추고, 다시 켜지면 지금 자세에서 시작한다
+  if (!RV.cur) { RV.cur = { ...RV.target }; RV.vel = { neck: 0, head: 0, tilt: 0, body: 0 }; }
+  for (const j of ['neck', 'head', 'tilt', 'body']) {
+    const err = RV.target[j] - RV.cur[j];
+    const vd = Math.max(-RV_VMAX[j], Math.min(RV_VMAX[j], err / RV_TAU));
+    RV.vel[j] += Math.max(-RV_AMAX[j] * dt, Math.min(RV_AMAX[j] * dt, vd - RV.vel[j]));
+    RV.cur[j] += RV.vel[j] * dt;
+    if (Math.abs(err) < 0.02 && Math.abs(RV.vel[j]) < 1) { RV.cur[j] = RV.target[j]; RV.vel[j] = 0; }
+  }
+  writeJoints(RV.cur);
+}
 /* [로봇 한계] 켜져 있으면 뷰포트의 기둥·머리·갸웃을 로봇이 실제로 움직일 수 있는 범위로 잘라서 보여 준다 (키 값은 그대로). */
 let jointCache = null;
 const jtVal = { neck: 0, head: 0, tilt: 0, body: 0 }, jtUI = {};
@@ -914,18 +972,25 @@ function limitToRobot() {
 /* [로봇 동기] 켜져 있으면 웹에서 재생하는 동안 0.1초마다 지금 보이는 자세(로봇 한계 적용)를 로봇에 보낸다. 눈도 따라간다(뜬·감은·웃는·하트는 로봇 기본 이름, 나머지는 로봇에 넣은 한글 표정 이름). */
 // 로봇에 넣은 눈 파일(cove_eyes.json)의 표정 이름(한글) 그대로 보낸다. (로봇 기본 이름 idle/happy/heart 는 옛 모양이라 쓰지 않는다)
 let syncEye = '';
+function syncPoseAt(t) {                                         // 시각 t 의 자세(로봇 한계 적용)를 로봇에 보낸다
+  if (!jointCache || jointCache.model !== S.model) jointCache = { model: S.model, ids: jointIds() };
+  const clip = curClip(), ids = jointCache.ids, f = { t };
+  for (const j of ['neck', 'head', 'tilt', 'body']) f[j] = jointDeg(clip, ids[j], JOINT_AXES[j], t);
+  const l = limitFrames([f], { tiltSign: +($('#rpTiltSign')?.value || 1) })[0], r1 = (v) => Math.round(v * 10) / 10;
+  robot.pose({ neck: r1(l.neck), head: r1(l.head), tilt: r1(l.tilt), body: r1(l.body) });
+}
 setInterval(() => {
   if (!robot.sync) { syncEye = ''; return; }
   if (!S.model) return;
   if (!S.playing) {                                              // 재생 중이 아니어도, 관절 조작 슬라이더를 움직였다면 그 자세를 계속 보낸다
+    if (S.heldAt != null) { syncPoseAt(S.heldAt); return; }           // 멈춤 지점에서 기다리는 동안은 그 자세를 계속 보내 로봇이 힘을 유지하게 한다
     if (manualActive) { const r1 = (v) => Math.round(v * 10) / 10; robot.pose({ neck: r1(jtVal.neck), head: r1(jtVal.head), tilt: r1(jtVal.tilt), body: r1(jtVal.body) }); }
     return;
   }
-  if (!jointCache || jointCache.model !== S.model) jointCache = { model: S.model, ids: jointIds() };
-  const clip = curClip(), t = Math.min(S.time + 0.1, clip.duration), ids = jointCache.ids, f = { t };      // 0.1초 앞의 자세 (로봇이 0.15초에 걸쳐 따라오므로)
-  for (const j of ['neck', 'head', 'tilt', 'body']) f[j] = jointDeg(clip, ids[j], JOINT_AXES[j], t);
-  const l = limitFrames([f], { tiltSign: +($('#rpTiltSign')?.value || 1) })[0], r1 = (v) => Math.round(v * 10) / 10;
-  robot.pose({ neck: r1(l.neck), head: r1(l.head), tilt: r1(l.tilt), body: r1(l.body) });
+  // 재생을 막 시작했을 때 로봇이 갑자기 튀지 않게, 앞서는 양을 초당 0.6초씩 천천히 늘려서 설정값까지 간다
+  const lead = Math.min(Math.max(0, Math.min(2, parseFloat($('#rpLead')?.value) || 0)), 0.6 * (performance.now() - playStartedAt) / 1000);
+  const clip = curClip(), hp = nextHold();
+  syncPoseAt(Math.min(S.time + lead, hp ? hp.t : clip.duration));      // 로봇이 늦는 만큼(실측 약 1초) 앞선 자세를 보내되, 멈춤 지점 너머는 미리 보내지 않는다
   const cur = (clip.eyes || []).filter((x) => x.t <= S.time + 1e-6).pop(), mode = cur && !cur.eL && !cur.eR && cur.e;
   if (mode && mode !== syncEye) { syncEye = mode; robot.eyes(mode); }
 }, 100);
@@ -1390,7 +1455,10 @@ $('#loop').onchange = (e) => (S.loop = e.target.checked);
 $('#autoKey').onchange = (e) => (S.autoKey = e.target.checked);
 $('#showAll').onchange = (e) => { S.showAll = e.target.checked; buildTree(); };
 $('#showBones').onchange = () => {};
+$('#holdGo').onclick = releaseHold;
 $('#robotLimit').onchange = () => { applyPose(S.time); refreshAll(); };
+{ const el = $('#rpLead'); try { const v = localStorage.getItem('cove-sync-lead'); if (v !== null && el) el.value = v; } catch { /* 무시 */ } if (el) { el.onchange = () => { try { localStorage.setItem('cove-sync-lead', el.value); } catch { /* 무시 */ } }; el.onkeydown = (e) => e.stopPropagation(); } }
+$('#robotSpeed').onchange = () => { RV.cur = null; applyPose(S.time); refreshAll(); };
 $('#rpTiltSign')?.addEventListener('change', () => applyPose(S.time));
 $('#opacity').oninput = applyOpacity;
 $('#camReset').onclick = fitCamera;
@@ -1529,7 +1597,7 @@ $('#spaceBtn').onclick = () => {
 };
 tc.setSpace('local');
 
-$('#clipSel').onchange = (e) => { S.clip = +e.target.value; S.selKeys.clear(); S.time = Math.min(S.time, curClip().duration); applyPose(S.time); refreshClipUI(); snapshot(); };
+$('#clipSel').onchange = (e) => { S.clip = +e.target.value; S.selKeys.clear(); S.released = new Set(); S.heldAt = null; refreshHoldUI(); S.time = Math.min(S.time, curClip().duration); applyPose(S.time); refreshClipUI(); snapshot(); };
 $('#clipNew').onclick = () => { const nc = newClipData(`새 클립 ${S.clips.filter((x) => x.group === '내 클립').length + 1}`); nc.group = '내 클립'; S.clips.push(nc); S.clip = S.clips.length - 1; S.selKeys.clear(); S.time = 0; applyPose(0); refreshClipUI(); snapshot(); };
 $('#clipDup').onclick = () => { const c = JSON.parse(JSON.stringify(curClip())); c.name += ' 복사'; c.group = '내 클립'; S.clips.push(c); S.clip = S.clips.length - 1; S.selKeys.clear(); refreshClipUI(); snapshot(); };
 // 이름 바꾸기: 브라우저 prompt 대신 목록 줄 안에서 바로 입력한다 (Enter 확정 · Esc 취소)
