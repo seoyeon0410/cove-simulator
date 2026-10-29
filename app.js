@@ -682,9 +682,8 @@ S.released = new Set(); S.heldAt = null;
 const nextHold = (t = S.time) => (curClip()?.holds || []).filter((h) => !S.released.has(h.t) && h.t > t - 1e-6).sort((a, b) => a.t - b.t)[0] || null;
 let holdKey = '';
 const HEAD_UP = -30;                                              // 머리 들기 목표 (도). 음수 = 얼굴이 위, 허용 범위 -46 ~ 0
-function refreshHeadBar() {                                       // 머리 버튼은 휴식(멈춤 지점이 있는 클립)에서만 보인다
-  const on = (curClip()?.holds || []).length > 0;
-  $('#headBar').hidden = !on;
+function refreshHeadBar() {                                       // 머리 들기·숙이기 버튼은 어느 클립에서나 보인다
+  $('#headBar').hidden = false;
 }
 function refreshHoldUI() {
   refreshHeadBar();                                       // 뷰포트 왼쪽 위의 초록 버튼: 멈춰서 기다리는 그 상황에만, 그 단계의 버튼 하나만 나온다
