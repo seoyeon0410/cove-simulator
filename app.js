@@ -1011,12 +1011,24 @@ function driveIdlePose(p) {
 }
 // 머리를 톡톡 치면 고개를 올렸다가(머리 10°, 얼굴이 위) 1.5초 뒤 원래대로. 연타하면 올린 채 시간이 늘어난다. 웹 동기가 켜져 있어야 움직인다
 const TAP_UP = 10, TAP_HOLD_MS = 1500;
+const TAP_BOW_HEAD = -30, TAP_LIFT_HEAD = -36;                       // 머리가 -30°보다 숙여져(0°에 가까워져) 있으면 톡 쳤을 때 -36°까지 들어 그대로 둔다 (갸웃도 바로 세운다)
 function tapRaise() {
   toast('머리를 톡톡 쳤어요');
   if (!robot.sync) return;
   const now = performance.now();
   if (tapTimer) { tapEnd = now + TAP_HOLD_MS; return; }
   const base = idleBase(); if (!base) return;
+  if (base.head > TAP_BOW_HEAD) {                                    // 고개를 숙이고 있으면: 톡 치면 고개를 들고 그 자세를 유지한다
+    toast('고개를 숙이고 있어서 들어요');
+    const t0 = now, h0 = base.head, tl0 = base.tilt, r1 = (v) => Math.round(v * 10) / 10;
+    tapTimer = setInterval(() => {
+      if (S.playing || !robot.sync) { clearInterval(tapTimer); tapTimer = 0; return; }
+      const k = Math.min(1, (performance.now() - t0) / 800), ks = k * k * (3 - 2 * k);
+      driveIdlePose({ neck: r1(base.neck), head: r1(h0 + (TAP_LIFT_HEAD - h0) * ks), tilt: r1(tl0 * (1 - ks)), body: r1(base.body) });
+      if (k >= 1) { clearInterval(tapTimer); tapTimer = 0; }
+    }, 100);
+    return;
+  }
   tapBase = base; tapEnd = now + TAP_HOLD_MS;
   const t0 = now, r1 = (v) => Math.round(v * 10) / 10;
   tapTimer = setInterval(() => {
