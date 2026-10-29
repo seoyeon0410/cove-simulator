@@ -677,34 +677,21 @@ let homeTimer = 0, playStartedAt = 0;
 S.released = new Set(); S.heldAt = null;
 const nextHold = (t = S.time) => (curClip()?.holds || []).filter((h) => !S.released.has(h.t) && h.t > t - 1e-6).sort((a, b) => a.t - b.t)[0] || null;
 let holdKey = '';
-function refreshHoldUI() {                                       // 뷰포트 왼쪽 위의 초록 버튼: 멈춤 지점마다 하나씩, 항상 보인다
+function refreshHoldUI() {                                       // 뷰포트 왼쪽 위의 초록 버튼: 멈춰서 기다리는 그 상황에만, 그 단계의 버튼 하나만 나온다
   const bar = $('#holdBar'); if (!bar) return;
   const holds = curClip()?.holds || [];
-  if (!holds.length) { bar.hidden = true; bar.innerHTML = ''; holdKey = ''; return; }
-  const key = `${S.clip}|${holds.map((h) => h.t + h.label).join(',')}`;
+  const waiting = S.heldAt != null ? holds.find((h) => Math.abs(h.t - S.heldAt) < 1e-6) : null;
+  if (!waiting) { bar.hidden = true; return; }
+  const key = `${S.clip}|${waiting.t}|${waiting.label}`;
   if (key !== holdKey) {
     holdKey = key; bar.innerHTML = '';
-    holds.forEach((h) => {
-      const row = document.createElement('div'); row.className = 'hold-item'; row.dataset.t = h.t;
-      row.innerHTML = '<button class="hold-btn"></button><span class="hold-msg"></span>';
-      row.querySelector('button').textContent = h.label; row.querySelector('.hold-msg').textContent = h.msg || '';
-      row.querySelector('button').onclick = () => pressHold(h);
-      bar.appendChild(row);
-    });
+    const row = document.createElement('div'); row.className = 'hold-item wait';
+    row.innerHTML = '<button class="hold-btn"></button><span class="hold-msg"></span>';
+    row.querySelector('button').textContent = waiting.label; row.querySelector('.hold-msg').textContent = waiting.msg || '준비되면 눌러 주세요.';
+    row.querySelector('button').onclick = releaseHold;
+    bar.appendChild(row);
   }
   bar.hidden = false;
-  [...bar.children].forEach((row, k) => {
-    const h = holds[k], waiting = S.heldAt != null && Math.abs(S.heldAt - h.t) < 1e-6;
-    const done = !waiting && (S.released.has(h.t) || S.time > h.t + 1e-6);
-    row.classList.toggle('wait', waiting); row.classList.toggle('done', done);
-    row.querySelector('.hold-msg').hidden = !waiting;               // 안내 문구는 기다리는 중일 때만
-  });
-}
-// 버튼: 기다리는 중이면 이어서 진행, 아직 멈춤 지점 앞이면 미리 눌러 두어서 거기서 멈추지 않게 한다
-function pressHold(h) {
-  if (S.heldAt != null && Math.abs(S.heldAt - h.t) < 1e-6) return releaseHold();
-  if (S.time > h.t + 1e-6) return;
-  S.released.add(h.t); refreshHoldUI(); toast(`'${h.label}'을 미리 눌렀어요. 그 지점에서 멈추지 않고 이어가요`);
 }
 function releaseHold() {
   if (S.heldAt == null) return;
