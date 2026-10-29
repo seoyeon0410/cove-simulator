@@ -201,7 +201,7 @@ function loadGLB(buffer, name) {
       // 없앤 표정이 저장된 클립에 남아 있으면 바꿔 준다: 표정 모음은 새로 만들고, 나머지는 비슷한 표정으로 대체
       const GONE = { '초롱 눈': '반짝 눈', '또렷한 눈': '뜬 눈' };
       if (saved) S.clips = S.clips.map((c) => {
-        if (!c.holds) { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.hold && c.markers?.length) c.holds = d.hold.map((h) => ({ t: c.markers[h.at].t, label: h.label || '숙이기' })); }
+        { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.hold && c.markers?.length) c.holds = d.hold.map((h) => ({ t: c.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '' })); }   // 멈춤 지점은 프리셋 그대로 맞춘다
         if (c.group === '표정' && (c.markers || []).some((m) => GONE[m.label])) { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); return d ? buildPresetClip(d) : c; }
         (c.eyes || []).forEach((k) => { for (const f of ['e', 'eL', 'eR']) if (GONE[k[f]]) k[f] = GONE[k[f]]; });
         return c;
@@ -478,7 +478,7 @@ function clearHeadFromBody(keys, applyPose4) {
 function buildPresetClip(def) {
   const clip = newClipData(def.name, def.duration);
   if (def.markers) clip.markers = def.markers;
-  if (def.hold && def.markers) clip.holds = def.hold.map((h) => ({ t: def.markers[h.at].t, label: h.label || '숙이기' }));   // 재생 중 여기서 멈추고 버튼을 눌러야 이어간다
+  if (def.hold && def.markers) clip.holds = def.hold.map((h) => ({ t: def.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '' }));   // 재생 중 여기서 멈추고 버튼을 눌러야 이어간다
   if (def.group) clip.group = def.group;
   if (def.eyes) clip.eyes = def.eyes.map(([t, e, gx = 0, gy = 0]) => ({ t, e, gx, gy }));
   const ids = { col: S.boneIdx.find((i) => nodeName(i) === '기둥'), head: S.boneIdx.find((i) => nodeName(i) === '머리'), tilt: S.boneIdx.find((i) => /갸웃/.test(nodeName(i))) };
@@ -679,7 +679,7 @@ const nextHold = (t = S.time) => (curClip()?.holds || []).filter((h) => !S.relea
 function refreshHoldUI() {
   const row = $('#holdRow'); if (!row) return;
   const h = S.heldAt != null ? (curClip()?.holds || []).find((x) => Math.abs(x.t - S.heldAt) < 1e-6) : null;
-  row.hidden = !h; if (h) $('#holdGo').textContent = h.label;
+  row.hidden = !h; if (h) { $('#holdGo').textContent = h.label; $('#holdMsg').textContent = h.msg || '준비되면 눌러 주세요.'; }
 }
 function releaseHold() {
   if (S.heldAt == null) return;
@@ -1456,6 +1456,9 @@ $('#autoKey').onchange = (e) => (S.autoKey = e.target.checked);
 $('#showAll').onchange = (e) => { S.showAll = e.target.checked; buildTree(); };
 $('#showBones').onchange = () => {};
 $('#holdGo').onclick = releaseHold;
+{ const setView = (open) => { $('#viewBody').classList.toggle('closed', !open); $('#viewHead').setAttribute('aria-expanded', open ? 'true' : 'false'); try { localStorage.setItem('cove-view-open', open ? '1' : '0'); } catch { /* 무시 */ } };
+  $('#viewHead').onclick = () => setView($('#viewBody').classList.contains('closed'));
+  let was = true; try { was = localStorage.getItem('cove-view-open') !== '0'; } catch { /* 무시 */ } setView(was); }
 $('#robotLimit').onchange = () => { applyPose(S.time); refreshAll(); };
 { const el = $('#rpLead'); try { const v = localStorage.getItem('cove-sync-lead'); if (v !== null && el) el.value = v; } catch { /* 무시 */ } if (el) { el.onchange = () => { try { localStorage.setItem('cove-sync-lead', el.value); } catch { /* 무시 */ } }; el.onkeydown = (e) => e.stopPropagation(); } }
 $('#robotSpeed').onchange = () => { RV.cur = null; applyPose(S.time); refreshAll(); };

@@ -38,6 +38,41 @@
 
 <main>
   <aside id="left">
+    <section id="sceneTag" hidden>
+      <div class="chips" id="sceneChips"></div>
+      <div class="desc"></div>
+      <div id="holdRow" hidden><button id="holdGo" class="primary">숙이기</button><span id="holdMsg"></span></div>
+    </section>
+    <section id="viewSec">
+      <button class="sec-head" id="viewHead" aria-expanded="true" title="화면 도구 접기/펼치기">
+        <span class="lbl">보기</span><span class="cur" id="viewCur"></span><span class="chev">▾</span>
+      </button>
+      <div class="sec-body" id="viewBody"><div class="sec-inner">
+        <div id="viewTools">
+          <div class="vt-row">
+            <div class="seg" id="modeSeg">
+              <button data-mode="translate" title="이동 (W)">이동</button>
+              <button data-mode="rotate" class="on" title="회전 (E)">회전</button>
+              <button data-mode="scale" title="크기 (R)">크기</button>
+            </div>
+            <button id="spaceBtn" title="좌표계 전환 (Q)">로컬</button>
+            <span class="spacer"></span>
+            <button id="camReset">카메라 리셋</button>
+          </div>
+          <div class="vt-row vt-sw">
+            <label class="check"><input type="checkbox" id="showBones" checked> 본</label>
+            <label class="check"><input type="checkbox" id="ikOn" checked> IK</label>
+            <label class="check" title="로봇이 실제로 움직일 수 있는 범위로 제한해서 보기 (로봇과 똑같이 보여요)"><input type="checkbox" id="robotLimit" checked> 로봇 한계</label>
+            <label class="check" title="로봇이 실제로 움직이는 속도(최대 약 200°/s, 가속 약 215°/s², 몸통은 약 80°/s)와 따라가는 지연까지 뷰포트에 똑같이 적용해서 보기"><input type="checkbox" id="robotSpeed" checked> 로봇 속도</label>
+          </div>
+          <div class="vt-row">
+            <select id="eyeSel" title="눈 표정 (양쪽)"></select>
+            <button id="btnEyeMaker" title="눈 그림을 끌어서 표정 직접 만들기">눈 만들기</button>
+            <label class="check opac">투명도 <input type="range" id="opacity" autocomplete="off" min="0.1" max="1" step="0.05" value="1"></label>
+          </div>
+        </div>
+      </div></div>
+    </section>
     <section id="clipSec">
       <button class="sec-head" id="clipHead" aria-expanded="true" title="동작 목록 접기/펼치기">
         <span class="lbl">동작 목록</span><span class="cur"></span><span class="chev">▾</span>
@@ -109,39 +144,6 @@
 
   <div id="viewWrap">
     <div id="view"></div>
-    <div class="overlay top-left">
-      <div class="glass">
-        <div class="seg" id="modeSeg">
-          <button data-mode="translate" title="이동 (W)">이동</button>
-          <button data-mode="rotate" class="on" title="회전 (E)">회전</button>
-          <button data-mode="scale" title="크기 (R)">크기</button>
-        </div>
-        <span class="vr"></span>
-        <button id="spaceBtn" title="좌표계 전환 (Q)">로컬</button>
-      </div>
-      <div class="glass">
-        <label class="check"><input type="checkbox" id="showBones" checked> 본</label>
-        <label class="check"><input type="checkbox" id="ikOn" checked> IK</label>
-        <label class="check" title="로봇이 실제로 움직일 수 있는 범위로 제한해서 보기 (로봇과 똑같이 보여요)"><input type="checkbox" id="robotLimit" checked> 로봇 한계</label>
-        <label class="check" title="로봇이 실제로 움직이는 속도(최대 약 200°/s, 가속 약 215°/s², 몸통은 약 80°/s)와 따라가는 지연까지 뷰포트에 똑같이 적용해서 보기"><input type="checkbox" id="robotSpeed" checked> 로봇 속도</label>
-      </div>
-      <span class="spacer"></span>
-      <div class="glass">
-        <select id="eyeSel" title="눈 표정 (양쪽)"></select>
-        <button id="btnEyeMaker" title="눈 그림을 끌어서 표정 직접 만들기">눈 만들기</button>
-        <span class="vr"></span>
-        <label class="check opac">투명도 <input type="range" id="opacity" autocomplete="off" min="0.1" max="1" step="0.05" value="1"></label>
-        <span class="vr"></span>
-        <button id="camReset">카메라 리셋</button>
-      </div>
-    </div>
-    <div id="viewBottom">
-      <div id="sceneTag" class="glass" hidden>
-        <div class="chips" id="sceneChips"></div>
-        <div class="desc"></div>
-        <div id="holdRow" hidden><button id="holdGo" class="primary">숙이기</button><span id="holdMsg">머리를 숙이기 직전에 멈춰 있어요. 준비되면 눌러 주세요.</span></div>
-      </div>
-    </div>
     <div id="drop">GLB 파일을 여기에 놓으세요</div>
   </div>
 

@@ -199,7 +199,7 @@ function autoEyes(durations, pairs) {
 }
 
 const SCENARIOS = [
-  { name: '시나리오1 휴식', eyes: EYES_REST, natural: true, tailLabel: '다시 쉬어요', hold: [{ at: 3, label: '숙이기' }], steps: [   // 3번째 장면(팔을 올려 주길 기다려요) 끝에서 멈추고, [숙이기]를 눌러야 머리를 숙인다
+  { name: '시나리오1 휴식', eyes: EYES_REST, natural: true, tailLabel: '다시 쉬어요', hold: [{ at: 1, label: '반응하기', msg: '쓰다듬어 줄 때까지 기다리고 있어요. 쓰다듬은 뒤에 눌러 주세요.' }, { at: 3, label: '숙이기', msg: '머리를 숙이기 직전에 멈춰 있어요. 준비되면 눌러 주세요.' }], steps: [   // 2번째 장면 앞(쓰다듬기 전)과 4번째 장면 앞(머리를 숙이기 전)에서 멈추고, 버튼을 눌러야 이어진다
     { name: '누가 다가왔어요', duration: 3, keys: WAKE },
     { name: '쓰다듬어 줘서 좋아요', duration: 3, keys: [k(0, 25, -34), k(0.75, 25, -34, 0, 5), k(1.5, 25, -34, 0, -5), k(2.25, 25, -34, 0, 5), k(3, 25, -34)] },
     { name: '팔을 올려 주길 기다려요', duration: 3, keys: [k(0, 25, -34), k(1, 28, -22), k(1.5, 28, -27), k(2, 28, -22), k(2.5, 28, -27), k(3, 28, -22)] },

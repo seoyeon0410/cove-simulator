@@ -389,3 +389,31 @@ button.rb.run,.rbc.run{background:var(--accent);color:#231b0c;opacity:1}
 #holdRow[hidden]{display:none}
 #holdGo{padding:7px 18px;font-size:13px;font-weight:700;border-radius:999px}
 #holdMsg{font-size:12px;color:var(--g-dim)}
+
+/* ── 뷰포트는 3D 화면만 두고, 버튼은 모두 오른쪽 패널로 ── */
+#sceneTag{display:block;margin:0 0 6px;padding:10px 12px 12px;background:var(--panel);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
+#sceneTag[hidden]{display:none}
+#sceneChips{display:flex;flex-wrap:wrap;align-items:center;gap:6px 4px}
+#sceneChips .chip{height:24px;padding:0 10px;font-size:11.5px;font-weight:600;color:var(--dim);border-radius:999px;background:transparent;box-shadow:none}
+#sceneChips .chip.num{width:24px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center}
+#sceneChips .chip:hover{background:var(--ctl);color:var(--text);box-shadow:none}
+#sceneChips .chip.cur:not(.on){color:var(--text);box-shadow:inset 0 0 0 1.5px rgba(239,217,174,.55)}
+#sceneChips .chip.on,#sceneChips .chip.all.on{background:var(--accent);color:#231b0c;box-shadow:none}
+#sceneChips .chip.all{margin-right:8px;padding:0 12px;background:var(--ctl);color:var(--text)}
+#sceneChips .chip.all::after{background:var(--line)}
+#sceneTag .desc{margin-top:8px;padding:0 2px;font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--text);min-height:22px}
+#holdRow{display:flex;align-items:center;gap:10px;padding:8px 0 0;flex-wrap:wrap}
+#holdGo{padding:7px 18px;font-size:13px;font-weight:700;border-radius:999px}
+#holdMsg{font-size:12px;color:var(--dim);flex:1;min-width:140px;line-height:1.4}
+#viewSec{border-top:0;margin-bottom:2px}
+#viewTools{display:flex;flex-direction:column;gap:8px;padding:2px 10px 10px}
+.vt-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.vt-row .seg{display:flex;gap:2px}
+.vt-row button{padding:5px 10px;font-size:12px}
+.vt-row .seg button.on{background:var(--accent);color:#231b0c;font-weight:600}
+.vt-row select{width:auto;max-width:130px}
+.vt-sw{gap:4px 14px}
+.vt-sw .check,.vt-row .check{margin:0;padding:2px 0;font-size:12px}
+#btnEyeMaker.on{background:var(--accent);color:#231b0c;font-weight:600}
+.vt-row .opac{margin-left:auto}
+.vt-row .opac input[type=range]{width:90px}
