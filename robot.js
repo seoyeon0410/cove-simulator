@@ -131,7 +131,7 @@ function connect() {
   if (client) { disconnect(); return; }
   const { url, robot } = cfg();
   if (!window.mqtt) { setState('error', 'MQTT 라이브러리를 못 불러왔어요'); return; }
-  try { localStorage.setItem('cove-robot', JSON.stringify({ url, robot })); } catch { /* 무시 */ }
+  try { localStorage.setItem('cove-robot', JSON.stringify({ url, robot, auto: true })); } catch { /* 무시 */ }   // auto: 다음에 페이지를 열면 자동으로 다시 연결한다(연결만 하고, 움직이는 건 주변 확인·동기를 따로 켜야 한다)
   setState('connecting');
   log('sys', `연결 시도: ${url} (${robot})`);
   const c = window.mqtt.connect(url, { clientId: 'cove-web-' + Math.random().toString(16).slice(2, 8), connectTimeout: 5000, reconnectPeriod: 3000, clean: true });
@@ -157,6 +157,7 @@ function connect() {
 }
 
 function disconnect() {
+  try { const s = JSON.parse(localStorage.getItem('cove-robot') || '{}'); s.auto = false; localStorage.setItem('cove-robot', JSON.stringify(s)); } catch { /* 무시 */ }   // 직접 끊으면 자동 연결도 끈다
   if (client) { try { client.end(true); } catch { /* 무시 */ } client = null; }
   clearInterval(statusTimer);
   scenes = []; current = null; sceneKey = '';
@@ -246,6 +247,7 @@ function buildScenes(list) {
 export function initRobotPanel({ exportFiles } = {}) {
   let saved = {}; try { saved = JSON.parse(localStorage.getItem('cove-robot') || '{}'); } catch { /* 무시 */ }
   $('#rpUrl').value = saved.url || DEFAULT_URL; $('#rpRobot').value = saved.robot || 'robot2';
+  if (saved.auto) setTimeout(() => { if (!client) connect(); }, 800);   // 지난번에 연결해 두었으면 새로고침해도 자동으로 다시 연결한다
 
   EYES.forEach(([m, label]) => { const b = document.createElement('button'); b.className = 'chip'; b.textContent = label; b.onclick = () => send({ cmd: 'eyes', mode: m }); $('#rpEyes').appendChild(b); });
   MODES.forEach(([m, label]) => { const b = document.createElement('button'); b.className = 'chip'; b.textContent = label; b.onclick = () => send({ cmd: 'mode', name: m }); $('#rpModes').appendChild(b); });
