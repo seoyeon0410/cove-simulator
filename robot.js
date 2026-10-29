@@ -43,6 +43,7 @@ export const robot = {
     if (!motorPos || Date.now() - motorAt > 3500) return null;
     return { neck: (REST.id2 - motorPos[2]) / TICK, head: (motorPos[3] - REST.id3) / TICK, tilt: (motorPos[4] - REST.id4) / TICK, body: (motorPos[1] - REST.id1) / 29.6 };
   },
+  get touchSampleAt() { return touchAt; },                          // 터치 값이 마지막으로 들어온 때 (상태 메시지가 올 때마다 바뀐다)
   get armKnown() { return senseAt > 0 && Date.now() - senseAt < 3500; },
   get topOk() { return topOk; },
   get topMm() { return topMm; },                                     // 아래 방향 거리 (mm)

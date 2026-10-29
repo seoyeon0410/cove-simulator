@@ -996,12 +996,31 @@ function limitToRobot() {
 // 로봇에 넣은 눈 파일(cove_eyes.json)의 표정 이름(한글) 그대로 보낸다. (로봇 기본 이름 idle/happy/heart 는 옛 모양이라 쓰지 않는다)
 let syncEye = '';
 // 재생 중이 아닐 때(멈춤 지점도 아닐 때)도 머리를 쓰다듬으면 신난 눈으로 기뻐하고, 손을 떼고 3초 뒤 원래 눈으로 돌아간다
-let happyUntil = 0, happyOn = false, prevTouch = false, wiggleTimer = 0;
+let happyUntil = 0, happyOn = false, prevTouch = false, wiggleTimer = 0, tapTimer = 0, tapBase = null, tapEnd = 0;
+let touchState = 'idle', pendSample = 0, pendAt = 0;   // idle → pending(닿은 걸 처음 봄) → 다음 값으로 톡(떨어짐)/쓰다듬기(계속 닿음)를 가른다
 // 몸도 흔든다: 로봇의 지금 자세를 기준으로 머리를 조금 숙이고 몸통을 3초간 좌우로 (웹 동기가 켜져 있어야 한다 = 주변 확인 + 동기 켬). 끝나면 그 자세로 돌아온다
 const WIGGLE_SEC = 3;                                           // 몸 흔드는 시간 (초)
+// 머리를 톡톡 치면 고개를 올렸다가(머리 10°, 얼굴이 위) 1.5초 뒤 원래대로. 연타하면 올린 채 시간이 늘어난다. 웹 동기가 켜져 있어야 움직인다
+const TAP_UP = 10, TAP_HOLD_MS = 1500;
+function tapRaise() {
+  toast('머리를 톡톡 쳤어요');
+  if (!robot.sync) return;
+  const now = performance.now();
+  if (tapTimer) { tapEnd = now + TAP_HOLD_MS; return; }
+  const base = robot.deg; if (!base) return;
+  tapBase = base; tapEnd = now + TAP_HOLD_MS;
+  const t0 = now, r1 = (v) => Math.round(v * 10) / 10;
+  tapTimer = setInterval(() => {
+    if (S.playing || !robot.sync) { clearInterval(tapTimer); tapTimer = 0; return; }
+    const n = performance.now(), up = Math.min(1, (n - t0) / 400), down = Math.max(0, 1 - (n - tapEnd) / 600), k = Math.min(up, n < tapEnd ? 1 : down), ks = k * k * (3 - 2 * k);
+    robot.pose({ neck: r1(tapBase.neck), head: r1(Math.max(-46, tapBase.head - TAP_UP * ks)), tilt: r1(tapBase.tilt), body: r1(tapBase.body) });
+    if (n >= tapEnd + 600) { clearInterval(tapTimer); tapTimer = 0; }
+  }, 100);
+}
 function happyWiggle() {
-  const base = robot.sync ? robot.deg : null;
-  if (!base) return;
+  const base = tapTimer ? tapBase : (robot.sync ? robot.deg : null);   // 고개를 올리던 중이면 올리기 전 자세에서 시작한다
+  if (tapTimer) { clearInterval(tapTimer); tapTimer = 0; }
+  if (!base || !robot.sync) return;
   clearInterval(wiggleTimer);
   const t0 = performance.now(), r1 = (v) => Math.round(v * 10) / 10;
   wiggleTimer = setInterval(() => {
@@ -1013,17 +1032,23 @@ function happyWiggle() {
     if (done) clearInterval(wiggleTimer);
   }, 100);
 }
+function startStroke() {
+  touchState = 'stroking'; happyOn = true; toast('쓰다듬어 줘서 기뻐요');
+  eyes?.show('신난 눈'); robot.eyes('신난 눈');
+  happyWiggle();
+}
 function idleHappy() {
   const now = Date.now(), t = robot.connected && robot.touch, idle = !S.playing && S.heldAt == null;
-  if (t && !prevTouch && !happyOn && idle && $('#rpHappy')?.checked) {
-    happyOn = true; toast('쓰다듬어 줘서 기뻐요');
-    eyes?.show('신난 눈'); robot.eyes('신난 눈');
-    happyWiggle();
+  // 로봇의 터치 값은 1초쯤마다 오므로, 처음 닿은 걸 본 뒤 다음 값이 오면: 이미 떨어졌으면 톡, 계속 닿아 있으면 쓰다듬기
+  if (touchState === 'idle' && t && !prevTouch && idle && $('#rpHappy')?.checked) { touchState = 'pending'; pendSample = robot.touchSampleAt; pendAt = now; }
+  else if (touchState === 'pending') {
+    if (!idle) touchState = 'idle';
+    else if (robot.touchSampleAt !== pendSample || now - pendAt > 2500) { if (t) startStroke(); else { touchState = 'idle'; tapRaise(); } }
   }
   if (happyOn) {
     if (t) happyUntil = now + 3000;
     if (!idle || (!t && now > happyUntil)) {
-      happyOn = false;
+      happyOn = false; touchState = 'idle';
       if (idle) { applyEyes(S.time); robot.eyes('뜬 눈'); }   // 재생이 시작됐으면 재생이 눈을 맡는다
     }
   }
