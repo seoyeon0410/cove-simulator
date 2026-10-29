@@ -471,3 +471,6 @@ button.rb.run,.rbc.run{background:var(--accent);color:#231b0c;opacity:1}
 #headTorqueOff.armed{background:#e04a37;animation:torquePulse .8s ease-in-out infinite alternate}
 #headTorqueOff:disabled{background:#4a2823;color:#a88a85}
 @keyframes torquePulse{from{box-shadow:0 0 0 0 rgba(224,74,55,.0)}to{box-shadow:0 0 0 3px rgba(224,74,55,.45)}}
+
+/* 토크가 꺼져 있을 때는 같은 버튼이 눈에 띄는 노란색 "켜기" 버튼이 된다 */
+#headTorqueOff.torque-is-off{background:#e8c04a;color:#2a1f00;animation:torquePulse .8s ease-in-out infinite alternate}

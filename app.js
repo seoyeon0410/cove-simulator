@@ -996,6 +996,7 @@ function limitToRobot() {
 // 로봇에 넣은 눈 파일(cove_eyes.json)의 표정 이름(한글) 그대로 보낸다. (로봇 기본 이름 idle/happy/heart 는 옛 모양이라 쓰지 않는다)
 let syncEye = '';
 // 재생 중이 아닐 때(멈춤 지점도 아닐 때)도 머리를 쓰다듬으면 신난 눈으로 기뻐하고, 손을 떼고 3초 뒤 원래 눈으로 돌아간다
+let lastTorqueWarn = 0;
 let happyUntil = 0, happyOn = false, prevTouch = false, wiggleTimer = 0, tapTimer = 0, tapBase = null, tapEnd = 0;
 let touchState = 'idle', pendSample = 0, pendAt = 0;   // idle → pending(닿은 걸 처음 봄) → 다음 값으로 톡(떨어짐)/쓰다듬기(계속 닿음)를 가른다
 // 몸도 흔든다: 로봇의 지금 자세를 기준으로 머리를 조금 숙이고 몸통을 3초간 좌우로 (웹 동기가 켜져 있어야 한다 = 주변 확인 + 동기 켬). 끝나면 그 자세로 돌아온다
@@ -1099,11 +1100,12 @@ function frontApproach() {
   toast('사람이 다가왔어요 · 일어나요');
   if (S.clip !== idx) { const sel = $('#clipSel'); sel.value = String(idx); sel.dispatchEvent(new Event('change')); }
   playScene(0);                                                    // 첫 장면(앉아 있다가 일어나는 3초)만 재생하고 선 채로 멈춘다
+  playStartedAt = performance.now() - 5000;                        // 앞서 보내는 양(로봇이 늦는 약 1초)을 서서히 늘리지 않고 처음부터 다 준다 — 앉은 자세에서 시작이라 튈 걱정이 없다
   standHeadAt = performance.now();                                 // 다 일어서면 고개도 든다
 }
-// 2번 거리센서: 서 있는 로봇에게 가까이 올수록 기둥을 더 올린다(10cm 이내에서 시작, 3cm에서 최대 33°). 사람이 떠나면 원래 높이로 내려온다.
+// 2번 거리센서: 서 있는 로봇에게 가까이 올수록 기둥을 더 올린다(손 약 10cm에서 시작, 약 5cm에서 최대 33°). 사람이 떠나면 원래 높이로 내려온다.
 // 로봇 동기가 켜져 있고 재생·다른 반응 중이 아닐 때만 움직이고, 기둥만 바꾼다(나머지는 시작할 때 자세 그대로)
-const FOLLOW_FAR = 100, FOLLOW_NEAR = 30, NECK_MAX = 33, FOLLOW_RATE = 12;   // mm, mm, 도, 도/초 (다가옴 자체가 10cm 안이라, 10cm에서 시작해 3cm에서 최대)
+const FOLLOW_FAR = 140, FOLLOW_NEAR = 55, NECK_MAX = 33, FOLLOW_RATE = 12;   // mm, mm, 도, 도/초 (다가옴 자체가 손 약 10cm 안이라, 센서 값 140mm에서 시작해 55mm(손 약 5cm)에서 최대)
 let followBase = null, followCur = 0, followTimer = 0, sitLock = false, followMm = null;
 function frontFollow() {
   if (sitLock) { if (!robot.approach) sitLock = false; followBase = null; return; }   // 앉기를 누른 뒤에는 사람이 떠날 때까지 기둥을 올리지 않는다
@@ -1153,6 +1155,7 @@ setInterval(() => {
   if (st) st.textContent = !robot.connected ? '(로봇 연결 필요)' : !robot.touchKnown ? '(값 없음)' : robot.touch ? '● 닿음' : '○ 안 닿음';
   const sa = $('#rpArmState'), armOn = $('#rpArm')?.checked;
   if (sa) sa.textContent = !robot.connected ? '(로봇 연결 필요)' : !robot.armKnown ? '(값 없음)' : !robot.topOk ? '(센서 없음)' : `${robot.arm ? '● 손 감지' : '○ 없음'} ${robot.topMm ?? '-'}mm (평소 ${robot.topBase ?? '-'})`;
+  if (robot.connected && robot.sync && robot.torqueOff && (S.playing || armActive || happyOn || tapTimer || followBase) && Date.now() - lastTorqueWarn > 15000) { lastTorqueWarn = Date.now(); toast('로봇 모터 토크가 꺼져 있어서 로봇이 움직이지 않아요 · 모터 토크 켜기를 눌러 주세요'); }
   idleHappy();
   armLook();
   frontApproach();

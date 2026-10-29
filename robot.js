@@ -12,7 +12,7 @@ const EYES = [['idle', '뜬 눈'], ['blink', '깜빡'], ['look_left', '왼쪽 �
 const MODES = [['rest', '휴식'], ['tickle', '간지럽히기'], ['snack', '간식'], ['track', '따라보기'], ['off', '반응 끄기']];
 
 let client = null, st = 'off', lastStatus = 0, torqueArm = 0, statusTimer = null;
-let scenes = [], current = null, sig = '', sync = false, touch = false, touchAt = 0, arm = false, topMm = null, topOk = false, senseAt = 0, motorPos = null, motorAt = 0, zNow = null, zPresent = false, zNearMm = null, zDropAt = 0, zAt = 0, zSettleUntil = 0, armWeb = false, webBase = null, topBase = null, person = false, frontMm = null, frontDir = null, frontOk = false, frontAt = 0, autoMode = false;
+let scenes = [], current = null, sig = '', sync = false, touch = false, touchAt = 0, arm = false, topMm = null, topOk = false, senseAt = 0, motorPos = null, motorAt = 0, torqueOffNow = false, torqueAt = 0, zNow = null, zPresent = false, zNearMm = null, zDropAt = 0, zAt = 0, zSettleUntil = 0, armWeb = false, webBase = null, topBase = null, person = false, frontMm = null, frontDir = null, frontOk = false, frontAt = 0, autoMode = false;
 const listeners = new Set();
 const isOn = () => st === 'online' || st === 'live';
 // 동작 목록 같은 다른 화면이 쓸 수 있게: 연결 여부 · 씬 목록 · 지금 도는 씬이 바뀔 때만 알린다
@@ -43,6 +43,7 @@ export const robot = {
     if (!motorPos || Date.now() - motorAt > 3500) return null;
     return { neck: (REST.id2 - motorPos[2]) / TICK, head: (motorPos[3] - REST.id3) / TICK, tilt: (motorPos[4] - REST.id4) / TICK, body: (motorPos[1] - REST.id1) / 29.6 };
   },
+  get torqueOff() { return torqueOffNow && Date.now() - torqueAt < 4000; },   // 모든 모터 토크가 꺼져 있음 (status.motors[].torque)
   get touchSampleAt() { return touchAt; },                          // 터치 값이 마지막으로 들어온 때 (상태 메시지가 올 때마다 바뀐다)
   // 2번 거리센서(몸통 앞, VL53L5CX 4×4): 사람이 가까이(50cm 안 1초) 있으면 person, 가장 가까운 거리 front_mm, 사람 방향 dir(-1 왼쪽 ~ +1 오른쪽)
   get approach() { return zPresent && Date.now() - zAt < 1500; },     // 2번 거리센서 구역 중 하나라도 평소보다 확 가까워짐 (사람·손이 다가옴)
@@ -187,6 +188,7 @@ function onStatus(msg) {
     current = typeof msg.scene === 'string' && msg.scene ? msg.scene : null;
     if (msg.sense && typeof msg.sense.touch === 'boolean') { touch = msg.sense.touch; touchAt = Date.now(); }
     if (typeof msg.auto === 'boolean') autoMode = msg.auto;
+    if (Array.isArray(msg.motors) && msg.motors.length) { torqueOffNow = msg.motors.every((m) => m && m.torque === false); torqueAt = Date.now(); updateTorqueBtn(); }
     if (msg.sense && typeof msg.sense.person === 'boolean') { person = msg.sense.person; frontMm = typeof msg.sense.front_mm === 'number' ? msg.sense.front_mm : null; frontDir = typeof msg.sense.dir === 'number' ? msg.sense.dir : null; frontOk = !!msg.sense.front_ok; frontAt = Date.now(); }
     if (Array.isArray(msg.motors)) { const prev = motorPos; const p = {}; msg.motors.forEach((m) => { if (m && typeof m.pos === 'number') p[m.id] = m.pos; }); if (p[1] != null && p[2] != null && p[3] != null && p[4] != null) { if (prev && [1, 2, 3, 4].some((id) => Math.abs(p[id] - prev[id]) > 30)) { zSettleUntil = Date.now() + 2500; zHist = null; zPresent = false; zNearMm = null; zStreak = 0; } motorPos = p; motorAt = Date.now(); } }
     if (msg.sense && typeof msg.sense.top_mm === 'number') {
@@ -203,10 +205,10 @@ function onStatus(msg) {
 }
 
 /* 2번 거리센서(몸통 앞 4×4)의 구역별 거리(0.2초마다, booth/<id>/tof 의 z). 로봇의 person(50cm 안 1초)은 센서 앞에 항상 뭔가 가까이 있으면(지금은 약 6cm) 늘 true라서 "다가옴"을 가를 수 없다.
-   그래서 구역마다 최근 5초(25개)의 중앙값을 평소 거리로 삼고, 어느 구역이든 평소보다 30% 넘게(그리고 20mm 이상) 가까워지면서 거리가 10cm 이하인 상태가 0.4초(2개) 이어지면 다가온 것으로 본다.
+   그래서 구역마다 최근 5초(25개)의 중앙값을 평소 거리로 삼고, 어느 구역이든 평소보다 30% 넘게(그리고 20mm 이상) 가까워지면서 센서 값이 140mm(손 약 10cm) 이하인 상태가 0.4초(2개) 이어지면(평소의 절반 아래로 확 가까워지면 첫 값 0.2초) 다가온 것으로 본다.
    (일부 구역은 가끔 튀는 값이 있어서 평균 대신 중앙값을 쓴다.) 다가온 동안은 평소 거리를 거의 갱신하지 않고, 다가온 구역 중 가장 가까운 거리가 approachMm.
    로봇이 움직여 센서 보는 곳이 바뀌면(모터 위치가 달라지면) 평소 거리를 새로 잡고 2.5초는 보지 않는다. */
-const Z_WIN = 25, Z_MAX_MM = 100;                                 // 다가옴은 10cm 안에서만 (구역 거리가 100mm 이하이면서 평소보다 가까워졌을 때)
+const Z_WIN = 25, Z_MAX_MM = 140;                                 // 다가옴은 손이 약 10cm 안일 때만. 센서 값은 실제보다 1~2cm 크게 나와서(손 10cm ≈ 120mm, 5cm ≈ 58mm) 140mm 이하로 본다
 let zHist = null, zStreak = 0, zSkip = 0;
 const median = (a) => { const s = a.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
 function onTof(msg) {
@@ -215,17 +217,25 @@ function onTof(msg) {
   zAt = now; zNow = z;
   if (!zHist || zHist.length !== z.length) zHist = z.map(() => []);
   if (now < zSettleUntil) { zHist = z.map((v) => (v != null ? [v] : [])); zPresent = false; zStreak = 0; return; }
-  let drop = null;
+  let drop = null, strong = false;
   z.forEach((v, i) => {
     const h = zHist[i];
     if (v == null || h.length < 5) return;                            // 평소 거리를 모으는 중(1초)에는 보지 않는다
     const base = median(h);
-    if (v <= Z_MAX_MM && v < base * 0.7 && base - v >= 20) drop = drop == null ? v : Math.min(drop, v);
+    if (v <= Z_MAX_MM && v < base * 0.7 && base - v >= 20) { drop = drop == null ? v : Math.min(drop, v); if (v < base * 0.5 && base - v >= 40) strong = true; }   // 절반 아래로 확 가까워진 건 첫 값에서 바로
   });
-  if (drop != null) { zStreak++; if (zStreak >= 2) { zPresent = true; zNearMm = drop; zDropAt = now; } }
+  if (drop != null) { zStreak++; if (zStreak >= 2 || strong) { zPresent = true; zNearMm = drop; zDropAt = now; } }
   else { zStreak = 0; if (zPresent && now - zDropAt > 1500) { zPresent = false; zNearMm = null; } }
   zSkip = zPresent ? zSkip + 1 : 0;
   if (!zPresent || zSkip % 5 === 0) z.forEach((v, i) => { if (v != null) { zHist[i].push(v); if (zHist[i].length > Z_WIN) zHist[i].shift(); } });
+}
+
+// 모든 모터의 토크가 꺼져 있으면(로봇이 "정지 (토크 해제)" 상태) 로봇은 어떤 자세 명령도 따라 하지 않는다. 오른쪽 패널의 빨간 버튼이 그때는 "모터 토크 켜기"가 된다.
+function updateTorqueBtn() {
+  const b = $('#headTorqueOff'); if (!b || b.classList.contains('armed')) return;
+  const off = torqueOffNow && Date.now() - torqueAt < 4000;
+  b.textContent = off ? '모터 토크 켜기 (지금 꺼져 있어요)' : '모터 토크 끄기';
+  b.classList.toggle('torque-is-off', off);
 }
 
 function buildScenes(list) {
@@ -258,8 +268,9 @@ export function initRobotPanel({ exportFiles } = {}) {
   let headTorqueArm = 0;
   $('#headTorqueOff').onclick = () => {
     const b = $('#headTorqueOff');
-    if (!headTorqueArm) { headTorqueArm = setTimeout(() => { headTorqueArm = 0; b.textContent = '모터 토크 끄기'; b.classList.remove('armed'); }, 3000); b.textContent = '한 번 더 누르면 꺼요 (머리가 처질 수 있어요)'; b.classList.add('armed'); return; }
-    clearTimeout(headTorqueArm); headTorqueArm = 0; b.textContent = '모터 토크 끄기'; b.classList.remove('armed');
+    if (torqueOffNow && Date.now() - torqueAt < 4000) { send({ cmd: 'torque', on: true }); return; }   // 꺼져 있을 때는 한 번에 켠다
+    if (!headTorqueArm) { headTorqueArm = setTimeout(() => { headTorqueArm = 0; b.classList.remove('armed'); updateTorqueBtn(); }, 3000); b.textContent = '한 번 더 누르면 꺼요 (머리가 처질 수 있어요)'; b.classList.add('armed'); return; }
+    clearTimeout(headTorqueArm); headTorqueArm = 0; b.classList.remove('armed'); updateTorqueBtn();
     setSync(false); send({ cmd: 'torque', on: false });
   };
   $('#rpReload').onclick = () => send({ cmd: 'reload' });
