@@ -445,3 +445,10 @@ button.rb.run,.rbc.run{background:var(--accent);color:#231b0c;opacity:1}
 .hold-item.wait .hold-btn{background:#1fa458;animation:holdpulse 1.2s ease-in-out infinite}
 .hold-msg{padding:6px 10px;border-radius:10px;background:rgba(255,255,255,.85);color:#1d5a38;font-size:12px;line-height:1.4;font-weight:600;max-width:240px}
 @keyframes holdpulse{0%,100%{box-shadow:0 0 0 1px rgba(20,90,50,.4),0 0 0 0 rgba(53,179,107,.55)}50%{box-shadow:0 0 0 1px rgba(20,90,50,.4),0 0 0 9px rgba(53,179,107,0)}}
+
+/* 터치 단계 안내: 뷰포트 왼쪽 위에 "머리를 만져 주세요" */
+.hold-cue{padding:10px 16px;border-radius:14px;background:#fff;color:#1d5a38;font-size:17px;font-weight:800;letter-spacing:-.01em;box-shadow:0 0 0 2px #35b36b,0 4px 14px rgba(30,120,70,.25)}
+.hold-cue[hidden]{display:none}
+
+/* 머리 버튼: 오른쪽 위 장면 묶음 안 (휴식에서만 보임) */
+#headBar[hidden]{display:none}

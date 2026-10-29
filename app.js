@@ -677,7 +677,13 @@ let homeTimer = 0, playStartedAt = 0;
 S.released = new Set(); S.heldAt = null;
 const nextHold = (t = S.time) => (curClip()?.holds || []).filter((h) => !S.released.has(h.t) && h.t > t - 1e-6).sort((a, b) => a.t - b.t)[0] || null;
 let holdKey = '';
-function refreshHoldUI() {                                       // 뷰포트 왼쪽 위의 초록 버튼: 멈춰서 기다리는 그 상황에만, 그 단계의 버튼 하나만 나온다
+const HEAD_UP = -30;                                              // 머리 들기 목표 (도). 음수 = 얼굴이 위, 허용 범위 -46 ~ 0
+function refreshHeadBar() {                                       // 머리 버튼은 휴식(멈춤 지점이 있는 클립)에서만 보인다
+  const on = (curClip()?.holds || []).length > 0;
+  $('#headBar').hidden = !on;
+}
+function refreshHoldUI() {
+  refreshHeadBar();                                       // 뷰포트 왼쪽 위의 초록 버튼: 멈춰서 기다리는 그 상황에만, 그 단계의 버튼 하나만 나온다
   const bar = $('#holdBar'); if (!bar) return;
   const holds = curClip()?.holds || [];
   const waiting = S.heldAt != null ? holds.find((h) => Math.abs(h.t - S.heldAt) < 1e-6) : null;
@@ -686,7 +692,9 @@ function refreshHoldUI() {                                       // 뷰포트 �
   if (key !== holdKey) {
     holdKey = key; bar.innerHTML = '';
     const row = document.createElement('div'); row.className = 'hold-item wait';
-    row.innerHTML = '<button class="hold-btn"></button><span class="hold-msg"></span>';
+    row.innerHTML = '<div class="hold-cue"></div><button class="hold-btn"></button><span class="hold-msg"></span>';
+    row.querySelector('.hold-cue').textContent = waiting.touch ? '머리를 만져 주세요' : '';   // 터치 단계는 뷰포트에 큰 안내를 띄운다
+    row.querySelector('.hold-cue').hidden = !waiting.touch;
     row.querySelector('button').textContent = waiting.label; row.querySelector('.hold-msg').textContent = waiting.msg || '준비되면 눌러 주세요.';
     row.querySelector('button').onclick = releaseHold;
     bar.appendChild(row);
@@ -1479,6 +1487,8 @@ $('#loop').onchange = (e) => (S.loop = e.target.checked);
 $('#autoKey').onchange = (e) => (S.autoKey = e.target.checked);
 $('#showAll').onchange = (e) => { S.showAll = e.target.checked; buildTree(); };
 $('#showBones').onchange = () => {};
+$('#headUp').onclick = () => { if (S.model) setJoint('head', HEAD_UP); };
+$('#headDown').onclick = () => { if (!S.model) return; const cur = readJointAngles().head; setJoint('head', cur * 0.5); };   // 절반만 숙인다 (예: -30° → -15°)
 $('#vpPrev').onclick = () => stepScene(-1);
 $('#vpNext').onclick = () => stepScene(1);
 { const setView = (open) => { $('#viewBody').classList.toggle('closed', !open); $('#viewHead').setAttribute('aria-expanded', open ? 'true' : 'false'); try { localStorage.setItem('cove-view-open', open ? '1' : '0'); } catch { /* 무시 */ } };
