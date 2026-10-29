@@ -1065,7 +1065,16 @@ function armLook() {
   prevArm = a;
 }
 // 2번 거리센서(몸통 앞): 재생 중이 아니고 처음(또는 끝난) 상태일 때 사람이 새로 다가오면 휴식의 첫 장면(앉아 있다가 일어나기)만 재생하고 선 채로 멈춘다. 로봇이 자동 모드면 로봇이 직접 반응하므로 하지 않는다
-let prevPerson = null, personLastStart = 0;
+let prevPerson = null, personLastStart = 0, standHeadAt = 0;
+const STAND_HEAD = -42;                                            // 일어선 뒤 고개를 드는 각도 (도, 음수 = 얼굴이 위, 로봇 한계 -46). 일어서는 장면의 끝 자세는 -34
+function standHeadUp() {
+  if (!standHeadAt) return;
+  const t = performance.now() - standHeadAt;
+  if (t > 8000 || S.heldAt != null) { standHeadAt = 0; return; }       // 다른 일이 끼어들었으면 그만둔다
+  if (t < 800 || S.playing) return;                                  // 일어서는 장면이 끝날 때까지 기다린다
+  standHeadAt = 0;
+  if (S.sceneLoop && S.time >= 2.9) { setJoint('head', STAND_HEAD); toast('고개를 들어요'); }
+}
 function frontApproach() {
   const st = $('#rpFrontState'), on = $('#rpFront')?.checked;
   if (st) st.textContent = !robot.connected ? '(로봇 연결 필요)' : !robot.tofKnown ? '(값 없음)' : `${robot.approach ? '● 다가옴' : '○ 없음'} ${robot.approach ? robot.approachMm : robot.tofNearMm}mm${robot.auto ? ' · 로봇 자동 모드' : ''}`;
@@ -1075,18 +1084,21 @@ function frontApproach() {
   prevPerson = p;
   if (!rising || !on || robot.auto || S.playing || S.heldAt != null || Date.now() - personLastStart < 5000) return;
   const idx = S.clips.findIndex((c) => c.name.includes('휴식')); if (idx < 0) return;
-  const cur = S.clips[S.clip], fresh = S.time <= 0.05 || S.time >= cur.duration - 0.05;   // 중간에 멈춰 둔 건 건드리지 않는다
-  if (!fresh) return;
+  // 앉아 있을 때만 일어난다. 앉아 있는지는 로봇의 실제 기둥 위치(15° 미만)로 보고, 로봇 값이 없으면 화면이 처음(또는 끝난) 상태인지로 본다 — 몇 번이고 앉았다 일어난다
+  const cur = S.clips[S.clip], d = robot.deg, sitting = d ? d.neck < 15 : (S.time <= 0.05 || S.time >= cur.duration - 0.05);
+  if (!sitting) return;
   personLastStart = Date.now();
   toast('사람이 다가왔어요 · 일어나요');
   if (S.clip !== idx) { const sel = $('#clipSel'); sel.value = String(idx); sel.dispatchEvent(new Event('change')); }
   playScene(0);                                                    // 첫 장면(앉아 있다가 일어나는 3초)만 재생하고 선 채로 멈춘다
+  standHeadAt = performance.now();                                 // 다 일어서면 고개도 든다
 }
 // 2번 거리센서: 서 있는 로봇에게 사람이 가까이 올수록 기둥을 더 올린다(50cm 이내, 15cm에서 최대 33°). 사람이 떠나면 원래 높이로 내려온다.
 // 로봇 동기가 켜져 있고 재생·다른 반응 중이 아닐 때만 움직이고, 기둥만 바꾼다(나머지는 시작할 때 자세 그대로)
 const FOLLOW_FAR = 500, FOLLOW_NEAR = 150, NECK_MAX = 33, FOLLOW_RATE = 12;   // mm, mm, 도, 도/초
-let followBase = null, followCur = 0, followTimer = 0;
+let followBase = null, followCur = 0, followTimer = 0, sitLock = false;
 function frontFollow() {
+  if (sitLock) { if (!robot.approach) sitLock = false; followBase = null; return; }   // 앉기를 누른 뒤에는 사람이 떠날 때까지 기둥을 올리지 않는다
   if (!robot.connected || !robot.sync || robot.auto || !$('#rpFront')?.checked || S.playing || S.heldAt != null) { followBase = null; return; }   // 꺼졌거나 재생이 시작되면 재생·동기에 맡긴다
   if (armActive || happyOn || tapTimer) { followTimer = performance.now(); return; }                                                            // 다른 반응 중에는 잠시 쉰다
   const near = robot.approach && robot.approachMm != null;
@@ -1135,6 +1147,7 @@ setInterval(() => {
   idleHappy();
   armLook();
   frontApproach();
+  standHeadUp();
   frontFollow();
   if (!robot.connected || S.heldAt == null) return;
   const h = (curClip()?.holds || []).find((x) => Math.abs(x.t - S.heldAt) < 1e-6);
@@ -1780,6 +1793,15 @@ $('#btnKey').onclick = () => insertKeys(false);
 $('#btnKeyAll').onclick = () => insertKeys(true);
 $('#btnDelKey').onclick = deleteKeys;
 $('#btnRest').onclick = resetPose;
+// 앉기: 재생·멈춤·센서 반응을 멈추고 처음(접힌) 자세로. 연결돼 있고 주변 확인이 되어 있으면 로봇도 home 씬으로 앉는다.
+// 사람이 아직 다가와 있는 동안 기둥 올리기가 다시 일으키지 않도록, 그 사람이 떠날 때까지 기둥 올리기를 쉰다
+$('#sitDown').onclick = () => {
+  if (S.playing) stopPlay();
+  S.sceneLoop = false; S.heldAt = null; S.released = new Set(); refreshHoldUI();
+  setTime(0); updateSceneTag();
+  followBase = null; sitLock = true;
+  if (robot.connected) { const r = robot.run('home'); toast(r === 'ok' ? '앉아요' : r === 'unsafe' ? '로봇 주변 확인을 체크하면 로봇도 앉아요' : '앉았어요 (화면)'); } else toast('앉았어요 (화면) · 로봇이 연결돼 있지 않아요');
+};
 $('#btnUndo').onclick = undo;
 $('#btnRedo').onclick = redo;
 $('#keyInterp').onchange = (e) => { lastInterp = e.target.value; S.selKeys.forEach((k) => (k.i = e.target.value)); applyPose(S.time); snapshot(); };
