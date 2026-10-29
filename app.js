@@ -32,7 +32,7 @@ const S = {
   sel: null,              // 선택된 Object3D
   selKeys: new Set(),     // 선택된 키 객체
   autoKey: true,
-  loop: true,
+  loop: false,                                  // 자동 반복하지 않는다 (끝나면 마지막 상태에서 멈춘다)
   showAll: false,
   copied: null,
 };
@@ -676,10 +676,35 @@ let homeTimer = 0, playStartedAt = 0;
 /* 멈춤 지점(휴식에서 머리를 숙이기 직전): 재생이 거기서 멈추고 [숙이기]를 눌러야 이어진다. 로봇 동기 중에는 멈춤 지점 너머의 자세를 미리 보내지 않는다. */
 S.released = new Set(); S.heldAt = null;
 const nextHold = (t = S.time) => (curClip()?.holds || []).filter((h) => !S.released.has(h.t) && h.t > t - 1e-6).sort((a, b) => a.t - b.t)[0] || null;
-function refreshHoldUI() {
-  const row = $('#holdRow'); if (!row) return;
-  const h = S.heldAt != null ? (curClip()?.holds || []).find((x) => Math.abs(x.t - S.heldAt) < 1e-6) : null;
-  row.hidden = !h; if (h) { $('#holdGo').textContent = h.label; $('#holdMsg').textContent = h.msg || '준비되면 눌러 주세요.'; }
+let holdKey = '';
+function refreshHoldUI() {                                       // 뷰포트 왼쪽 위의 초록 버튼: 멈춤 지점마다 하나씩, 항상 보인다
+  const bar = $('#holdBar'); if (!bar) return;
+  const holds = curClip()?.holds || [];
+  if (!holds.length) { bar.hidden = true; bar.innerHTML = ''; holdKey = ''; return; }
+  const key = `${S.clip}|${holds.map((h) => h.t + h.label).join(',')}`;
+  if (key !== holdKey) {
+    holdKey = key; bar.innerHTML = '';
+    holds.forEach((h) => {
+      const row = document.createElement('div'); row.className = 'hold-item'; row.dataset.t = h.t;
+      row.innerHTML = '<button class="hold-btn"></button><span class="hold-msg"></span>';
+      row.querySelector('button').textContent = h.label; row.querySelector('.hold-msg').textContent = h.msg || '';
+      row.querySelector('button').onclick = () => pressHold(h);
+      bar.appendChild(row);
+    });
+  }
+  bar.hidden = false;
+  [...bar.children].forEach((row, k) => {
+    const h = holds[k], waiting = S.heldAt != null && Math.abs(S.heldAt - h.t) < 1e-6;
+    const done = !waiting && (S.released.has(h.t) || S.time > h.t + 1e-6);
+    row.classList.toggle('wait', waiting); row.classList.toggle('done', done);
+    row.querySelector('.hold-msg').hidden = !waiting;               // 안내 문구는 기다리는 중일 때만
+  });
+}
+// 버튼: 기다리는 중이면 이어서 진행, 아직 멈춤 지점 앞이면 미리 눌러 두어서 거기서 멈추지 않게 한다
+function pressHold(h) {
+  if (S.heldAt != null && Math.abs(S.heldAt - h.t) < 1e-6) return releaseHold();
+  if (S.time > h.t + 1e-6) return;
+  S.released.add(h.t); refreshHoldUI(); toast(`'${h.label}'을 미리 눌렀어요. 그 지점에서 멈추지 않고 이어가요`);
 }
 function releaseHold() {
   if (S.heldAt == null) return;
@@ -726,9 +751,9 @@ function frame(now) {
       S.time = hp.t; S.playing = false; $('#tPlay').textContent = '▶'; S.heldAt = hp.t; refreshHoldUI(); applyPose(S.time); updateProps(); updateTimeLabel(); drawTL();
       toast(`'${hp.label}' 버튼을 누르면 이어서 움직여요`);
     } else
-    if (S.sceneLoop && c.markers?.length) {            // 장면 반복: 지금 보고 있는 장면의 끝에 닿으면 그 장면의 처음으로
-      const [a0, b0] = sceneRange(sceneIndex(S.time - dt));
-      if (S.time >= b0) S.time = a0 + (S.time - b0);
+    if (S.sceneLoop && c.markers?.length) {            // 장면 하나만 볼 때: 그 장면의 끝에서 멈춘다 (되돌아가서 반복하지 않는다)
+      const [, b0] = sceneRange(sceneIndex(S.time - dt));
+      if (S.time >= b0 - 1e-6) { S.time = b0; applyPose(S.time); updateProps(); updateTimeLabel(); drawTL(); stopPlay(); }
     }
     if (S.time >= c.duration) {
       if (S.loop) { S.time %= c.duration; S.released.clear(); } else { S.time = c.duration; stopPlay(); }
@@ -1047,7 +1072,7 @@ let chipKey = '';
 function updateSceneTag() {
   const el = $('#sceneTag'), marks = sceneMarks();
   if (!el) return;
-  if (!marks.length) { el.hidden = true; return; }
+  if (!marks.length) { el.hidden = true; $('#situation').hidden = true; $('#vpActions').hidden = true; refreshHoldUI(); return; }
   const i = sceneIndex(S.time), byName = curClip().group === '표정';
   el.hidden = false;
   const box = $('#sceneChips'), key = `${S.clip}|${marks.length}`;
@@ -1062,8 +1087,10 @@ function updateSceneTag() {
   }
   box.children[0].classList.toggle('on', !S.sceneLoop);
   [...box.children].slice(1).forEach((b, k) => { b.classList.toggle('on', S.sceneLoop && k === i); b.classList.toggle('cur', k === i); });
-  const mk = marks[i];
-  el.querySelector('.desc').textContent = mk.desc || mk.label;
+  refreshHoldUI();
+  const mk = marks[i], sit = $('#situation');
+  sit.textContent = mk.desc || mk.label; sit.hidden = false;       // 뷰포트 아래쪽에 지금 상황을 보여 준다
+  $('#vpActions').hidden = false;
 }
 function updateTimeLabel() {
   updateSceneTag();
@@ -1455,7 +1482,8 @@ $('#loop').onchange = (e) => (S.loop = e.target.checked);
 $('#autoKey').onchange = (e) => (S.autoKey = e.target.checked);
 $('#showAll').onchange = (e) => { S.showAll = e.target.checked; buildTree(); };
 $('#showBones').onchange = () => {};
-$('#holdGo').onclick = releaseHold;
+$('#vpPrev').onclick = () => stepScene(-1);
+$('#vpNext').onclick = () => stepScene(1);
 { const setView = (open) => { $('#viewBody').classList.toggle('closed', !open); $('#viewHead').setAttribute('aria-expanded', open ? 'true' : 'false'); try { localStorage.setItem('cove-view-open', open ? '1' : '0'); } catch { /* 무시 */ } };
   $('#viewHead').onclick = () => setView($('#viewBody').classList.contains('closed'));
   let was = true; try { was = localStorage.getItem('cove-view-open') !== '0'; } catch { /* 무시 */ } setView(was); }

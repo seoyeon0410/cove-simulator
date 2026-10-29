@@ -40,8 +40,6 @@
   <aside id="left">
     <section id="sceneTag" hidden>
       <div class="chips" id="sceneChips"></div>
-      <div class="desc"></div>
-      <div id="holdRow" hidden><button id="holdGo" class="primary">숙이기</button><span id="holdMsg"></span></div>
     </section>
     <section id="viewSec">
       <button class="sec-head" id="viewHead" aria-expanded="true" title="화면 도구 접기/펼치기">
@@ -144,6 +142,11 @@
 
   <div id="viewWrap">
     <div id="view"></div>
+    <div id="vpActions" class="glass" hidden>
+      <div class="vp-nav"><button id="vpPrev" title="이전 장면 ([)">◀ 이전 장면</button><button id="vpNext" title="다음 장면 (])">다음 장면 ▶</button></div>
+    </div>
+    <div id="situation" hidden></div>
+    <div id="holdBar" hidden></div>
     <div id="drop">GLB 파일을 여기에 놓으세요</div>
   </div>
 
@@ -187,7 +190,7 @@
     <button id="tNext" title="다음 프레임 (→)">▶</button>
     <button id="tEnd" title="끝 (End)">⏭</button>
     <span id="timeLabel" >0 / 0.00s</span>
-    <label class="check"><input type="checkbox" id="loop" checked> 반복</label>
+    <label class="check"><input type="checkbox" id="loop"> 반복</label>
     <label class="check"><input type="checkbox" id="autoKey" checked> 자동 키</label>
     <span class="spacer"></span>
     <span class="dim">확대</span><input type="range" id="zoom" min="30" max="600" value="120">
