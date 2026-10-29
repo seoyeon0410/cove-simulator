@@ -199,12 +199,13 @@ function loadGLB(buffer, name) {
       const saved = loadSaved();
       S.clips = saved?.clips || PRESET_GROUPS[0].items.map(buildPresetClip);
       // 없앤 표정이 저장된 클립에 남아 있으면 바꿔 준다: 표정 모음은 새로 만들고, 나머지는 비슷한 표정으로 대체
-      const GONE = { '초롱 눈': '반짝 눈', '또렷한 눈': '뜬 눈' };
+      const GONE = { '초롱 눈': '반짝 눈', '또렷한 눈': '뜬 눈', '위 보는 눈': '뜬 눈' };
       if (saved) S.clips = S.clips.map((c) => {
         { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.rev && c.rev !== d.rev) return buildPresetClip(d); }   // 프리셋이 새로 다듬어졌으면 저장된 예전 클립은 새 것으로 바꾼다
         { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.hold && c.markers?.length) c.holds = d.hold.map((h) => ({ t: c.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '', touch: !!h.touch })); }   // 멈춤 지점은 프리셋 그대로 맞춘다
         if (c.group === '표정' && (c.markers || []).some((m) => GONE[m.label])) { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); return d ? buildPresetClip(d) : c; }
         (c.eyes || []).forEach((k) => { for (const f of ['e', 'eL', 'eR']) if (GONE[k[f]]) k[f] = GONE[k[f]]; });
+        if (c.group !== '표정') (c.eyes || []).forEach((k) => { for (const f of ['e', 'eL', 'eR']) if (k[f] === '웃는 눈') k[f] = '신난 눈'; });   // 기분 좋을 때 눈은 신난 눈으로 통일 (표정 모음은 그대로)
         return c;
       });
       S.clip = Math.min(saved?.clip || 0, Math.max(S.clips.length - 1, 0));
@@ -481,6 +482,7 @@ function buildPresetClip(def) {
   if (def.markers) clip.markers = def.markers;
   if (def.hold && def.markers) clip.holds = def.hold.map((h) => ({ t: def.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '', touch: !!h.touch }));   // 재생 중 여기서 멈추고 버튼을 눌러야 이어간다
   if (def.group) clip.group = def.group;
+  if (def.noTail) clip.keepEnd = true;                               // 끝에서 원자세로 접지 않고 마지막 자세를 유지한다
   if (def.rev) clip.rev = def.rev;                                   // 프리셋 개정 번호 (저장된 예전 클립을 새 프리셋으로 바꾸는 데 쓴다)
   if (def.eyes) clip.eyes = def.eyes.map(([t, e, gx = 0, gy = 0]) => ({ t, e, gx, gy }));
   const ids = { col: S.boneIdx.find((i) => nodeName(i) === '기둥'), head: S.boneIdx.find((i) => nodeName(i) === '머리'), tilt: S.boneIdx.find((i) => /갸웃/.test(nodeName(i))) };
@@ -725,7 +727,7 @@ function stopPlay() {
   S.playing = false; $('#tPlay').textContent = '▶'; updateProps();
   if (was && robot.connected) {
     if (robot.current) robot.hold();                                 // 로봇이 씬을 재생 중이면 바로 정지
-    else if (robot.sync) scheduleHome();                             // 동기 중이면 원자세로
+    else if (robot.sync && !curClip()?.keepEnd) scheduleHome();      // 동기 중이면 원자세로 (끝 자세를 유지하는 동작은 제외)
   }
 }
 function togglePlay() {
@@ -1504,6 +1506,24 @@ $('#opacity').oninput = applyOpacity;
 $('#camReset').onclick = fitCamera;
 EXPRESSIONS.forEach((n) => $('#eyeSel').add(new Option(n, n)));
 // 양쪽 표정 선택 / 눈 만들기 독 (눈 그림을 끌어 놓기)
+/* 표정 쓸어서 고르기: 줄 위에서 마우스를 누른 채 좌우로 끌면 그 위치의 표정이 뷰포트(와 연결된 로봇)에 바로 나온다 */
+{
+  const track = $('#esTrack'), thumb = $('#esThumb'), name = $('#esName'), n = EXPRESSIONS.length;
+  const pos = (i) => ((i + 0.5) / n) * 100;
+  EXPRESSIONS.forEach((_, i) => { const d = document.createElement('i'); d.style.left = pos(i) + '%'; track.insertBefore(d, thumb); });
+  let cur = -1, drag = false, sendT = 0;
+  const pick = (ev) => {
+    const r = track.getBoundingClientRect(), i = Math.max(0, Math.min(n - 1, Math.floor(((ev.clientX - r.left) / r.width) * n)));
+    if (i === cur) return;
+    cur = i; const e = EXPRESSIONS[i];
+    thumb.style.left = pos(i) + '%'; name.textContent = e;
+    eyes?.show(e);
+    clearTimeout(sendT); sendT = setTimeout(() => { if (robot.connected) robot.eyes(e, true); }, 120);   // 쓸어 지나가는 동안은 멈춘 표정만 로봇에 보낸다
+  };
+  track.onpointerdown = (ev) => { ev.preventDefault(); drag = true; track.setPointerCapture(ev.pointerId); pick(ev); };
+  track.onpointermove = (ev) => { if (drag) pick(ev); };
+  track.onpointerup = track.onpointercancel = () => { drag = false; };
+}
 $('#eyeSel').onchange = (e) => {                 // 선택한 표정을 현재 시간의 눈 키로 기록한다
   if (!curClip()) return;
   setEyeKey(S.time, { e: e.target.value }); applyEyes(S.time); snapshot();
