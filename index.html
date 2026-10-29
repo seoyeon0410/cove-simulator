@@ -41,6 +41,76 @@
     <section id="sceneTag" hidden>
       <div class="chips" id="sceneChips"></div>
     </section>
+    <section id="clipSec">
+      <button class="sec-head" id="clipHead" aria-expanded="true" title="동작 목록 접기/펼치기">
+        <span class="lbl">동작 목록</span><span class="cur"></span><span class="chev">▾</span>
+      </button>
+      <div class="sec-body" id="clipBody"><div class="sec-inner">
+      <div id="clipList"></div>
+      <div id="eyeSwipe" title="마우스를 누른 채 좌우로 쓸어서 표정을 골라요 (연결된 로봇의 눈도 같이 바뀌어요)">
+        <div class="es-head"><span class="es-lbl">표정 고르기</span><span class="es-name" id="esName">쓸어서 고르세요</span></div>
+        <div class="es-track" id="esTrack"><b class="es-thumb" id="esThumb"></b></div>
+      </div>
+      <div class="row tools">
+        <button id="clipNew" title="빈 클립을 새로 만들어 직접 모션을 만들어요">＋ 새 클립</button>
+        <button id="clipDup" title="지금 선택한 클립을 복사해요">복사하기</button>
+        <button id="clipRen" title="선택한 클립의 이름을 바꿔요 (더블클릭도 가능)">이름 바꾸기</button>
+        <button id="clipDel" title="선택한 클립을 지워요 (Ctrl+Z로 되돌리기)">삭제하기</button>
+      </div>
+      <details id="clipMore">
+        <summary>클립 설정</summary>
+        <div class="row">
+          <label>길이(초) <input type="number" id="clipDur" min="0.1" step="0.1"></label>
+          <label>FPS <select id="clipFps"><option>24</option><option selected>30</option><option>60</option></select></label>
+        </div>
+        <select id="presetAdd"><option value="" disabled selected>프리셋 추가…</option></select>
+        <button id="clipReimport" class="wide">GLB 원본 모션으로 되돌리기</button>
+      </details>
+      <select id="clipSel" hidden></select>
+    </div></div>
+    </section>
+  </aside>
+
+  <div id="viewWrap">
+    <div id="view"></div>
+    <div id="vpActions" class="glass" hidden>
+        <div class="vp-nav"><button id="vpPrev" title="이전 장면 ([)">◀ 이전 장면</button><button id="vpNext" title="다음 장면 (])">다음 장면 ▶</button></div>
+    </div>
+    <div id="situation" hidden></div>
+    <div id="holdBar" hidden></div>
+    <div id="drop">GLB 파일을 여기에 놓으세요</div>
+  </div>
+
+  <aside id="right">
+    <section>
+      <h3>선택: <span id="selName">-</span></h3>
+      <div id="keyState" class="dim">-</div>
+      <div class="grid3">
+        <span class="lbl">위치</span>
+        <input type="number" id="px" step="0.001"><input type="number" id="py" step="0.001"><input type="number" id="pz" step="0.001">
+        <span class="lbl">회전°</span>
+        <input type="number" id="rx" step="1"><input type="number" id="ry" step="1"><input type="number" id="rz" step="1">
+        <span class="lbl">크기</span>
+        <input type="number" id="sx" step="0.01"><input type="number" id="sy" step="0.01"><input type="number" id="sz" step="0.01">
+      </div>
+      <div class="row">
+        <button id="btnKey" class="primary" title="I">키 찍기</button>
+        <button id="btnKeyAll" title="Shift+I">모든 본 키</button>
+      </div>
+      <div class="row">
+        <button id="btnDelKey" title="Delete">키 삭제</button>
+        <button id="btnRest">기본 포즈</button>
+      </div>
+      <div class="row" id="headBar"><button id="headUp" title="머리를 위로 들어 올려요 (얼굴이 위, -30°)">머리 들기</button><button id="headDown" title="지금 머리 각도의 절반만큼 숙여요">머리 숙이기</button></div>
+      <div id="keyProps" hidden>
+        <h3>선택한 키 <span id="keyCount"></span></h3>
+        <label>보간 <select id="keyInterp">
+          <option value="linear">선형</option>
+          <option value="smooth">부드럽게</option>
+          <option value="step">계단</option>
+        </select></label>
+      </div>
+    </section>
     <section id="viewSec">
       <button class="sec-head" id="viewHead" aria-expanded="true" title="화면 도구 접기/펼치기">
         <span class="lbl">보기</span><span class="cur" id="viewCur"></span><span class="chev">▾</span>
@@ -70,34 +140,6 @@
           </div>
         </div>
       </div></div>
-    </section>
-    <section id="clipSec">
-      <button class="sec-head" id="clipHead" aria-expanded="true" title="동작 목록 접기/펼치기">
-        <span class="lbl">동작 목록</span><span class="cur"></span><span class="chev">▾</span>
-      </button>
-      <div class="sec-body" id="clipBody"><div class="sec-inner">
-      <div id="clipList"></div>
-      <div id="eyeSwipe" title="마우스를 누른 채 좌우로 쓸어서 표정을 골라요 (연결된 로봇의 눈도 같이 바뀌어요)">
-        <div class="es-head"><span class="es-lbl">표정 고르기</span><span class="es-name" id="esName">쓸어서 고르세요</span></div>
-        <div class="es-track" id="esTrack"><b class="es-thumb" id="esThumb"></b></div>
-      </div>
-      <div class="row tools">
-        <button id="clipNew" title="빈 클립을 새로 만들어 직접 모션을 만들어요">＋ 새 클립</button>
-        <button id="clipDup" title="지금 선택한 클립을 복사해요">복사하기</button>
-        <button id="clipRen" title="선택한 클립의 이름을 바꿔요 (더블클릭도 가능)">이름 바꾸기</button>
-        <button id="clipDel" title="선택한 클립을 지워요 (Ctrl+Z로 되돌리기)">삭제하기</button>
-      </div>
-      <details id="clipMore">
-        <summary>클립 설정</summary>
-        <div class="row">
-          <label>길이(초) <input type="number" id="clipDur" min="0.1" step="0.1"></label>
-          <label>FPS <select id="clipFps"><option>24</option><option selected>30</option><option>60</option></select></label>
-        </div>
-        <select id="presetAdd"><option value="" disabled selected>프리셋 추가…</option></select>
-        <button id="clipReimport" class="wide">GLB 원본 모션으로 되돌리기</button>
-      </details>
-      <select id="clipSel" hidden></select>
-    </div></div>
     </section>
     <section id="eyeSec">
       <button class="sec-head" id="eyeHead" aria-expanded="false" title="눈 그림을 끌어서 표정 만들기 (접기/펼치기)">
@@ -141,48 +183,6 @@
       <h3>본 / 노드</h3>
       <div id="tree"></div>
       <label class="check"><input type="checkbox" id="showAll"> 메시 노드도 표시</label>
-    </section>
-  </aside>
-
-  <div id="viewWrap">
-    <div id="view"></div>
-    <div id="vpActions" class="glass" hidden>
-        <div class="vp-nav"><button id="vpPrev" title="이전 장면 ([)">◀ 이전 장면</button><button id="vpNext" title="다음 장면 (])">다음 장면 ▶</button></div>
-    </div>
-    <div id="situation" hidden></div>
-    <div id="holdBar" hidden></div>
-    <div id="drop">GLB 파일을 여기에 놓으세요</div>
-  </div>
-
-  <aside id="right">
-    <section>
-      <h3>선택: <span id="selName">-</span></h3>
-      <div id="keyState" class="dim">-</div>
-      <div class="grid3">
-        <span class="lbl">위치</span>
-        <input type="number" id="px" step="0.001"><input type="number" id="py" step="0.001"><input type="number" id="pz" step="0.001">
-        <span class="lbl">회전°</span>
-        <input type="number" id="rx" step="1"><input type="number" id="ry" step="1"><input type="number" id="rz" step="1">
-        <span class="lbl">크기</span>
-        <input type="number" id="sx" step="0.01"><input type="number" id="sy" step="0.01"><input type="number" id="sz" step="0.01">
-      </div>
-      <div class="row">
-        <button id="btnKey" class="primary" title="I">키 찍기</button>
-        <button id="btnKeyAll" title="Shift+I">모든 본 키</button>
-      </div>
-      <div class="row">
-        <button id="btnDelKey" title="Delete">키 삭제</button>
-        <button id="btnRest">기본 포즈</button>
-      </div>
-      <div class="row" id="headBar"><button id="headUp" title="머리를 위로 들어 올려요 (얼굴이 위, -30°)">머리 들기</button><button id="headDown" title="지금 머리 각도의 절반만큼 숙여요">머리 숙이기</button></div>
-      <div id="keyProps" hidden>
-        <h3>선택한 키 <span id="keyCount"></span></h3>
-        <label>보간 <select id="keyInterp">
-          <option value="linear">선형</option>
-          <option value="smooth">부드럽게</option>
-          <option value="step">계단</option>
-        </select></label>
-      </div>
     </section>
   </aside>
 </main>
