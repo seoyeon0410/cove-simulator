@@ -746,7 +746,7 @@ function frame(now) {
     S.time += dt;
     const hp = S.sceneLoop ? null : nextHold(prevT);                    // 한 장면만 반복해서 볼 때는 멈추지 않는다
     if (hp && prevT < hp.t - 1e-6 && S.time >= hp.t - 1e-6) {          // 멈춤 지점에 닿으면 정확히 거기서 멈춘다 (로봇은 원자세로 돌아가지 않고 그 자세를 유지)
-      S.time = hp.t; S.playing = false; $('#tPlay').textContent = '▶'; S.heldAt = hp.t; refreshHoldUI(); applyPose(S.time); updateProps(); updateTimeLabel(); drawTL();
+      S.time = hp.t; S.playing = false; $('#tPlay').textContent = '▶'; S.heldAt = hp.t; S.heldSince = performance.now(); refreshHoldUI(); applyPose(S.time); updateProps(); updateTimeLabel(); drawTL();
       toast(`'${hp.label}' 버튼을 누르면 이어서 움직여요`);
     } else
     if (S.sceneLoop && c.markers?.length) {            // 장면 하나만 볼 때: 그 장면의 끝에서 멈춘다 (되돌아가서 반복하지 않는다)
@@ -1068,8 +1068,8 @@ function armLook() {
 let prevPerson = null, personLastStart = 0;
 function frontApproach() {
   const st = $('#rpFrontState'), on = $('#rpFront')?.checked;
-  if (st) st.textContent = !robot.connected ? '(로봇 연결 필요)' : !robot.personKnown ? '(값 없음)' : !robot.frontOk ? '(센서 없음)' : `${robot.person ? '● 사람 있음' : '○ 없음'} ${robot.frontMm ?? '-'}mm${robot.frontDir != null && robot.person ? ` 방향 ${robot.frontDir > 0.2 ? '오른쪽' : robot.frontDir < -0.2 ? '왼쪽' : '가운데'}` : ''}${robot.auto ? ' · 로봇 자동 모드' : ''}`;
-  const p = robot.connected && robot.personKnown ? robot.person : null;
+  if (st) st.textContent = !robot.connected ? '(로봇 연결 필요)' : !robot.tofKnown ? '(값 없음)' : `${robot.approach ? '● 다가옴' : '○ 없음'} ${robot.approach ? robot.approachMm : robot.tofNearMm}mm${robot.auto ? ' · 로봇 자동 모드' : ''}`;
+  const p = robot.connected && robot.tofKnown ? robot.approach : null;
   if (p === null) { prevPerson = null; return; }
   const rising = prevPerson === false && p === true;                 // 처음 값(이미 사람이 있던 상태)은 다가온 걸로 치지 않는다
   prevPerson = p;
@@ -1081,6 +1081,28 @@ function frontApproach() {
   toast('사람이 다가왔어요 · 일어나요');
   if (S.clip !== idx) { const sel = $('#clipSel'); sel.value = String(idx); sel.dispatchEvent(new Event('change')); }
   playScene(0);                                                    // 첫 장면(앉아 있다가 일어나는 3초)만 재생하고 선 채로 멈춘다
+}
+// 2번 거리센서: 서 있는 로봇에게 사람이 가까이 올수록 기둥을 더 올린다(50cm 이내, 15cm에서 최대 33°). 사람이 떠나면 원래 높이로 내려온다.
+// 로봇 동기가 켜져 있고 재생·다른 반응 중이 아닐 때만 움직이고, 기둥만 바꾼다(나머지는 시작할 때 자세 그대로)
+const FOLLOW_FAR = 500, FOLLOW_NEAR = 150, NECK_MAX = 33, FOLLOW_RATE = 12;   // mm, mm, 도, 도/초
+let followBase = null, followCur = 0, followTimer = 0;
+function frontFollow() {
+  if (!robot.connected || !robot.sync || robot.auto || !$('#rpFront')?.checked || S.playing || S.heldAt != null) { followBase = null; return; }   // 꺼졌거나 재생이 시작되면 재생·동기에 맡긴다
+  if (armActive || happyOn || tapTimer) { followTimer = performance.now(); return; }                                                            // 다른 반응 중에는 잠시 쉰다
+  const near = robot.approach && robot.approachMm != null;
+  if (!followBase) {
+    const d = near ? robot.deg : null;
+    if (!d || d.neck < 15) return;                                   // 앉아 있거나 자세를 모르면 하지 않는다 (일어나는 건 위 동작이 한다)
+    followBase = d; followCur = d.neck; followTimer = performance.now();
+  }
+  const now = performance.now(), dt = Math.min(0.3, (now - followTimer) / 1000); followTimer = now;
+  const k = near ? Math.max(0, Math.min(1, (FOLLOW_FAR - robot.approachMm) / (FOLLOW_FAR - FOLLOW_NEAR))) : 0;
+  const target = followBase.neck + Math.max(0, NECK_MAX - followBase.neck) * k * k * (3 - 2 * k);
+  const step = FOLLOW_RATE * dt;
+  followCur += Math.max(-step, Math.min(step, target - followCur));
+  const r1 = (v) => Math.round(v * 10) / 10;
+  robot.pose({ neck: r1(followCur), head: r1(followBase.head), tilt: r1(followBase.tilt), body: r1(followBase.body) });
+  if (!near && Math.abs(followCur - followBase.neck) < 0.15) followBase = null;   // 다 내려왔으면 끝
 }
 function startStroke() {
   touchState = 'stroking'; happyOn = true; toast('쓰다듬어 줘서 기뻐요');
@@ -1109,14 +1131,16 @@ setInterval(() => {
   const st = $('#rpTouchState'), on = $('#rpTouch')?.checked;
   if (st) st.textContent = !robot.connected ? '(로봇 연결 필요)' : !robot.touchKnown ? '(값 없음)' : robot.touch ? '● 닿음' : '○ 안 닿음';
   const sa = $('#rpArmState'), armOn = $('#rpArm')?.checked;
-  if (sa) sa.textContent = !robot.connected ? '(로봇 연결 필요)' : !robot.armKnown ? '(값 없음)' : !robot.topOk ? '(센서 없음)' : `${robot.arm ? '● 손 감지' : '○ 없음'} ${robot.topMm ?? '-'}mm`;
+  if (sa) sa.textContent = !robot.connected ? '(로봇 연결 필요)' : !robot.armKnown ? '(값 없음)' : !robot.topOk ? '(센서 없음)' : `${robot.arm ? '● 손 감지' : '○ 없음'} ${robot.topMm ?? '-'}mm (평소 ${robot.topBase ?? '-'})`;
   idleHappy();
   armLook();
   frontApproach();
+  frontFollow();
   if (!robot.connected || S.heldAt == null) return;
   const h = (curClip()?.holds || []).find((x) => Math.abs(x.t - S.heldAt) < 1e-6);
   if (on && h?.touch && robot.touch) { toast('터치센서에 닿았어요'); releaseHold(); }
-  else if (armOn && h?.arm && robot.arm) { toast('1번 거리센서에 손이 들어왔어요'); releaseHold(); }
+  else if (armOn && h?.arm && robot.arm && performance.now() - (S.heldSince || 0) > 1500) {   // 멈춘 직후 자세가 흔들리며 거리가 변하는 걸 손으로 잘못 보지 않도록 1.5초 뒤부터
+    toast('1번 거리센서에 손이 들어왔어요'); releaseHold(); }
 }, 100);
 function syncPoseAt(t) {                                         // 시각 t 의 자세(로봇 한계 적용)를 로봇에 보낸다
   if (!jointCache || jointCache.model !== S.model) jointCache = { model: S.model, ids: jointIds() };

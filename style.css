@@ -464,3 +464,10 @@ button.rb.run,.rbc.run{background:var(--accent);color:#231b0c;opacity:1}
 #right>section:first-of-type>h3:first-child,#right #keyState,#right .grid3,#right #btnKey,#right #btnKeyAll,#right #btnDelKey,#right #keyProps{display:none!important}
 #right .row:has(#btnKey){display:none}
 #right .row:has(#btnRest) #btnRest{flex:1}
+
+/* 오른쪽 패널의 빨간 모터 토크 끄기 버튼 */
+#headTorqueOff{flex:1;background:#b3382a;color:#fff;font-weight:600;box-shadow:none}
+#headTorqueOff:hover:not(:disabled){background:#cc4332}
+#headTorqueOff.armed{background:#e04a37;animation:torquePulse .8s ease-in-out infinite alternate}
+#headTorqueOff:disabled{background:#4a2823;color:#a88a85}
+@keyframes torquePulse{from{box-shadow:0 0 0 0 rgba(224,74,55,.0)}to{box-shadow:0 0 0 3px rgba(224,74,55,.45)}}

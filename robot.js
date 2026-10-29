@@ -12,7 +12,7 @@ const EYES = [['idle', '뜬 눈'], ['blink', '깜빡'], ['look_left', '왼쪽 �
 const MODES = [['rest', '휴식'], ['tickle', '간지럽히기'], ['snack', '간식'], ['track', '따라보기'], ['off', '반응 끄기']];
 
 let client = null, st = 'off', lastStatus = 0, torqueArm = 0, statusTimer = null;
-let scenes = [], current = null, sig = '', sync = false, touch = false, touchAt = 0, arm = false, topMm = null, topOk = false, senseAt = 0, motorPos = null, motorAt = 0, person = false, frontMm = null, frontDir = null, frontOk = false, frontAt = 0, autoMode = false;
+let scenes = [], current = null, sig = '', sync = false, touch = false, touchAt = 0, arm = false, topMm = null, topOk = false, senseAt = 0, motorPos = null, motorAt = 0, zNow = null, zPresent = false, zNearMm = null, zDropAt = 0, zAt = 0, zSettleUntil = 0, armWeb = false, webBase = null, topBase = null, person = false, frontMm = null, frontDir = null, frontOk = false, frontAt = 0, autoMode = false;
 const listeners = new Set();
 const isOn = () => st === 'online' || st === 'live';
 // 동작 목록 같은 다른 화면이 쓸 수 있게: 연결 여부 · 씬 목록 · 지금 도는 씬이 바뀔 때만 알린다
@@ -37,7 +37,7 @@ export const robot = {
   hold() { return send({ cmd: 'stop' }); },
   get sync() { return sync; },
   get touch() { return touch && Date.now() - touchAt < 3500; },     // 로봇 머리의 터치센서(TTP223 ×3) 중 하나라도 닿아 있음 (상태 메시지 sense.touch, 상태가 끊기면 닿지 않은 것으로)
-  get arm() { return arm && topOk && Date.now() - senseAt < 3500; },   // 1번 거리센서(머리, 턱 아래·위 쉘이 아래를 봄) VL53L0X에 팔/손이 들어옴 (sense.arm, 상태가 끊기면 없는 것으로)
+  get arm() { return (arm || armWeb) && topOk && Date.now() - senseAt < 3500; },   // 1번 거리센서(머리, 턱 아래·위 쉘이 아래를 봄) VL53L0X에 팔/손이 들어옴 (sense.arm, 상태가 끊기면 없는 것으로)
   // 로봇 모터의 지금 위치를 웹 각도(도)로 (status.motors 의 pos, 변환은 robotexport.toTicks 의 거꾸로). 값이 오래됐으면 null
   get deg() {
     if (!motorPos || Date.now() - motorAt > 3500) return null;
@@ -45,6 +45,10 @@ export const robot = {
   },
   get touchSampleAt() { return touchAt; },                          // 터치 값이 마지막으로 들어온 때 (상태 메시지가 올 때마다 바뀐다)
   // 2번 거리센서(몸통 앞, VL53L5CX 4×4): 사람이 가까이(50cm 안 1초) 있으면 person, 가장 가까운 거리 front_mm, 사람 방향 dir(-1 왼쪽 ~ +1 오른쪽)
+  get approach() { return zPresent && Date.now() - zAt < 1500; },     // 2번 거리센서 구역 중 하나라도 평소보다 확 가까워짐 (사람·손이 다가옴)
+  get approachMm() { return zNearMm; },                              // 다가온 구역 중 가장 가까운 거리 (mm)
+  get tofKnown() { return zAt > 0 && Date.now() - zAt < 3500; },
+  get tofNearMm() { return zNow ? Math.min(...zNow.filter((v) => v != null), 9999) : null; },   // 지금 가장 가까운 구역 (평소 거리 포함)
   get person() { return person && frontOk && Date.now() - frontAt < 3500; },
   get personKnown() { return frontAt > 0 && Date.now() - frontAt < 3500; },
   get frontOk() { return frontOk; },
@@ -53,7 +57,8 @@ export const robot = {
   get auto() { return autoMode; },                                  // 로봇이 스스로 센서에 반응하는 자동 모드
   get armKnown() { return senseAt > 0 && Date.now() - senseAt < 3500; },
   get topOk() { return topOk; },
-  get topMm() { return topMm; },                                     // 아래 방향 거리 (mm)
+  get topMm() { return topMm; },
+  get topBase() { return webBase != null ? Math.round(webBase) : topBase; },   // 손이 없을 때의 평소 거리(mm)                                     // 아래 방향 거리 (mm)
   get touchKnown() { return touchAt > 0 && Date.now() - touchAt < 3500; },
   // 웹 재생을 로봇이 실시간으로 따라 하게 한다(pose 명령, 10Hz). 연결 + "주변 확인" 체크가 있어야 켜진다.
   setSync(on) {
@@ -106,7 +111,7 @@ function setState(next, msg) {
 function updateEnabled() {
   const on = st === 'online' || st === 'live', safe = $('#rpSafe').checked;
   if (!(on && safe)) setSync(false);
-  ['rpStop', 'rpStopAll', 'rpTorqueOff', 'rpTorqueOn', 'rpReload'].forEach((id) => ($('#' + id).disabled = !on));
+  ['rpStop', 'rpStopAll', 'rpTorqueOff', 'rpTorqueOn', 'rpReload', 'headTorqueOff'].forEach((id) => ($('#' + id).disabled = !on));
   // 움직이는 명령은 연결 + 주변 확인 체크가 모두 있어야 한다
   document.querySelectorAll('#rpScenes button, #rpModes button, #rpRun').forEach((b) => (b.disabled = !(on && safe)));
   document.querySelectorAll('#rpEyes button').forEach((b) => (b.disabled = !on));
@@ -132,7 +137,7 @@ function connect() {
   client = c;
   c.on('connect', () => {
     setState('online'); log('sys', '브로커에 연결됐어요');
-    c.subscribe([topic('status', robot), topic('event', robot)], (err) => { if (err) log('err', '구독 실패: ' + err.message); });
+    c.subscribe([topic('status', robot), topic('event', robot), topic('tof', robot)], (err) => { if (err) log('err', '구독 실패: ' + err.message); });
   });
   c.on('reconnect', () => { if (client === c) setState('connecting'); });
   c.on('close', () => { if (client === c && st !== 'off') setState('connecting', '연결이 끊겼어요 · 다시 시도 중'); });
@@ -141,6 +146,7 @@ function connect() {
     let msg; const s = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
     try { msg = JSON.parse(s); } catch { msg = s; }
     if (t.endsWith('/status')) onStatus(msg);
+    else if (t.endsWith('/tof')) onTof(msg);
     else if (t.endsWith('/event')) log('in', typeof msg === 'string' ? msg : (msg.msg || msg.text || JSON.stringify(msg)));
   });
   clearInterval(statusTimer);
@@ -182,10 +188,44 @@ function onStatus(msg) {
     if (msg.sense && typeof msg.sense.touch === 'boolean') { touch = msg.sense.touch; touchAt = Date.now(); }
     if (typeof msg.auto === 'boolean') autoMode = msg.auto;
     if (msg.sense && typeof msg.sense.person === 'boolean') { person = msg.sense.person; frontMm = typeof msg.sense.front_mm === 'number' ? msg.sense.front_mm : null; frontDir = typeof msg.sense.dir === 'number' ? msg.sense.dir : null; frontOk = !!msg.sense.front_ok; frontAt = Date.now(); }
-    if (Array.isArray(msg.motors)) { const p = {}; msg.motors.forEach((m) => { if (m && typeof m.pos === 'number') p[m.id] = m.pos; }); if (p[1] != null && p[2] != null && p[3] != null && p[4] != null) { motorPos = p; motorAt = Date.now(); } }
+    if (Array.isArray(msg.motors)) { const prev = motorPos; const p = {}; msg.motors.forEach((m) => { if (m && typeof m.pos === 'number') p[m.id] = m.pos; }); if (p[1] != null && p[2] != null && p[3] != null && p[4] != null) { if (prev && [1, 2, 3, 4].some((id) => Math.abs(p[id] - prev[id]) > 30)) { zSettleUntil = Date.now() + 2500; zHist = null; zPresent = false; zNearMm = null; zStreak = 0; } motorPos = p; motorAt = Date.now(); } }
+    if (msg.sense && typeof msg.sense.top_mm === 'number') {
+      // 웹에서도 따로 본다: 로봇은 "평소 거리보다 8cm 넘게 가까울 때"만 손으로 치는데, 머리가 접힌 자세처럼 평소 거리가 짧으면 손이 아무리 가까워도 8cm가 안 돼서 못 잡는다.
+      // 그래서 평소 거리보다 25% 넘게(그리고 20mm 이상) 가까워지면 손이 있는 것으로 본다. 손이 있는 동안은 기준을 고정하고, 85% 이상 돌아오면 없는 것으로 한다.
+      const t = msg.sense.top_mm; topBase = typeof msg.sense.top_base === 'number' ? msg.sense.top_base : null;
+      if (webBase == null) webBase = t;
+      else if (!armWeb) { if (t < webBase * 0.75 && webBase - t >= 20) armWeb = true; else webBase = webBase * 0.7 + t * 0.3; }
+      else if (t > webBase * 0.85) { armWeb = false; webBase = t; }
+    }
     if (msg.sense && typeof msg.sense.arm === 'boolean') { arm = msg.sense.arm; topMm = typeof msg.sense.top_mm === 'number' ? msg.sense.top_mm : null; topOk = !!msg.sense.top_ok; senseAt = Date.now(); }
     notify();
   } else box.textContent = String(msg);
+}
+
+/* 2번 거리센서(몸통 앞 4×4)의 구역별 거리(0.2초마다, booth/<id>/tof 의 z). 로봇의 person(50cm 안 1초)은 센서 앞에 항상 뭔가 가까이 있으면(지금은 약 6cm) 늘 true라서 "다가옴"을 가를 수 없다.
+   그래서 구역마다 최근 5초(25개)의 중앙값을 평소 거리로 삼고, 어느 구역이든 평소보다 30% 넘게(그리고 20mm 이상) 가까워진 상태가 0.4초(2개) 이어지면 다가온 것으로 본다.
+   (일부 구역은 가끔 튀는 값이 있어서 평균 대신 중앙값을 쓴다.) 다가온 동안은 평소 거리를 거의 갱신하지 않고, 다가온 구역 중 가장 가까운 거리가 approachMm.
+   로봇이 움직여 센서 보는 곳이 바뀌면(모터 위치가 달라지면) 평소 거리를 새로 잡고 2.5초는 보지 않는다. */
+const Z_WIN = 25;
+let zHist = null, zStreak = 0, zSkip = 0;
+const median = (a) => { const s = a.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
+function onTof(msg) {
+  if (!msg || !Array.isArray(msg.z)) return;
+  const now = Date.now(), z = msg.z.map((v) => (typeof v === 'number' && v > 0 ? v : null));
+  zAt = now; zNow = z;
+  if (!zHist || zHist.length !== z.length) zHist = z.map(() => []);
+  if (now < zSettleUntil) { zHist = z.map((v) => (v != null ? [v] : [])); zPresent = false; zStreak = 0; return; }
+  let drop = null;
+  z.forEach((v, i) => {
+    const h = zHist[i];
+    if (v == null || h.length < 5) return;                            // 평소 거리를 모으는 중(1초)에는 보지 않는다
+    const base = median(h);
+    if (v < base * 0.7 && base - v >= 20) drop = drop == null ? v : Math.min(drop, v);
+  });
+  if (drop != null) { zStreak++; if (zStreak >= 2) { zPresent = true; zNearMm = drop; zDropAt = now; } }
+  else { zStreak = 0; if (zPresent && now - zDropAt > 1500) { zPresent = false; zNearMm = null; } }
+  zSkip = zPresent ? zSkip + 1 : 0;
+  if (!zPresent || zSkip % 5 === 0) z.forEach((v, i) => { if (v != null) { zHist[i].push(v); if (zHist[i].length > Z_WIN) zHist[i].shift(); } });
 }
 
 function buildScenes(list) {
@@ -213,6 +253,14 @@ export function initRobotPanel({ exportFiles } = {}) {
     if (!torqueArm) { torqueArm = setTimeout(() => { torqueArm = 0; b.textContent = '토크 해제'; b.classList.remove('armed'); }, 3000); b.textContent = '한 번 더 누르면 해제 (머리가 처질 수 있어요)'; b.classList.add('armed'); return; }
     clearTimeout(torqueArm); torqueArm = 0; b.textContent = '토크 해제'; b.classList.remove('armed');
     send({ cmd: 'torque', on: false });
+  };
+  // 오른쪽 패널의 빨간 버튼: 위 "토크 해제"와 같은 일. 머리가 처질 수 있어서 두 번 눌러야 하고, 끄기 전에 웹 동기도 끈다
+  let headTorqueArm = 0;
+  $('#headTorqueOff').onclick = () => {
+    const b = $('#headTorqueOff');
+    if (!headTorqueArm) { headTorqueArm = setTimeout(() => { headTorqueArm = 0; b.textContent = '모터 토크 끄기'; b.classList.remove('armed'); }, 3000); b.textContent = '한 번 더 누르면 꺼요 (머리가 처질 수 있어요)'; b.classList.add('armed'); return; }
+    clearTimeout(headTorqueArm); headTorqueArm = 0; b.textContent = '모터 토크 끄기'; b.classList.remove('armed');
+    setSync(false); send({ cmd: 'torque', on: false });
   };
   $('#rpReload').onclick = () => send({ cmd: 'reload' });
   $('#rpRun').onclick = () => { const n = $('#rpSceneName').value.trim(); if (n) send({ cmd: 'scene', name: n }); };
