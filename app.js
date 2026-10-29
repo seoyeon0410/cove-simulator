@@ -666,15 +666,30 @@ function setTime(t, snap = true) {
   applyPose(t);
   updateProps(); updateTimeLabel(); drawTL();
 }
+let homeTimer = 0;
+const cancelHome = () => { clearTimeout(homeTimer); homeTimer = 0; };
+// 동기 중에 웹 재생이 끝나거나 멈추면 로봇이 갑자기 서지 않고 원자세(home 씬)로 돌아온다.
+// 로봇은 마지막 pose 뒤 2초가 지나야 실시간 조작을 끝내고(조작 중에는 씬이 중단됨) 그 자세를 유지하므로, 그 뒤에 보낸다.
+function scheduleHome() {
+  cancelHome();
+  homeTimer = setTimeout(() => {
+    homeTimer = 0;
+    if (!robot.sync || S.playing || manualActive) return;            // 그 사이 다시 재생·조작하거나 동기를 껐으면 보내지 않는다
+    if (robot.run('home') === 'ok') toast('로봇이 원자세로 돌아가요');
+  }, 2300);
+}
 function stopPlay() {
   const was = S.playing;
   S.playing = false; $('#tPlay').textContent = '▶'; updateProps();
-  // 웹 재생을 멈추면 로봇도 바로 멈춘다: 동기 중이거나 로봇이 씬을 재생 중일 때 정지 명령을 보낸다 (동기는 켜진 채로 둔다)
-  if (was && robot.connected && (robot.sync || robot.current)) robot.hold();
+  if (was && robot.connected) {
+    if (robot.current) robot.hold();                                 // 로봇이 씬을 재생 중이면 바로 정지
+    else if (robot.sync) scheduleHome();                             // 동기 중이면 원자세로
+  }
 }
 function togglePlay() {
   if (S.playing) return stopPlay();
   if (S.time >= curClip().duration - EPS) S.time = 0;
+  cancelHome();
   S.playing = true; $('#tPlay').textContent = '❚❚'; updateProps();
 }
 let lastT = performance.now();
