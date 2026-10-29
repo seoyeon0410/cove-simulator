@@ -1000,6 +1000,14 @@ let happyUntil = 0, happyOn = false, prevTouch = false, wiggleTimer = 0, tapTime
 let touchState = 'idle', pendSample = 0, pendAt = 0;   // idle → pending(닿은 걸 처음 봄) → 다음 값으로 톡(떨어짐)/쓰다듬기(계속 닿음)를 가른다
 // 몸도 흔든다: 로봇의 지금 자세를 기준으로 머리를 조금 숙이고 몸통을 3초간 좌우로 (웹 동기가 켜져 있어야 한다 = 주변 확인 + 동기 켬). 끝나면 그 자세로 돌아온다
 const WIGGLE_SEC = 3;                                           // 몸 흔드는 시간 (초)
+// 재생 안 할 때 센서 반응들(톡·쓰다듬기·1번·2번 기둥 올리기)이 로봇에 자세를 보내는 길을 하나로 맞춘다.
+// 관절 조작(머리 들기·일어난 뒤 고개 들기 등) 뒤에는 0.1초마다 그 자세를 계속 보내는 로봇 동기가 따로 돌고 있어서, 반응이 따로 자세를 보내면 두 값이 번갈아 가며 로봇이 떨린다.
+// 그래서 조작 중이면 반응도 같은 조작 값(jtVal)을 바꿔서 보내고(한 곳에서만 보낸다), 기준 자세도 로봇이 읽은 값이 아니라 보낸 값에서 잡는다
+const idleBase = () => (manualActive ? { neck: jtVal.neck, head: jtVal.head, tilt: jtVal.tilt, body: jtVal.body } : robot.deg);
+function driveIdlePose(p) {
+  if (manualActive) { Object.assign(jtVal, p); applyManual(); renderJoint(); }
+  else robot.pose(p);
+}
 // 머리를 톡톡 치면 고개를 올렸다가(머리 10°, 얼굴이 위) 1.5초 뒤 원래대로. 연타하면 올린 채 시간이 늘어난다. 웹 동기가 켜져 있어야 움직인다
 const TAP_UP = 10, TAP_HOLD_MS = 1500;
 function tapRaise() {
@@ -1007,18 +1015,18 @@ function tapRaise() {
   if (!robot.sync) return;
   const now = performance.now();
   if (tapTimer) { tapEnd = now + TAP_HOLD_MS; return; }
-  const base = robot.deg; if (!base) return;
+  const base = idleBase(); if (!base) return;
   tapBase = base; tapEnd = now + TAP_HOLD_MS;
   const t0 = now, r1 = (v) => Math.round(v * 10) / 10;
   tapTimer = setInterval(() => {
     if (S.playing || !robot.sync) { clearInterval(tapTimer); tapTimer = 0; return; }
     const n = performance.now(), up = Math.min(1, (n - t0) / 400), down = Math.max(0, 1 - (n - tapEnd) / 600), k = Math.min(up, n < tapEnd ? 1 : down), ks = k * k * (3 - 2 * k);
-    robot.pose({ neck: r1(tapBase.neck), head: r1(Math.max(-46, tapBase.head - TAP_UP * ks)), tilt: r1(tapBase.tilt), body: r1(tapBase.body) });
+    driveIdlePose({ neck: r1(tapBase.neck), head: r1(Math.max(-46, tapBase.head - TAP_UP * ks)), tilt: r1(tapBase.tilt), body: r1(tapBase.body) });
     if (n >= tapEnd + 600) { clearInterval(tapTimer); tapTimer = 0; }
   }, 100);
 }
 function happyWiggle() {
-  const base = tapTimer ? tapBase : (robot.sync ? robot.deg : null);   // 고개를 올리던 중이면 올리기 전 자세에서 시작한다
+  const base = tapTimer ? tapBase : (robot.sync ? idleBase() : null);   // 고개를 올리던 중이면 올리기 전 자세에서 시작한다
   if (tapTimer) { clearInterval(tapTimer); tapTimer = 0; }
   if (!base || !robot.sync) return;
   clearInterval(wiggleTimer);
@@ -1028,7 +1036,7 @@ function happyWiggle() {
     const t = (performance.now() - t0) / 1000, done = t >= WIGGLE_SEC;
     const e = Math.max(0, Math.min(1, t / 0.5, (WIGGLE_SEC - t) / 0.5)), es = e * e * (3 - 2 * e), off = done ? 0 : 12 * Math.sin((2 * Math.PI * t) / 1.4) * es;
     const bow = done ? 0 : 10 * es;                                             // 머리는 10° 숙였다가(0°가 숙인 쪽) 돌아온다
-    robot.pose({ neck: r1(base.neck), head: r1(Math.min(0, base.head + bow)), tilt: r1(base.tilt), body: r1(base.body + off) });
+    driveIdlePose({ neck: r1(base.neck), head: r1(Math.min(0, base.head + bow)), tilt: r1(base.tilt), body: r1(base.body + off) });
     if (done) clearInterval(wiggleTimer);
   }, 100);
 }
@@ -1044,7 +1052,7 @@ function armLookStart() {
   armActive = true; armUntil = Date.now() + ARM_HOLD_MS; armT0 = performance.now();
   toast('1번 거리센서에 손이 닿았어요');
   eyes?.show('뜬 눈', -1, -1);                                     // 정면에서 보이는 왼쪽 위 대각선
-  armBase = robot.sync ? robot.deg : null;
+  armBase = robot.sync ? idleBase() : null;
   clearInterval(armTimer);
   const r1 = (v) => Math.round(v * 10) / 10;
   armTimer = setInterval(() => {
@@ -1053,7 +1061,7 @@ function armLookStart() {
     const up = Math.min(1, (n - armT0) / 500);
     if (!on) armDown = Math.max(0, (armDown ?? 1) - 0.1 / 0.6); else armDown = 1;
     const k = Math.min(up, armDown), ks = k * k * (3 - 2 * k);
-    if (armBase && robot.sync) robot.pose({ neck: r1(armBase.neck), head: r1(Math.min(0, armBase.head + ARM_BOW * ks)), tilt: r1(armBase.tilt + ARM_TILT * ks), body: r1(armBase.body) });
+    if (armBase && robot.sync) driveIdlePose({ neck: r1(armBase.neck), head: r1(Math.min(0, armBase.head + ARM_BOW * ks)), tilt: r1(armBase.tilt + ARM_TILT * ks), body: r1(armBase.body) });
     if (!on && armDown <= 0) { armDown = 1; armLookEnd(); }
   }, 100);
 }
@@ -1093,27 +1101,28 @@ function frontApproach() {
   playScene(0);                                                    // 첫 장면(앉아 있다가 일어나는 3초)만 재생하고 선 채로 멈춘다
   standHeadAt = performance.now();                                 // 다 일어서면 고개도 든다
 }
-// 2번 거리센서: 서 있는 로봇에게 사람이 가까이 올수록 기둥을 더 올린다(50cm 이내, 15cm에서 최대 33°). 사람이 떠나면 원래 높이로 내려온다.
+// 2번 거리센서: 서 있는 로봇에게 가까이 올수록 기둥을 더 올린다(10cm 이내에서 시작, 3cm에서 최대 33°). 사람이 떠나면 원래 높이로 내려온다.
 // 로봇 동기가 켜져 있고 재생·다른 반응 중이 아닐 때만 움직이고, 기둥만 바꾼다(나머지는 시작할 때 자세 그대로)
-const FOLLOW_FAR = 500, FOLLOW_NEAR = 150, NECK_MAX = 33, FOLLOW_RATE = 12;   // mm, mm, 도, 도/초
-let followBase = null, followCur = 0, followTimer = 0, sitLock = false;
+const FOLLOW_FAR = 100, FOLLOW_NEAR = 30, NECK_MAX = 33, FOLLOW_RATE = 12;   // mm, mm, 도, 도/초 (다가옴 자체가 10cm 안이라, 10cm에서 시작해 3cm에서 최대)
+let followBase = null, followCur = 0, followTimer = 0, sitLock = false, followMm = null;
 function frontFollow() {
   if (sitLock) { if (!robot.approach) sitLock = false; followBase = null; return; }   // 앉기를 누른 뒤에는 사람이 떠날 때까지 기둥을 올리지 않는다
   if (!robot.connected || !robot.sync || robot.auto || !$('#rpFront')?.checked || S.playing || S.heldAt != null) { followBase = null; return; }   // 꺼졌거나 재생이 시작되면 재생·동기에 맡긴다
   if (armActive || happyOn || tapTimer) { followTimer = performance.now(); return; }                                                            // 다른 반응 중에는 잠시 쉰다
   const near = robot.approach && robot.approachMm != null;
   if (!followBase) {
-    const d = near ? robot.deg : null;
+    const d = near ? idleBase() : null;
     if (!d || d.neck < 15) return;                                   // 앉아 있거나 자세를 모르면 하지 않는다 (일어나는 건 위 동작이 한다)
     followBase = d; followCur = d.neck; followTimer = performance.now();
   }
   const now = performance.now(), dt = Math.min(0.3, (now - followTimer) / 1000); followTimer = now;
-  const k = near ? Math.max(0, Math.min(1, (FOLLOW_FAR - robot.approachMm) / (FOLLOW_FAR - FOLLOW_NEAR))) : 0;
+  if (near) followMm = followMm == null ? robot.approachMm : followMm + (robot.approachMm - followMm) * 0.25; else followMm = null;   // 거리 값이 튀어도 기둥이 떨지 않게 부드럽게 따라간다
+  const k = near ? Math.max(0, Math.min(1, (FOLLOW_FAR - followMm) / (FOLLOW_FAR - FOLLOW_NEAR))) : 0;
   const target = followBase.neck + Math.max(0, NECK_MAX - followBase.neck) * k * k * (3 - 2 * k);
   const step = FOLLOW_RATE * dt;
-  followCur += Math.max(-step, Math.min(step, target - followCur));
+  if (Math.abs(target - followCur) > 1 || !near) followCur += Math.max(-step, Math.min(step, target - followCur));   // 1° 안쪽 차이는 무시해 미세하게 떨지 않게 한다
   const r1 = (v) => Math.round(v * 10) / 10;
-  robot.pose({ neck: r1(followCur), head: r1(followBase.head), tilt: r1(followBase.tilt), body: r1(followBase.body) });
+  driveIdlePose({ neck: r1(followCur), head: r1(followBase.head), tilt: r1(followBase.tilt), body: r1(followBase.body) });
   if (!near && Math.abs(followCur - followBase.neck) < 0.15) followBase = null;   // 다 내려왔으면 끝
 }
 function startStroke() {

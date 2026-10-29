@@ -203,10 +203,10 @@ function onStatus(msg) {
 }
 
 /* 2번 거리센서(몸통 앞 4×4)의 구역별 거리(0.2초마다, booth/<id>/tof 의 z). 로봇의 person(50cm 안 1초)은 센서 앞에 항상 뭔가 가까이 있으면(지금은 약 6cm) 늘 true라서 "다가옴"을 가를 수 없다.
-   그래서 구역마다 최근 5초(25개)의 중앙값을 평소 거리로 삼고, 어느 구역이든 평소보다 30% 넘게(그리고 20mm 이상) 가까워진 상태가 0.4초(2개) 이어지면 다가온 것으로 본다.
+   그래서 구역마다 최근 5초(25개)의 중앙값을 평소 거리로 삼고, 어느 구역이든 평소보다 30% 넘게(그리고 20mm 이상) 가까워지면서 거리가 10cm 이하인 상태가 0.4초(2개) 이어지면 다가온 것으로 본다.
    (일부 구역은 가끔 튀는 값이 있어서 평균 대신 중앙값을 쓴다.) 다가온 동안은 평소 거리를 거의 갱신하지 않고, 다가온 구역 중 가장 가까운 거리가 approachMm.
    로봇이 움직여 센서 보는 곳이 바뀌면(모터 위치가 달라지면) 평소 거리를 새로 잡고 2.5초는 보지 않는다. */
-const Z_WIN = 25;
+const Z_WIN = 25, Z_MAX_MM = 100;                                 // 다가옴은 10cm 안에서만 (구역 거리가 100mm 이하이면서 평소보다 가까워졌을 때)
 let zHist = null, zStreak = 0, zSkip = 0;
 const median = (a) => { const s = a.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
 function onTof(msg) {
@@ -220,7 +220,7 @@ function onTof(msg) {
     const h = zHist[i];
     if (v == null || h.length < 5) return;                            // 평소 거리를 모으는 중(1초)에는 보지 않는다
     const base = median(h);
-    if (v < base * 0.7 && base - v >= 20) drop = drop == null ? v : Math.min(drop, v);
+    if (v <= Z_MAX_MM && v < base * 0.7 && base - v >= 20) drop = drop == null ? v : Math.min(drop, v);
   });
   if (drop != null) { zStreak++; if (zStreak >= 2) { zPresent = true; zNearMm = drop; zDropAt = now; } }
   else { zStreak = 0; if (zPresent && now - zDropAt > 1500) { zPresent = false; zNearMm = null; } }
