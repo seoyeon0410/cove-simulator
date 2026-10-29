@@ -201,6 +201,7 @@ function loadGLB(buffer, name) {
       // 없앤 표정이 저장된 클립에 남아 있으면 바꿔 준다: 표정 모음은 새로 만들고, 나머지는 비슷한 표정으로 대체
       const GONE = { '초롱 눈': '반짝 눈', '또렷한 눈': '뜬 눈' };
       if (saved) S.clips = S.clips.map((c) => {
+        { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.rev && c.rev !== d.rev) return buildPresetClip(d); }   // 프리셋이 새로 다듬어졌으면 저장된 예전 클립은 새 것으로 바꾼다
         { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.hold && c.markers?.length) c.holds = d.hold.map((h) => ({ t: c.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '', touch: !!h.touch })); }   // 멈춤 지점은 프리셋 그대로 맞춘다
         if (c.group === '표정' && (c.markers || []).some((m) => GONE[m.label])) { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); return d ? buildPresetClip(d) : c; }
         (c.eyes || []).forEach((k) => { for (const f of ['e', 'eL', 'eR']) if (GONE[k[f]]) k[f] = GONE[k[f]]; });
@@ -480,6 +481,7 @@ function buildPresetClip(def) {
   if (def.markers) clip.markers = def.markers;
   if (def.hold && def.markers) clip.holds = def.hold.map((h) => ({ t: def.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '', touch: !!h.touch }));   // 재생 중 여기서 멈추고 버튼을 눌러야 이어간다
   if (def.group) clip.group = def.group;
+  if (def.rev) clip.rev = def.rev;                                   // 프리셋 개정 번호 (저장된 예전 클립을 새 프리셋으로 바꾸는 데 쓴다)
   if (def.eyes) clip.eyes = def.eyes.map(([t, e, gx = 0, gy = 0]) => ({ t, e, gx, gy }));
   const ids = { col: S.boneIdx.find((i) => nodeName(i) === '기둥'), head: S.boneIdx.find((i) => nodeName(i) === '머리'), tilt: S.boneIdx.find((i) => /갸웃/.test(nodeName(i))) };
   let rootObj = S.nodes.get(ids.col);
@@ -729,7 +731,7 @@ function stopPlay() {
 function togglePlay() {
   if (S.playing) return stopPlay();
   if (S.heldAt != null) { S.released.add(S.heldAt); S.heldAt = null; refreshHoldUI(); }
-  if (S.time >= curClip().duration - EPS) S.time = 0;
+  if (S.time >= curClip().duration - EPS) { S.time = 0; S.released.clear(); }   // 끝까지 본 뒤 다시 재생하면 멈춤 지점도 처음부터 다시 걸린다
   cancelHome();
   playStartedAt = performance.now();
   S.playing = true; $('#tPlay').textContent = '❚❚'; updateProps();

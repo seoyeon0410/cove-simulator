@@ -167,10 +167,10 @@ function snackMergedSteps() {
 const EYES_REST = [
   [0, '졸린 눈'], [1.2, '뜬 눈'],          // 01 사용자 인식
   [3, '반짝 눈'], [4.2, '웃는 눈'],         // 02 휴식 유도
-  [6, '뜬 눈'], [7.5, '반짝 눈'],           // 03 몸 올리기
-  [9, '뜬 눈'], [11, '편안한 눈'],          // 04 기대기
-  [13, '졸린 눈'], [15.5, '감은 눈'],       // 05 휴식 유지
-  [18, '뜬 눈'], [20, '웃는 눈'],           // 06 휴식 종료
+  [9, '뜬 눈'], [10.5, '반짝 눈'],          // 03 몸 올리기 (02 쓰다듬기 반응이 6초로 길어져 3초씩 뒤로)
+  [12, '뜬 눈'], [14, '편안한 눈'],         // 04 기대기
+  [16, '졸린 눈'], [18.5, '감은 눈'],       // 05 휴식 유지
+  [21, '뜬 눈'], [23, '웃는 눈'],           // 06 휴식 종료
 ];
 const EYES_TICKLE = [
   [0, '졸린 눈'], [1.2, '뜬 눈'],          // 01 사용자 인식 · 기둥 최대로
@@ -199,9 +199,9 @@ function autoEyes(durations, pairs) {
 }
 
 const SCENARIOS = [
-  { name: '시나리오1 휴식', eyes: EYES_REST, natural: true, tailLabel: '다시 쉬어요', hold: [{ at: 1, label: '반응하기', touch: true, msg: '쓰다듬어 줄 때까지 기다리고 있어요. 터치센서에 닿으면 자동으로 넘어가요. (아니면 눌러 주세요)' }, { at: 3, label: '숙이기', msg: '머리를 숙이기 직전에 멈춰 있어요. 준비되면 눌러 주세요.' }], steps: [   // 2번째 장면 앞(쓰다듬기 전)과 4번째 장면 앞(머리를 숙이기 전)에서 멈추고, 버튼을 눌러야 이어진다
+  { name: '시나리오1 휴식', rev: 2, eyes: EYES_REST, natural: true, tailLabel: '다시 쉬어요', hold: [{ at: 1, label: '반응하기', touch: true, msg: '쓰다듬어 줄 때까지 기다리고 있어요. 터치센서에 닿으면 자동으로 넘어가요. (아니면 눌러 주세요)' }, { at: 3, label: '숙이기', msg: '머리를 숙이기 직전에 멈춰 있어요. 준비되면 눌러 주세요.' }], steps: [   // 2번째 장면 앞(쓰다듬기 전)과 4번째 장면 앞(머리를 숙이기 전)에서 멈추고, 버튼을 눌러야 이어진다
     { name: '누가 다가왔어요', duration: 3, keys: WAKE },
-    { name: '쓰다듬어 줘서 좋아요', duration: 3, keys: [k(0, 25, -34), k(0.75, 25, -34, 0, 5), k(1.5, 25, -34, 0, -5), k(2.25, 25, -34, 0, 5), k(3, 25, -34)] },
+    { name: '쓰다듬어 줘서 좋아요', duration: 6, keys: [k(0, 25, -34), k(0.75, 25, -34, 0, 6), k(1.5, 25, -34, 0, -6), k(2.25, 25, -34, 0, 6), k(3, 25, -34, 0, -6), k(3.75, 25, -34, 0, 6), k(4.5, 25, -34, 0, -6), k(5.25, 25, -34, 0, 4), k(6, 25, -34)] },   // 신나서 고개를 좌우로 흔드는 반응 (예전 3초 → 6초)
     { name: '팔을 올려 주길 기다려요', duration: 3, keys: [k(0, 25, -34), k(1, 28, -22), k(1.5, 28, -27), k(2, 28, -22), k(2.5, 28, -27), k(3, 28, -22)] },
     { name: '기대니까 편안해요', duration: 4, keys: [k(0, 28, -22), k(1.5, 32, -10), k(4, 32, -10)] },
     { name: '스르르 잠이 와요', duration: 5, keys: [k(0, 32, -10), k(1.5, 31, -8), k(3, 32, -10), k(4, 31, -8), k(5, 30, -8)] },
@@ -253,7 +253,7 @@ const whole = SCENARIOS.map((s) => {
     st.keys.forEach((kk, j) => { if (i > 0 && j === 0) return; keys.push([kk[0] + t0, ...kk.slice(1)]); });
     t0 += st.duration;
   });
-  return { name: s.name, duration: t0, keys, markers, interp: s.interp, eyes: s.eyes, natural: s.natural, noSeq: s.noSeq, tailLabel: s.tailLabel, hold: s.hold };
+  return { name: s.name, duration: t0, keys, markers, interp: s.interp, eyes: s.eyes, natural: s.natural, noSeq: s.noSeq, tailLabel: s.tailLabel, hold: s.hold, rev: s.rev };
 });
 
 
