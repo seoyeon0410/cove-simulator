@@ -696,7 +696,7 @@ function refreshHoldUI() {
     holdKey = key; bar.innerHTML = '';
     const row = document.createElement('div'); row.className = 'hold-item wait';
     row.innerHTML = '<div class="hold-cue"></div><button class="hold-btn"></button><span class="hold-msg"></span>';
-    row.querySelector('.hold-cue').textContent = waiting.touch ? '머리를 만져 주세요' : waiting.arm ? '턱 아래에 손을 넣어 주세요' : '';   // 센서로 넘기는 단계는 뷰포트에 큰 안내를 띄운다
+    row.querySelector('.hold-cue').textContent = waiting.touch ? '머리를 만져 주세요' : waiting.arm ? '1번 거리센서(머리 아래)에 손을 넣어 주세요' : '';   // 센서로 넘기는 단계는 뷰포트에 큰 안내를 띄운다
     row.querySelector('.hold-cue').hidden = !(waiting.touch || waiting.arm);
     row.querySelector('button').textContent = waiting.label; row.querySelector('.hold-msg').textContent = waiting.msg || '준비되면 눌러 주세요.';
     row.querySelector('button').onclick = releaseHold;
@@ -1032,6 +1032,56 @@ function happyWiggle() {
     if (done) clearInterval(wiggleTimer);
   }, 100);
 }
+// 1번 거리센서(머리)에 손이 닿으면(재생 중이 아닐 때): 고개를 대각선으로(머리 8° 숙이고 갸웃 10° — 정면에서 보이는 왼쪽) 하고, 눈은 같은 쪽 대각선 위를 쳐다본다.
+// 손이 떨어지고 1.5초 뒤 원래대로. 눈은 뷰포트에만 나온다(로봇 눈은 시선을 못 바꾼다), 고개는 로봇 동기가 켜져 있을 때만 움직인다
+const ARM_BOW = 8, ARM_TILT = 10, ARM_HOLD_MS = 1500;
+let armActive = false, armUntil = 0, armTimer = 0, armBase = null, armT0 = 0, prevArm = false;
+function armLookEnd() {
+  armActive = false; clearInterval(armTimer); armTimer = 0;
+  applyEyes(S.time);                                               // 눈은 동작의 눈으로 돌아간다
+}
+function armLookStart() {
+  armActive = true; armUntil = Date.now() + ARM_HOLD_MS; armT0 = performance.now();
+  toast('1번 거리센서에 손이 닿았어요');
+  eyes?.show('뜬 눈', -1, -1);                                     // 정면에서 보이는 왼쪽 위 대각선
+  armBase = robot.sync ? robot.deg : null;
+  clearInterval(armTimer);
+  const r1 = (v) => Math.round(v * 10) / 10;
+  armTimer = setInterval(() => {
+    if (S.playing || S.heldAt != null) { armLookEnd(); return; }     // 재생이 시작되면 재생에 맡긴다
+    const now = Date.now(), n = performance.now(), on = now < armUntil;
+    const up = Math.min(1, (n - armT0) / 500);
+    if (!on) armDown = Math.max(0, (armDown ?? 1) - 0.1 / 0.6); else armDown = 1;
+    const k = Math.min(up, armDown), ks = k * k * (3 - 2 * k);
+    if (armBase && robot.sync) robot.pose({ neck: r1(armBase.neck), head: r1(Math.min(0, armBase.head + ARM_BOW * ks)), tilt: r1(armBase.tilt + ARM_TILT * ks), body: r1(armBase.body) });
+    if (!on && armDown <= 0) { armDown = 1; armLookEnd(); }
+  }, 100);
+}
+let armDown = 1;
+function armLook() {
+  const a = robot.connected && robot.arm, idle = !S.playing && S.heldAt == null;
+  if (a) armUntil = Date.now() + ARM_HOLD_MS;
+  if (a && !prevArm && !armActive && idle && !happyOn && !tapTimer && touchState === 'idle' && $('#rpArmLook')?.checked) armLookStart();
+  prevArm = a;
+}
+// 2번 거리센서(몸통 앞): 재생 중이 아니고 처음(또는 끝난) 상태일 때 사람이 새로 다가오면 휴식의 첫 장면(앉아 있다가 일어나기)만 재생하고 선 채로 멈춘다. 로봇이 자동 모드면 로봇이 직접 반응하므로 하지 않는다
+let prevPerson = null, personLastStart = 0;
+function frontApproach() {
+  const st = $('#rpFrontState'), on = $('#rpFront')?.checked;
+  if (st) st.textContent = !robot.connected ? '(로봇 연결 필요)' : !robot.personKnown ? '(값 없음)' : !robot.frontOk ? '(센서 없음)' : `${robot.person ? '● 사람 있음' : '○ 없음'} ${robot.frontMm ?? '-'}mm${robot.frontDir != null && robot.person ? ` 방향 ${robot.frontDir > 0.2 ? '오른쪽' : robot.frontDir < -0.2 ? '왼쪽' : '가운데'}` : ''}${robot.auto ? ' · 로봇 자동 모드' : ''}`;
+  const p = robot.connected && robot.personKnown ? robot.person : null;
+  if (p === null) { prevPerson = null; return; }
+  const rising = prevPerson === false && p === true;                 // 처음 값(이미 사람이 있던 상태)은 다가온 걸로 치지 않는다
+  prevPerson = p;
+  if (!rising || !on || robot.auto || S.playing || S.heldAt != null || Date.now() - personLastStart < 5000) return;
+  const idx = S.clips.findIndex((c) => c.name.includes('휴식')); if (idx < 0) return;
+  const cur = S.clips[S.clip], fresh = S.time <= 0.05 || S.time >= cur.duration - 0.05;   // 중간에 멈춰 둔 건 건드리지 않는다
+  if (!fresh) return;
+  personLastStart = Date.now();
+  toast('사람이 다가왔어요 · 일어나요');
+  if (S.clip !== idx) { const sel = $('#clipSel'); sel.value = String(idx); sel.dispatchEvent(new Event('change')); }
+  playScene(0);                                                    // 첫 장면(앉아 있다가 일어나는 3초)만 재생하고 선 채로 멈춘다
+}
 function startStroke() {
   touchState = 'stroking'; happyOn = true; toast('쓰다듬어 줘서 기뻐요');
   eyes?.show('신난 눈'); robot.eyes('신난 눈');
@@ -1040,7 +1090,7 @@ function startStroke() {
 function idleHappy() {
   const now = Date.now(), t = robot.connected && robot.touch, idle = !S.playing && S.heldAt == null;
   // 로봇의 터치 값은 1초쯤마다 오므로, 처음 닿은 걸 본 뒤 다음 값이 오면: 이미 떨어졌으면 톡, 계속 닿아 있으면 쓰다듬기
-  if (touchState === 'idle' && t && !prevTouch && idle && $('#rpHappy')?.checked) { touchState = 'pending'; pendSample = robot.touchSampleAt; pendAt = now; }
+  if (touchState === 'idle' && t && !prevTouch && idle && !armActive && $('#rpHappy')?.checked) { touchState = 'pending'; pendSample = robot.touchSampleAt; pendAt = now; }
   else if (touchState === 'pending') {
     if (!idle) touchState = 'idle';
     else if (robot.touchSampleAt !== pendSample || now - pendAt > 2500) { if (t) startStroke(); else { touchState = 'idle'; tapRaise(); } }
@@ -1061,10 +1111,12 @@ setInterval(() => {
   const sa = $('#rpArmState'), armOn = $('#rpArm')?.checked;
   if (sa) sa.textContent = !robot.connected ? '(로봇 연결 필요)' : !robot.armKnown ? '(값 없음)' : !robot.topOk ? '(센서 없음)' : `${robot.arm ? '● 손 감지' : '○ 없음'} ${robot.topMm ?? '-'}mm`;
   idleHappy();
+  armLook();
+  frontApproach();
   if (!robot.connected || S.heldAt == null) return;
   const h = (curClip()?.holds || []).find((x) => Math.abs(x.t - S.heldAt) < 1e-6);
   if (on && h?.touch && robot.touch) { toast('터치센서에 닿았어요'); releaseHold(); }
-  else if (armOn && h?.arm && robot.arm) { toast('턱 아래 거리센서에 손이 들어왔어요'); releaseHold(); }
+  else if (armOn && h?.arm && robot.arm) { toast('1번 거리센서에 손이 들어왔어요'); releaseHold(); }
 }, 100);
 function syncPoseAt(t) {                                         // 시각 t 의 자세(로봇 한계 적용)를 로봇에 보낸다
   if (!jointCache || jointCache.model !== S.model) jointCache = { model: S.model, ids: jointIds() };
