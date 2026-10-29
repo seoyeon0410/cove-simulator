@@ -205,7 +205,7 @@ function loadGLB(buffer, name) {
         { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.hold && c.markers?.length) c.holds = d.hold.map((h) => ({ t: c.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '', touch: !!h.touch })); }   // 멈춤 지점은 프리셋 그대로 맞춘다
         if (c.group === '표정' && (c.markers || []).some((m) => GONE[m.label])) { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); return d ? buildPresetClip(d) : c; }
         (c.eyes || []).forEach((k) => { for (const f of ['e', 'eL', 'eR']) if (GONE[k[f]]) k[f] = GONE[k[f]]; });
-        if (c.group !== '표정') (c.eyes || []).forEach((k) => { for (const f of ['e', 'eL', 'eR']) if (k[f] === '웃는 눈') k[f] = '신난 눈'; });   // 기분 좋을 때 눈은 신난 눈으로 통일 (표정 모음은 그대로)
+        if (c.group !== '표정') (c.eyes || []).forEach((k) => { for (const f of ['e', 'eL', 'eR']) { if (k[f] === '웃는 눈') k[f] = '신난 눈'; else if (k[f] === '슬픈 눈') k[f] = '눈물 눈'; } });   // 기분 좋을 때 눈은 신난 눈, 슬퍼할 때 눈은 눈물 눈으로 통일 (표정 모음은 그대로)
         return c;
       });
       S.clip = Math.min(saved?.clip || 0, Math.max(S.clips.length - 1, 0));
