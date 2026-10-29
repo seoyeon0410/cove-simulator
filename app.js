@@ -996,12 +996,29 @@ function limitToRobot() {
 // 로봇에 넣은 눈 파일(cove_eyes.json)의 표정 이름(한글) 그대로 보낸다. (로봇 기본 이름 idle/happy/heart 는 옛 모양이라 쓰지 않는다)
 let syncEye = '';
 // 재생 중이 아닐 때(멈춤 지점도 아닐 때)도 머리를 쓰다듬으면 신난 눈으로 기뻐하고, 손을 떼고 3초 뒤 원래 눈으로 돌아간다
-let happyUntil = 0, happyOn = false, prevTouch = false;
+let happyUntil = 0, happyOn = false, prevTouch = false, wiggleTimer = 0;
+// 몸도 흔든다: 로봇의 지금 자세를 기준으로 머리를 조금 숙이고 몸통을 3초간 좌우로 (웹 동기가 켜져 있어야 한다 = 주변 확인 + 동기 켬). 끝나면 그 자세로 돌아온다
+const WIGGLE_SEC = 3;                                           // 몸 흔드는 시간 (초)
+function happyWiggle() {
+  const base = robot.sync ? robot.deg : null;
+  if (!base) return;
+  clearInterval(wiggleTimer);
+  const t0 = performance.now(), r1 = (v) => Math.round(v * 10) / 10;
+  wiggleTimer = setInterval(() => {
+    if (S.playing || !robot.sync) { clearInterval(wiggleTimer); return; }        // 재생이 시작됐거나 동기가 꺼졌으면 재생·동기에 맡기고 그만둔다
+    const t = (performance.now() - t0) / 1000, done = t >= WIGGLE_SEC;
+    const e = Math.max(0, Math.min(1, t / 0.5, (WIGGLE_SEC - t) / 0.5)), es = e * e * (3 - 2 * e), off = done ? 0 : 12 * Math.sin((2 * Math.PI * t) / 1.4) * es;
+    const bow = done ? 0 : 10 * es;                                             // 머리는 10° 숙였다가(0°가 숙인 쪽) 돌아온다
+    robot.pose({ neck: r1(base.neck), head: r1(Math.min(0, base.head + bow)), tilt: r1(base.tilt), body: r1(base.body + off) });
+    if (done) clearInterval(wiggleTimer);
+  }, 100);
+}
 function idleHappy() {
   const now = Date.now(), t = robot.connected && robot.touch, idle = !S.playing && S.heldAt == null;
   if (t && !prevTouch && !happyOn && idle && $('#rpHappy')?.checked) {
     happyOn = true; toast('쓰다듬어 줘서 기뻐요');
     eyes?.show('신난 눈'); robot.eyes('신난 눈');
+    happyWiggle();
   }
   if (happyOn) {
     if (t) happyUntil = now + 3000;

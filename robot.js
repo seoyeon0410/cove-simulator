@@ -3,6 +3,8 @@
 // booth/<로봇>/status(1초마다) · booth/<로봇>/event 를 받는다. 전체 정지는 booth/all/cmd.
 // 연결하기 전에는 아무것도 보내지 않으며, 움직이는 명령(씬·센서 모드)은 "주변 확인" 체크 후에만 보낸다.
 
+import { REST, TICK } from './robotexport.js';
+
 const $ = (s) => document.querySelector(s);
 const DEFAULT_URL = 'ws://192.168.1.232:9001';
 const EYES = [['idle', '뜬 눈'], ['blink', '깜빡'], ['look_left', '왼쪽 보기'], ['look_right', '오른쪽 보기'], ['happy', '웃는 눈'],
@@ -10,7 +12,7 @@ const EYES = [['idle', '뜬 눈'], ['blink', '깜빡'], ['look_left', '왼쪽 �
 const MODES = [['rest', '휴식'], ['tickle', '간지럽히기'], ['snack', '간식'], ['track', '따라보기'], ['off', '반응 끄기']];
 
 let client = null, st = 'off', lastStatus = 0, torqueArm = 0, statusTimer = null;
-let scenes = [], current = null, sig = '', sync = false, touch = false, touchAt = 0, arm = false, topMm = null, topOk = false, senseAt = 0;
+let scenes = [], current = null, sig = '', sync = false, touch = false, touchAt = 0, arm = false, topMm = null, topOk = false, senseAt = 0, motorPos = null, motorAt = 0;
 const listeners = new Set();
 const isOn = () => st === 'online' || st === 'live';
 // 동작 목록 같은 다른 화면이 쓸 수 있게: 연결 여부 · 씬 목록 · 지금 도는 씬이 바뀔 때만 알린다
@@ -36,6 +38,11 @@ export const robot = {
   get sync() { return sync; },
   get touch() { return touch && Date.now() - touchAt < 3500; },     // 로봇 머리의 터치센서(TTP223 ×3) 중 하나라도 닿아 있음 (상태 메시지 sense.touch, 상태가 끊기면 닿지 않은 것으로)
   get arm() { return arm && topOk && Date.now() - senseAt < 3500; },   // 턱 아래(위 쉘이 아래를 봄) 거리센서 VL53L0X에 팔/손이 들어옴 (sense.arm, 상태가 끊기면 없는 것으로)
+  // 로봇 모터의 지금 위치를 웹 각도(도)로 (status.motors 의 pos, 변환은 robotexport.toTicks 의 거꾸로). 값이 오래됐으면 null
+  get deg() {
+    if (!motorPos || Date.now() - motorAt > 3500) return null;
+    return { neck: (REST.id2 - motorPos[2]) / TICK, head: (motorPos[3] - REST.id3) / TICK, tilt: (motorPos[4] - REST.id4) / TICK, body: (motorPos[1] - REST.id1) / 29.6 };
+  },
   get armKnown() { return senseAt > 0 && Date.now() - senseAt < 3500; },
   get topOk() { return topOk; },
   get topMm() { return topMm; },                                     // 아래 방향 거리 (mm)
@@ -165,6 +172,7 @@ function onStatus(msg) {
     if (list2 && list2.join('|') !== sceneKey) { sceneKey = list2.join('|'); scenes = list2; buildScenes(list2); }
     current = typeof msg.scene === 'string' && msg.scene ? msg.scene : null;
     if (msg.sense && typeof msg.sense.touch === 'boolean') { touch = msg.sense.touch; touchAt = Date.now(); }
+    if (Array.isArray(msg.motors)) { const p = {}; msg.motors.forEach((m) => { if (m && typeof m.pos === 'number') p[m.id] = m.pos; }); if (p[1] != null && p[2] != null && p[3] != null && p[4] != null) { motorPos = p; motorAt = Date.now(); } }
     if (msg.sense && typeof msg.sense.arm === 'boolean') { arm = msg.sense.arm; topMm = typeof msg.sense.top_mm === 'number' ? msg.sense.top_mm : null; topOk = !!msg.sense.top_ok; senseAt = Date.now(); }
     notify();
   } else box.textContent = String(msg);
