@@ -10,7 +10,7 @@ const EYES = [['idle', '뜬 눈'], ['blink', '깜빡'], ['look_left', '왼쪽 �
 const MODES = [['rest', '휴식'], ['tickle', '간지럽히기'], ['snack', '간식'], ['track', '따라보기'], ['off', '반응 끄기']];
 
 let client = null, st = 'off', lastStatus = 0, torqueArm = 0, statusTimer = null;
-let scenes = [], current = null, sig = '', sync = false, touch = false, touchAt = 0;
+let scenes = [], current = null, sig = '', sync = false, touch = false, touchAt = 0, arm = false, topMm = null, topOk = false, senseAt = 0;
 const listeners = new Set();
 const isOn = () => st === 'online' || st === 'live';
 // 동작 목록 같은 다른 화면이 쓸 수 있게: 연결 여부 · 씬 목록 · 지금 도는 씬이 바뀔 때만 알린다
@@ -35,6 +35,10 @@ export const robot = {
   hold() { return send({ cmd: 'stop' }); },
   get sync() { return sync; },
   get touch() { return touch && Date.now() - touchAt < 3500; },     // 로봇 머리의 터치센서(TTP223 ×3) 중 하나라도 닿아 있음 (상태 메시지 sense.touch, 상태가 끊기면 닿지 않은 것으로)
+  get arm() { return arm && topOk && Date.now() - senseAt < 3500; },   // 턱 아래(위 쉘이 아래를 봄) 거리센서 VL53L0X에 팔/손이 들어옴 (sense.arm, 상태가 끊기면 없는 것으로)
+  get armKnown() { return senseAt > 0 && Date.now() - senseAt < 3500; },
+  get topOk() { return topOk; },
+  get topMm() { return topMm; },                                     // 아래 방향 거리 (mm)
   get touchKnown() { return touchAt > 0 && Date.now() - touchAt < 3500; },
   // 웹 재생을 로봇이 실시간으로 따라 하게 한다(pose 명령, 10Hz). 연결 + "주변 확인" 체크가 있어야 켜진다.
   setSync(on) {
@@ -161,6 +165,7 @@ function onStatus(msg) {
     if (list2 && list2.join('|') !== sceneKey) { sceneKey = list2.join('|'); scenes = list2; buildScenes(list2); }
     current = typeof msg.scene === 'string' && msg.scene ? msg.scene : null;
     if (msg.sense && typeof msg.sense.touch === 'boolean') { touch = msg.sense.touch; touchAt = Date.now(); }
+    if (msg.sense && typeof msg.sense.arm === 'boolean') { arm = msg.sense.arm; topMm = typeof msg.sense.top_mm === 'number' ? msg.sense.top_mm : null; topOk = !!msg.sense.top_ok; senseAt = Date.now(); }
     notify();
   } else box.textContent = String(msg);
 }

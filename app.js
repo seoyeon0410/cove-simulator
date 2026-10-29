@@ -202,7 +202,7 @@ function loadGLB(buffer, name) {
       const GONE = { '초롱 눈': '반짝 눈', '또렷한 눈': '뜬 눈', '위 보는 눈': '뜬 눈' };
       if (saved) S.clips = S.clips.map((c) => {
         { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.rev && c.rev !== d.rev) return buildPresetClip(d); }   // 프리셋이 새로 다듬어졌으면 저장된 예전 클립은 새 것으로 바꾼다
-        { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.hold && c.markers?.length) c.holds = d.hold.map((h) => ({ t: c.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '', touch: !!h.touch })); }   // 멈춤 지점은 프리셋 그대로 맞춘다
+        { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.hold && c.markers?.length) c.holds = d.hold.map((h) => ({ t: c.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '', touch: !!h.touch, arm: !!h.arm })); }   // 멈춤 지점은 프리셋 그대로 맞춘다
         if (c.group === '표정' && (c.markers || []).some((m) => GONE[m.label])) { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); return d ? buildPresetClip(d) : c; }
         (c.eyes || []).forEach((k) => { for (const f of ['e', 'eL', 'eR']) if (GONE[k[f]]) k[f] = GONE[k[f]]; });
         if (c.group !== '표정') (c.eyes || []).forEach((k) => { for (const f of ['e', 'eL', 'eR']) { if (k[f] === '웃는 눈') k[f] = '신난 눈'; else if (k[f] === '슬픈 눈') k[f] = '눈물 눈'; } });   // 기분 좋을 때 눈은 신난 눈, 슬퍼할 때 눈은 눈물 눈으로 통일 (표정 모음은 그대로)
@@ -480,7 +480,7 @@ function clearHeadFromBody(keys, applyPose4) {
 function buildPresetClip(def) {
   const clip = newClipData(def.name, def.duration);
   if (def.markers) clip.markers = def.markers;
-  if (def.hold && def.markers) clip.holds = def.hold.map((h) => ({ t: def.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '', touch: !!h.touch }));   // 재생 중 여기서 멈추고 버튼을 눌러야 이어간다
+  if (def.hold && def.markers) clip.holds = def.hold.map((h) => ({ t: def.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '', touch: !!h.touch, arm: !!h.arm }));   // 재생 중 여기서 멈추고 버튼을 눌러야 이어간다
   if (def.group) clip.group = def.group;
   if (def.noTail) clip.keepEnd = true;                               // 끝에서 원자세로 접지 않고 마지막 자세를 유지한다
   if (def.rev) clip.rev = def.rev;                                   // 프리셋 개정 번호 (저장된 예전 클립을 새 프리셋으로 바꾸는 데 쓴다)
@@ -696,8 +696,8 @@ function refreshHoldUI() {
     holdKey = key; bar.innerHTML = '';
     const row = document.createElement('div'); row.className = 'hold-item wait';
     row.innerHTML = '<div class="hold-cue"></div><button class="hold-btn"></button><span class="hold-msg"></span>';
-    row.querySelector('.hold-cue').textContent = waiting.touch ? '머리를 만져 주세요' : '';   // 터치 단계는 뷰포트에 큰 안내를 띄운다
-    row.querySelector('.hold-cue').hidden = !waiting.touch;
+    row.querySelector('.hold-cue').textContent = waiting.touch ? '머리를 만져 주세요' : waiting.arm ? '턱 아래에 손을 넣어 주세요' : '';   // 센서로 넘기는 단계는 뷰포트에 큰 안내를 띄운다
+    row.querySelector('.hold-cue').hidden = !(waiting.touch || waiting.arm);
     row.querySelector('button').textContent = waiting.label; row.querySelector('.hold-msg').textContent = waiting.msg || '준비되면 눌러 주세요.';
     row.querySelector('button').onclick = releaseHold;
     bar.appendChild(row);
@@ -995,13 +995,34 @@ function limitToRobot() {
 /* [로봇 동기] 켜져 있으면 웹에서 재생하는 동안 0.1초마다 지금 보이는 자세(로봇 한계 적용)를 로봇에 보낸다. 눈도 따라간다(뜬·감은·웃는·하트는 로봇 기본 이름, 나머지는 로봇에 넣은 한글 표정 이름). */
 // 로봇에 넣은 눈 파일(cove_eyes.json)의 표정 이름(한글) 그대로 보낸다. (로봇 기본 이름 idle/happy/heart 는 옛 모양이라 쓰지 않는다)
 let syncEye = '';
+// 재생 중이 아닐 때(멈춤 지점도 아닐 때)도 머리를 쓰다듬으면 신난 눈으로 기뻐하고, 손을 떼고 3초 뒤 원래 눈으로 돌아간다
+let happyUntil = 0, happyOn = false, prevTouch = false;
+function idleHappy() {
+  const now = Date.now(), t = robot.connected && robot.touch, idle = !S.playing && S.heldAt == null;
+  if (t && !prevTouch && !happyOn && idle && $('#rpHappy')?.checked) {
+    happyOn = true; toast('쓰다듬어 줘서 기뻐요');
+    eyes?.show('신난 눈'); robot.eyes('신난 눈');
+  }
+  if (happyOn) {
+    if (t) happyUntil = now + 3000;
+    if (!idle || (!t && now > happyUntil)) {
+      happyOn = false;
+      if (idle) { applyEyes(S.time); robot.eyes('뜬 눈'); }   // 재생이 시작됐으면 재생이 눈을 맡는다
+    }
+  }
+  prevTouch = t;
+}
 // 터치센서: 쓰다듬기를 기다리는 멈춤 지점(touch 표시)에서 로봇 머리의 터치센서가 닿으면 "반응하기"를 자동으로 누른다
 setInterval(() => {
   const st = $('#rpTouchState'), on = $('#rpTouch')?.checked;
   if (st) st.textContent = !robot.connected ? '(로봇 연결 필요)' : !robot.touchKnown ? '(값 없음)' : robot.touch ? '● 닿음' : '○ 안 닿음';
-  if (!on || !robot.connected || S.heldAt == null || !robot.touch) return;
+  const sa = $('#rpArmState'), armOn = $('#rpArm')?.checked;
+  if (sa) sa.textContent = !robot.connected ? '(로봇 연결 필요)' : !robot.armKnown ? '(값 없음)' : !robot.topOk ? '(센서 없음)' : `${robot.arm ? '● 손 감지' : '○ 없음'} ${robot.topMm ?? '-'}mm`;
+  idleHappy();
+  if (!robot.connected || S.heldAt == null) return;
   const h = (curClip()?.holds || []).find((x) => Math.abs(x.t - S.heldAt) < 1e-6);
-  if (h?.touch) { toast('터치센서에 닿았어요'); releaseHold(); }
+  if (on && h?.touch && robot.touch) { toast('터치센서에 닿았어요'); releaseHold(); }
+  else if (armOn && h?.arm && robot.arm) { toast('턱 아래 거리센서에 손이 들어왔어요'); releaseHold(); }
 }, 100);
 function syncPoseAt(t) {                                         // 시각 t 의 자세(로봇 한계 적용)를 로봇에 보낸다
   if (!jointCache || jointCache.model !== S.model) jointCache = { model: S.model, ids: jointIds() };

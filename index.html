@@ -242,6 +242,8 @@
       </div>
       <label class="check rp-ok"><input type="checkbox" id="rpSafe"> 로봇 주변을 확인했어요 (움직이는 명령 허용)</label>
       <label class="check rp-ok" title="휴식에서 쓰다듬기를 기다리는 동안 로봇 머리의 터치센서가 닿으면 반응하기를 자동으로 넘겨요"><input type="checkbox" id="rpTouch" checked> 터치센서로 "반응하기" 넘기기 <span id="rpTouchState" class="dim"></span></label>
+      <label class="check rp-ok" title="휴식에서 머리를 숙이기 전에 멈춰 있는 동안 턱 아래 거리센서(VL53L0X)에 손이 들어오면 숙이기를 자동으로 넘겨요"><input type="checkbox" id="rpArm" checked> 턱 아래 거리센서로 "숙이기" 넘기기 <span id="rpArmState" class="dim"></span></label>
+      <label class="check rp-ok" title="동작을 재생하고 있지 않을 때 로봇 머리의 터치센서에 닿으면 신난 눈으로 기뻐해요 (손을 떼고 3초 뒤 원래 눈으로)"><input type="checkbox" id="rpHappy" checked> 재생 안 할 때도 쓰다듬으면 기뻐하기</label>
       <label class="rp-row" title="로봇은 명령을 받고 실제로 움직이기까지 약 1초 늦어요(실측). 동기 중에는 그만큼 앞선 자세를 보내서 뷰포트와 로봇이 같은 때에 같은 자세가 되게 해요."><span>동기 앞서기(초)</span><input type="number" id="rpLead" min="0" max="2" step="0.1" value="0.9"></label>
     </section>
     <section>
