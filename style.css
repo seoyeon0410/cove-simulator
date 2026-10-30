@@ -82,7 +82,7 @@ kbd{background:var(--ctl);border-radius:var(--r-xs);padding:0 5px;font:inherit;f
 #drop.show{display:flex}
 
 /* 타임라인 */
-footer{height:250px;background:var(--panel);display:flex;flex-direction:column;flex:none;margin:10px;border-radius:var(--r-panel);overflow:hidden}
+footer{height:160px;background:var(--panel);display:flex;flex-direction:column;flex:none;margin:10px;border-radius:var(--r-panel);overflow:hidden}
 #transport{display:flex;align-items:center;gap:6px;padding:10px 14px}
 #transport .check{margin:0 8px}
 #timeLabel{min-width:110px;text-align:center}
@@ -123,7 +123,7 @@ progress::-webkit-progress-value{background:var(--accent)}
 #viewWrap{background:#e9e3d8}
 
 /* 레이아웃: 뷰포트가 왼쪽 세로 전체를 차지하고, 오른쪽에 패널 두 개와 그 아래 타임라인이 놓인다 */
-body{display:grid;grid-template-columns:minmax(0,46fr) minmax(190px,27fr) minmax(210px,27fr);grid-template-rows:auto minmax(0,1fr) 250px;gap:10px;padding:0 10px 10px}
+body{display:grid;grid-template-columns:minmax(0,46fr) minmax(190px,27fr) minmax(210px,27fr);grid-template-rows:auto minmax(0,1fr) 160px;gap:10px;padding:0 10px 10px}
 header{grid-column:1/-1;margin:0 -10px}
 main{display:contents}
 #viewWrap{grid-column:1;grid-row:2/4;margin:0}
@@ -514,3 +514,13 @@ button.rb.run,.rbc.run{background:var(--accent);color:#231b0c;opacity:1}
 #editTools>summary::before{content:"▸ "}
 #editTools[open]>summary::before{content:"▾ "}
 #editTools>summary:hover{color:var(--text)}
+
+/* 본 / 노드 목록도 접어 둔다 */
+#treeBox>summary{cursor:pointer;color:var(--dim);font-size:12px;padding:8px 0;list-style:none}
+#treeBox>summary::-webkit-details-marker{display:none}
+#treeBox>summary::before{content:"▸ "}
+#treeBox[open]>summary::before{content:"▾ "}
+#treeBox>summary:hover{color:var(--text)}
+
+/* "클립 관리"(새 클립·복사·이름 바꾸기·삭제, 클립 설정)는 화면에서 숨긴다 — 이 줄만 지우면 다시 보인다 */
+#clipTools{display:none!important}
