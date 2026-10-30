@@ -200,7 +200,7 @@ function loadGLB(buffer, name) {
       S.clips = saved?.clips || PRESET_GROUPS[0].items.map(buildPresetClip);
       // 없앤 표정이 저장된 클립에 남아 있으면 바꿔 준다: 표정 모음은 새로 만들고, 나머지는 비슷한 표정으로 대체
       const GONE = { '초롱 눈': '반짝 눈', '또렷한 눈': '뜬 눈', '위 보는 눈': '뜬 눈' };
-      if (saved) S.clips = S.clips.map((c) => {
+      if (saved) S.clips = S.clips.filter((c) => !/칭찬받기|깜짝 놀람|두리번 탐색|작별 인사/.test(c.name)).map((c) => {   // 없앤 시나리오(5 칭찬받기, 6 깜짝 놀람, 7 두리번 탐색, 8 작별 인사)가 저장돼 있으면 지운다
         { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.rev && c.rev !== d.rev) return buildPresetClip(d); }   // 프리셋이 새로 다듬어졌으면 저장된 예전 클립은 새 것으로 바꾼다
         { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.hold && c.markers?.length) c.holds = d.hold.map((h) => ({ t: c.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '', touch: !!h.touch, arm: !!h.arm })); }   // 멈춤 지점은 프리셋 그대로 맞춘다
         if (c.group === '표정' && (c.markers || []).some((m) => GONE[m.label])) { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); return d ? buildPresetClip(d) : c; }

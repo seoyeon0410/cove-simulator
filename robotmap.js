@@ -8,9 +8,6 @@ export const LINKS = {
   '간지럽히기': { web: 'web_tickle', main: 'tickle', steps: ['tickle_1_look', 'tickle_2_invite', 'tickle_3_squirm', 'tickle_4_enjoy', 'tickle_5_laugh', 'tickle_6_end'], more: ['tickle_3_squirm_10s', 'laugh'] },
   '간식주기': { web: 'web_snack', main: 'snack', steps: ['snack_1_look', 'snack_2_search', 'snack_3_sniff', 'snack_4_expect', 'snack_5_eat', 'snack_6_bye'], more: ['snack2', 'snack_25'] },
   '인사': { web: 'web_greet', main: 'emo_greet' },
-  '칭찬받기': { web: 'web_praise', main: 'emo_love', more: ['emo_shy', 'emo_content'] },
-  '깜짝 놀람': { web: 'web_surprise', main: 'emo_surprise', more: ['emo_sleepy'] },
-  '두리번 탐색': { web: 'web_look', main: 'emo_curious', more: ['emo_expect'] },
   '표정 모음': { web: 'web_expressions', steps: ['emo_greet', 'emo_curious', 'emo_laugh', 'emo_surprise', 'emo_love', 'emo_expect', 'emo_sleepy', 'emo_content', 'emo_shy'] },
 };
 
@@ -21,7 +18,7 @@ export const ROBOT_ONLY = [
 ];
 
 // 웹 모션 그대로 만든 로봇 파일/씬 이름 (영문). 연결표에 없는 동작은 web_clip번호.
-export const webSceneName = (clipName, index) => (LINKS[clipName.replace(/^시나리오\d+\s*/, '')]?.web) || (clipName.includes('작별') ? 'web_bye' : `web_clip${index + 1}`);
+export const webSceneName = (clipName, index) => (LINKS[clipName.replace(/^시나리오\d+\s*/, '')]?.web) || `web_clip${index + 1}`;
 export const linkFor = (clipName) => LINKS[clipName.replace(/^시나리오\d+\s*/, '')] || null;
 
 // 연결된 로봇에 실제로 있는 씬만 남긴 연결표와, 어느 동작에도 속하지 않은 로봇 전용 묶음을 만든다.
