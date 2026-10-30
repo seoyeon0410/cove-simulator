@@ -1057,7 +1057,7 @@ function happyWiggle() {
 }
 // 1번 거리센서(머리, 턱 아래)에 손이 닿으면(재생 중이 아닐 때): 고개를 갸우뚱(머리를 숙이고 정면에서 보이는 왼쪽으로 갸웃) 하고, 표정은 편안한 눈으로 바꾼다.
 // 손이 떨어지고 1.5초 뒤 원래대로. 눈은 뷰포트에만 나온다(로봇 눈은 시선을 못 바꾼다), 고개는 로봇 동기가 켜져 있을 때만 움직인다
-const ARM_HEAD = -26, ARM_TILT_FRAC = 0.85, ARM_HOLD_MS = 1500;   // 갸우뚱: 머리를 -26°까지 숙이고(이미 더 숙였으면 그대로) 그 머리 각도에서 로봇이 허용하는 갸웃의 85%만큼 기울인다 (머리를 많이 든 자세에서는 갸웃이 거의 안 되기 때문)
+const ARM_HEAD = -26, ARM_TILT_FRAC = 0.85, ARM_HOLD_MS = 150, ARM_BACK_SEC = 0.25;   // 손이 떨어지면 바로(0.15초 여유) 고개를 세우고(0.25초) 눈도 뜬 눈으로 돌아온다   // 갸우뚱: 머리를 -26°까지 숙이고(이미 더 숙였으면 그대로) 그 머리 각도에서 로봇이 허용하는 갸웃의 85%만큼 기울인다 (머리를 많이 든 자세에서는 갸웃이 거의 안 되기 때문)
 let armActive = false, armUntil = 0, armTimer = 0, armBase = null, armT0 = 0, prevArm = false;
 function armLookEnd() {
   armActive = false; clearInterval(armTimer); armTimer = 0;
@@ -1065,7 +1065,7 @@ function armLookEnd() {
   if (!S.playing) robot.eyes('뜬 눈');                              // 로봇 눈도 뜬 눈으로 (재생이 시작됐으면 재생이 맡는다)
 }
 function armLookStart() {
-  armActive = true; armUntil = Date.now() + ARM_HOLD_MS; armT0 = performance.now();
+  armActive = true; armEyesBack = false; armUntil = Date.now() + ARM_HOLD_MS; armT0 = performance.now();
   toast('1번 거리센서에 손이 닿았어요');
   eyes?.show('편안한 눈'); robot.eyes('편안한 눈');                    // 갸우뚱하면서 편안한 표정(뷰포트·로봇 모두)
   armBase = robot.sync ? idleBase() : null;
@@ -1075,7 +1075,8 @@ function armLookStart() {
     if (S.playing || S.heldAt != null) { armLookEnd(); return; }     // 재생이 시작되면 재생에 맡긴다
     const now = Date.now(), n = performance.now(), on = now < armUntil;
     const up = Math.min(1, (n - armT0) / 500);
-    if (!on) armDown = Math.max(0, (armDown ?? 1) - 0.1 / 0.6); else armDown = 1;
+    if (!on && !armEyesBack) { armEyesBack = true; applyEyes(S.time); if (!S.playing) robot.eyes('뜬 눈'); }   // 손이 떨어지는 순간 눈부터 돌려놓는다
+    if (!on) armDown = Math.max(0, (armDown ?? 1) - 0.1 / ARM_BACK_SEC); else { armDown = 1; armEyesBack = false; }
     const k = Math.min(up, armDown), ks = k * k * (3 - 2 * k);
     if (armBase && robot.sync) {
       const headT = Math.min(0, Math.max(armBase.head, ARM_HEAD)), tiltT = Math.max(0, tiltRange(headT)[1] * ARM_TILT_FRAC);
@@ -1084,7 +1085,7 @@ function armLookStart() {
     if (!on && armDown <= 0) { armDown = 1; armLookEnd(); }
   }, 100);
 }
-let armDown = 1;
+let armDown = 1, armEyesBack = false;
 function armLook() {
   const a = robot.connected && robot.arm, idle = !S.playing && S.heldAt == null;
   if (a) armUntil = Date.now() + ARM_HOLD_MS;
@@ -1188,6 +1189,24 @@ function idleHappy() {
   }
   prevTouch = t;
 }
+// 동작 목록 아래 "센서" 줄: 지금 감지 중인 센서를 금색으로 켜고 값을 보여 준다 (터치 · 1번 머리 거리 · 2번 몸통 거리)
+const sbLast = {};
+function updateSensorBar() {
+  const bar = $('#sensorBar'); if (!bar) return;
+  const on = robot.connected;
+  const setPill = (id, active, small) => {
+    const key = id + '|' + (on && active ? 1 : 0) + '|' + small;
+    if (sbLast[id] === key) return; sbLast[id] = key;
+    const el = $('#' + id); el.classList.toggle('on', !!(on && active)); el.querySelector('small').textContent = small;
+  };
+  bar.classList.toggle('off', !on);
+  const note = !on ? '로봇 연결 필요' : (robot.touch || robot.arm || robot.approach) ? '감지 중' : '대기 중';
+  if ($('#sbNote').textContent !== note) $('#sbNote').textContent = note;
+  const rec = robot.touchRecent, each = robot.touchEach;      // 센서별 값이 오면 1·2·3번을 따로, 아니면(옛 로봇 프로그램) 세 줄 모두 합친 값으로
+  [1, 2, 3].forEach((n) => { const a = rec ? rec[n - 1] : robot.touch; setPill('sbTouch' + n, a, !on ? '' : !robot.touchKnown ? '값 없음' : a ? (each && each[n - 1] ? '닿음' : '방금 닿음') : ''); });
+  setPill('sbArm', robot.arm, !on ? '' : !robot.armKnown ? '값 없음' : !robot.topOk ? '센서 없음' : `${robot.arm ? '손 감지 ' : ''}${robot.topMm ?? '-'}mm`);
+  setPill('sbFront', robot.approach, !on ? '' : !robot.tofKnown ? '값 없음' : robot.approach ? `다가옴 ${robot.approachMm}mm` : `${robot.tofNearMm}mm`);
+}
 // 터치센서: 쓰다듬기를 기다리는 멈춤 지점(touch 표시)에서 로봇 머리의 터치센서가 닿으면 "반응하기"를 자동으로 누른다
 setInterval(() => {
   const st = $('#rpTouchState'), on = $('#rpTouch')?.checked;
@@ -1195,6 +1214,7 @@ setInterval(() => {
   const sa = $('#rpArmState'), armOn = $('#rpArm')?.checked;
   if (sa) sa.textContent = !robot.connected ? '(로봇 연결 필요)' : !robot.armKnown ? '(값 없음)' : !robot.topOk ? '(센서 없음)' : `${robot.arm ? '● 손 감지' : '○ 없음'} ${robot.topMm ?? '-'}mm (평소 ${robot.topBase ?? '-'})`;
   if (robot.connected && robot.sync && robot.torqueOff && (S.playing || armActive || happyOn || tapTimer || followBase) && Date.now() - lastTorqueWarn > 15000) { lastTorqueWarn = Date.now(); toast('로봇 모터 토크가 꺼져 있어서 로봇이 움직이지 않아요 · 모터 토크 켜기를 눌러 주세요'); }
+  updateSensorBar();
   idleHappy();
   armLook();
   frontApproach();

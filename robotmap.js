@@ -13,7 +13,6 @@ export const LINKS = {
 
 // 웹에 같은 동작이 없는 로봇 전용 씬 묶음. 여기에도 없는 씬은 자동으로 "기타"에 모인다.
 export const ROBOT_ONLY = [
-  { label: '토토로', scenes: ['totoro_yawn', 'totoro_wait', 'totoro_roar', 'totoro_tilt', 'totoro_bounce'] },
   { label: '기본 자세', scenes: ['home', 'bite', 'hand1_play'] },
 ];
 
@@ -26,7 +25,10 @@ export function restrictTo(link, scenes) {
   const has = new Set(scenes), keep = (a) => (a || []).filter((n) => has.has(n));
   return { main: link.main && has.has(link.main) ? link.main : null, steps: keep(link.steps), more: keep(link.more) };
 }
+// 화면에 보이지 않게 할 로봇 씬 (토토로 5개). 목록에서만 숨기고 로봇에는 그대로 있다
+const HIDDEN_SCENES = (n) => /^totoro_/.test(n);
 export function robotOnlyGroups(scenes) {
+  scenes = scenes.filter((n) => !HIDDEN_SCENES(n));
   const used = new Set();
   Object.values(LINKS).forEach((l) => [l.main, l.web, ...(l.steps || []), ...(l.more || [])].forEach((n) => n && used.add(n)));
   const groups = ROBOT_ONLY.map((g) => ({ label: g.label, scenes: g.scenes.filter((n) => scenes.includes(n)) }));

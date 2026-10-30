@@ -544,3 +544,21 @@ body.tight #eyeSwipe{margin:0 0 4px}
 body.tight #clipList{margin-bottom:4px}
 body.tight #clipList .grp{margin:6px 0 2px}
 body.tight .vt-sw .check{margin-top:0}
+
+/* 센서 감지 표시: 동작 목록 아래. 감지 중인 센서는 금색으로 켜지고 값이 나온다 */
+#sensorBar{margin:10px 10px 4px;padding:8px 10px;border-radius:var(--r-ctl);background:rgba(255,255,255,.03);box-shadow:inset 0 0 0 1px var(--line)}
+#sensorBar .sb-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;font-size:11px;letter-spacing:.08em;color:var(--dim)}
+#sensorBar .sb-note{letter-spacing:0;font-size:11px}
+#sensorBar .sb-row{display:flex;flex-direction:column;gap:4px}
+#sensorBar .sb-pill{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:var(--ctl);color:var(--dim);transition:background .12s,color .12s}
+#sensorBar .sb-pill i{flex:none;width:9px;height:9px;border-radius:50%;background:#55514a}
+#sensorBar .sb-pill b{font-size:12px;font-weight:600;white-space:nowrap}
+#sensorBar .sb-pill small{margin-left:auto;font-size:11px;white-space:nowrap}
+#sensorBar .sb-pill.on{background:var(--accent);color:#2a2008}
+#sensorBar .sb-pill.on i{background:#2a2008;animation:sbPulse .6s ease-in-out infinite alternate}
+#sensorBar.off .sb-pill{opacity:.55}
+@keyframes sbPulse{from{transform:scale(.7)}to{transform:scale(1.15)}}
+body.tight #sensorBar{margin:4px 10px 2px;padding:5px 8px}
+
+/* 센서 줄의 위치 안내: 왼쪽·오른쪽은 로봇을 앞에서 바라보는 사람 기준 */
+#sensorBar .sb-ref{font-size:11px;font-weight:700;color:#ff5a4d;margin:-2px 0 6px}
