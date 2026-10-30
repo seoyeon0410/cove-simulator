@@ -12,7 +12,7 @@ const EYES = [['idle', '뜬 눈'], ['blink', '깜빡'], ['look_left', '왼쪽 �
 const MODES = [['rest', '휴식'], ['tickle', '간지럽히기'], ['snack', '간식'], ['track', '따라보기'], ['off', '반응 끄기']];
 
 let client = null, st = 'off', lastStatus = 0, torqueArm = 0, statusTimer = null;
-let scenes = [], current = null, sig = '', sync = false, touch = false, touchAt = 0, arm = false, topMm = null, topOk = false, senseAt = 0, motorPos = null, motorAt = 0, torqueOffNow = false, torqueAt = 0, zNow = null, zPresent = false, zNearMm = null, zDropAt = 0, zAt = 0, zSettleUntil = 0, touchEach = null, touchRecent = null, touchOrder = null, senseTs = 0, touchHold = 0, topEmaAt = 0, armWeb = false, webBase = null, topBase = null, person = false, frontMm = null, frontDir = null, frontOk = false, frontAt = 0, autoMode = false;
+let scenes = [], current = null, sig = '', sync = false, touch = false, touchAt = 0, arm = false, topMm = null, topOk = false, senseAt = 0, motorPos = null, motorAt = 0, torqueOffNow = false, torqueAt = 0, zNow = null, zPresent = false, zNearMm = null, zDropAt = 0, zAt = 0, zSettleUntil = 0, touchEach = null, touchRecent = null, touchOrder = null, senseTs = 0, touchHold = 0, topEmaAt = 0, eyesMode = null, eyesModeAt = 0, armWeb = false, webBase = null, topBase = null, person = false, frontMm = null, frontDir = null, frontOk = false, frontAt = 0, autoMode = false;
 const listeners = new Set();
 const isOn = () => st === 'online' || st === 'live';
 // 동작 목록 같은 다른 화면이 쓸 수 있게: 연결 여부 · 씬 목록 · 지금 도는 씬이 바뀔 때만 알린다
@@ -47,6 +47,7 @@ export const robot = {
   get touchEach() { return touchEach && Date.now() - touchAt < 3500 ? touchEach : null; },           // 센서별 지금 닿음 [1, 2, 3]
   get touchRecent() { return touchRecent && Date.now() - touchAt < 3500 ? touchRecent : null; },       // 센서별 최근 1.6초 안에 닿았음 [1, 2, 3]
   get touchOrder() { return touchOrder && Date.now() - touchAt < 3500 ? touchOrder : null; },     // 최근 3초 안에 새로 닿은 센서 번호를 닿은 순서대로 [3, 2] (로봇 프로그램에 추가한 값, 없으면 null)
+  get eyesMode() { return eyesMode && Date.now() - eyesModeAt < 4000 ? eyesMode : null; },   // 로봇이 지금 보이고 있다고 알려 준 눈 이름 (상태 메시지의 eyes). 웹이 마지막으로 보낸 눈과 다를 수 있다
   get touchSampleAt() { return touchAt; },                          // 터치 값이 마지막으로 들어온 때 (상태 메시지가 올 때마다 바뀐다)
   // 2번 거리센서(몸통 앞, VL53L5CX 4×4): 사람이 가까이(50cm 안 1초) 있으면 person, 가장 가까운 거리 front_mm, 사람 방향 dir(-1 왼쪽 ~ +1 오른쪽)
   get approach() { return zPresent && Date.now() - zAt < 1500; },     // 2번 거리센서 구역 중 하나라도 평소보다 확 가까워짐 (사람·손이 다가옴)
@@ -216,6 +217,7 @@ function onStatus(msg) {
     if (list2 && list2.join('|') !== sceneKey) { sceneKey = list2.join('|'); scenes = list2; buildScenes(list2); }
     current = typeof msg.scene === 'string' && msg.scene ? msg.scene : null;
     if (msg.sense) applySense(msg.sense, msg.ts);                       // 터치센서·1번 거리센서 값 (아래 applySense, 빠른 sense 메시지와 같이 쓴다)
+    if (typeof msg.eyes === 'string') { eyesMode = msg.eyes; eyesModeAt = Date.now(); }
     if (typeof msg.auto === 'boolean') autoMode = msg.auto;
     if (Array.isArray(msg.motors) && msg.motors.length) { torqueOffNow = msg.motors.every((m) => m && m.torque === false); torqueAt = Date.now(); updateTorqueBtn(); }
     if (msg.sense && typeof msg.sense.person === 'boolean') { person = msg.sense.person; frontMm = typeof msg.sense.front_mm === 'number' ? msg.sense.front_mm : null; frontDir = typeof msg.sense.dir === 'number' ? msg.sense.dir : null; frontOk = !!msg.sense.front_ok; frontAt = Date.now(); }

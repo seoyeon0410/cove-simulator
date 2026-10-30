@@ -896,6 +896,7 @@ function openEyePicker(anchor, i) {
     if (other) { const sl = $('#clipSel'); sl.value = String(i); sl.dispatchEvent(new Event('change')); }   // 다른 동작의 버튼이면 그 동작으로 옮겨 간다
     syncEye = '';                                                         // 재생 중이면 다음 0.1초에 로봇 눈도 새 표정으로 다시 보낸다
     applyEyes(S.time); if (!playingNow && name) eyes?.show(name);          // 뷰포트 눈을 지금 바로 바꾼다 (재생 중이면 재생이 이어서 새 표정을 보인다)
+    if (name) eyeUserAt = performance.now();
     if (robot.connected && !playingNow) robot.eyes(name || eyeKeyAt(S.time).e);   // 재생 중이 아니면 연결된 로봇의 눈도 바로 바꾼다
     if (playingNow && other) playAll();                                    // 재생 중에 다른 동작의 버튼을 눌렀으면 그 동작을 처음부터 이어서 재생한다
     snapshot(); renderClipList(); closeEyePicker();
@@ -1114,14 +1115,14 @@ function limitToRobot() {
 }
 /* [로봇 동기] 켜져 있으면 웹에서 재생하는 동안 0.1초마다 지금 보이는 자세(로봇 한계 적용)를 로봇에 보낸다. 눈도 따라간다(뜬·감은·웃는·하트는 로봇 기본 이름, 나머지는 로봇에 넣은 한글 표정 이름). */
 // 로봇에 넣은 눈 파일(cove_eyes.json)의 표정 이름(한글) 그대로 보낸다. (로봇 기본 이름 idle/happy/heart 는 옛 모양이라 쓰지 않는다)
-let syncEye = '';
+let syncEye = '', syncEyeAt = 0;
 // 재생 중이 아닐 때(멈춤 지점도 아닐 때)도 머리를 쓰다듬으면 신난 눈으로 기뻐하고, 손을 떼고 3초 뒤 원래 눈으로 돌아간다
 let lastTorqueWarn = 0;
 let happyUntil = 0, happyOn = false, prevTouch = false, wiggleTimer = 0, tapTimer = 0, tapBase = null, tapEnd = 0;
 const STROKE_MS = 5000, STROKE_GAP_MS = 2000; let allTouchSince = 0, allGapAt = 0;   // 쓰다듬기로 치는 시간: 세 센서를 전부 이만큼 계속 만져야 한다
 let touchState = 'idle';   // 'idle' | 'stroking'
 // 일어나기 애니메이션 / 눈 감기 잠금 / 앉기 뒤 접힌 자세 맞추기 타이머 (반응을 한 번에 멈출 수 있게 센서 반응 상태와 함께 둔다)
-let standTimer = 0, standLockUntil = 0, sitTimer = 0, sitIv = 0;
+let standTimer = 0, standLockUntil = 0, sitTimer = 0, sitIv = 0, standGuard = [];
 // 터치 판정 상태: idle → pending(닿은 걸 처음 봄) → 떨어졌으면 tapwait(다음 센서가 이어 닿는지 한 번 더 본다) → 톡
 // 몸도 흔든다: 로봇의 지금 자세를 기준으로 머리를 조금 숙이고 몸통을 3초간 좌우로 (웹 동기가 켜져 있어야 한다 = 주변 확인 + 동기 켬). 끝나면 그 자세로 돌아온다
 const WIGGLE_SEC = 3;                                           // 몸 흔드는 시간 (초)
@@ -1334,13 +1335,24 @@ function standHeadUp() {
   }
 }
 // 앉아 있을 때(로봇의 기둥이 15° 미만, 로봇 값이 없으면 화면이 처음 자세)는 눈을 감는다. 앉은 상태가 새로 시작되는 순간 한 번만 바꾼다(그 뒤 표정 고르기 등은 방해하지 않는다)
-let wasSitting = false;
+let wasSitting = false, eyeUserAt = -1e9, sitAt = -1e9, closedSince = 0, lastOpenAt = 0;   // eyeUserAt: 사람이 직접 눈을 고른 때 / sitAt: 앉기를 누른 때
 function sittingEyes() {
   const d = robot.connected ? robot.deg : null, sitting = d ? isSitting() : (S.time <= 0.05 && !manualActive);
   const idle = !S.playing && S.heldAt == null && !motionBusy() && !armResume && !standEyesUntil && !standHeadAt && performance.now() > standLockUntil;
   if (sitting && idle) {
     if (!wasSitting) { wasSitting = true; eyes?.show('감은 눈'); if (robot.connected) robot.eyes('감은 눈'); }
-  } else if (!sitting) wasSitting = false;
+  } else if (!sitting) {
+    wasSitting = false;
+    // 서 있는데 로봇 눈이 감은 눈이면(센서로 일어났을 때 앞서 감겨 있던 눈이 남는 경우 등) 뜬 눈으로 바꾼다.
+    // 앉는 중(앉기 뒤 8초)이거나 사람이 직접 눈을 고른 지 30초 안이면 하지 않고, 1초 넘게 계속 그럴 때만 한다.
+    // "앉아 있을 땐 표정만 바꾸기"는 앉기를 누르면 켜지는데, 로봇이 실제로 서 있으면(다른 센서·동작으로 일어났으면) 더는 맞지 않으므로 같이 꺼 준다
+    const now = performance.now();
+    if (robot.connected && now - sitAt > 8000 && $('#sitKeep')?.checked) $('#sitKeep').checked = false;
+    if (idle && robot.connected && robot.eyesMode === '감은 눈' && now - eyeUserAt > 30000 && now - sitAt > 8000) {
+      if (!closedSince) closedSince = now;
+      else if (now - closedSince > 1000 && now - lastOpenAt > 2500) { lastOpenAt = now; eyes?.show('뜬 눈'); robot.eyes('뜬 눈'); toast('서 있는데 눈이 감겨 있어서 뜬 눈으로 바꿔요'); }
+    } else closedSince = 0;
+  }
 }
 const STAND_EYES_MS = 4000;
 let standEyesUntil = 0;
@@ -1483,7 +1495,9 @@ setInterval(() => {
   const clip = curClip(), hp = nextHold();
   syncPoseAt(Math.min(S.time + lead, hp ? hp.t : clip.duration));      // 로봇이 늦는 만큼(실측 약 1초) 앞선 자세를 보내되, 멈춤 지점 너머는 미리 보내지 않는다
   const cur = (clip.eyes || []).filter((x) => x.t <= S.time + 1e-6).pop(), mode = cur && !cur.eL && !cur.eR && cur.e;
-  if (mode && mode !== syncEye) { syncEye = mode; robot.eyes(mode); }
+  // 마지막으로 보낸 눈(syncEye)만 믿으면, 그 뒤에 버튼·센서 반응이 로봇 눈을 따로 바꿨을 때(예: 앉기의 감은 눈) 같은 눈을 다시 안 보내서 로봇이 감은 눈인 채로 남는다.
+  // 그래서 로봇이 알려 준 지금 눈(robot.eyesMode)이 다르면 1.2초 간격으로 다시 보낸다
+  if (mode && (mode !== syncEye || (robot.eyesMode && robot.eyesMode !== mode && performance.now() - syncEyeAt > 1200))) { syncEye = mode; syncEyeAt = performance.now(); robot.eyes(mode); }
 }, 100);
 function sampleJoints(clip) {                                 // 0.1초 간격 {t, neck, head, tilt, body}
   const ids = jointIds(), out = [], n = Math.round(clip.duration / STEP);
@@ -1550,6 +1564,7 @@ function updateSceneTag() {
     marks.forEach((m, k) => {
       const b = document.createElement('button'); b.className = byName ? 'chip' : 'chip num'; b.textContent = byName ? m.label : String(k + 1);
       b.onclick = () => {
+        eyeUserAt = performance.now();
         if (byName && $('#sitKeep')?.checked) { eyes?.show(m.label); if (robot.connected) robot.eyes(m.label, true); toast(`${m.label} · 앉은 채로 눈만 바뀌어요`); return; }   // 앉아 있을 땐 몸은 움직이지 않고 눈만 바꾼다
         playScene(k); if (byName && robot.connected) robot.eyes(m.label, true);
       };   // 표정 버튼은 연결된 로봇의 눈도 바로 바꾼다
@@ -2002,7 +2017,7 @@ EXPRESSIONS.forEach((n) => $('#eyeSel').add(new Option(n, n)));
     if (i === cur) return;
     cur = i; const e = EXPRESSIONS[i];
     thumb.style.left = pos(i) + '%'; name.textContent = e;
-    eyes?.show(e);
+    eyes?.show(e); eyeUserAt = performance.now();
     clearTimeout(sendT); sendT = setTimeout(() => { if (robot.connected) robot.eyes(e, true); }, 120);   // 쓸어 지나가는 동안은 멈춘 표정만 로봇에 보낸다
   };
   track.onpointerdown = (ev) => { ev.preventDefault(); drag = true; track.setPointerCapture(ev.pointerId); pick(ev); };
@@ -2011,7 +2026,7 @@ EXPRESSIONS.forEach((n) => $('#eyeSel').add(new Option(n, n)));
 }
 $('#eyeSel').onchange = (e) => {                 // 선택한 표정을 현재 시간의 눈 키로 기록한다
   if (!curClip()) return;
-  setEyeKey(S.time, { e: e.target.value }); applyEyes(S.time); snapshot();
+  setEyeKey(S.time, { e: e.target.value }); applyEyes(S.time); snapshot(); eyeUserAt = performance.now();
 };
 /* ───────────── 관절 조작: 슬라이더로 관절을 손으로 움직여 최소·최대를 본다 ───────────── */
 const JT = [['neck', '기둥'], ['head', '머리'], ['tilt', '갸웃'], ['body', '몸통']];
@@ -2130,7 +2145,7 @@ $('#btnRest').onclick = resetPose;
 // 앉기: 재생·멈춤·센서 반응을 멈추고 처음(접힌) 자세로. 연결돼 있고 주변 확인이 되어 있으면 로봇도 home 씬으로 앉는다.
 // 사람이 아직 다가와 있는 동안 기둥 올리기가 다시 일으키지 않도록, 그 사람이 떠날 때까지 기둥 올리기를 쉰다
 function resetIdleReactions() {                                    // 진행 중이던 센서 반응(톡·쓰다듬기·1번·갸우뚱·일어나기·앉기 뒤 맞추기·일어난 뒤 눈·기둥)을 모두 멈춘다
-  [wiggleTimer, tapTimer, armTimer, sideTimer, standTimer, sitIv].forEach((t) => clearInterval(t)); clearTimeout(sitTimer);
+  [wiggleTimer, tapTimer, armTimer, sideTimer, standTimer, sitIv].forEach((t) => clearInterval(t)); clearTimeout(sitTimer); standGuard.forEach(clearInterval); standGuard = [];
   wiggleTimer = tapTimer = armTimer = sideTimer = standTimer = sitIv = sitTimer = 0; standLockUntil = 0;
   armActive = false; armResume = false; armWait = false; armSuppress = false; armBase = null; sideActive = false; happyOn = false; touchState = 'idle'; allTouchSince = 0; allGapAt = 0; standEyesUntil = 0; standHeadAt = 0; followBase = null;
 }
@@ -2144,6 +2159,13 @@ $('#standUp').onclick = () => {
   if ($('#sitKeep')) $('#sitKeep').checked = false;                                                    // 일어났으니 표정 버튼이 다시 몸을 움직일 수 있게 한다
   wasSitting = false; eyes?.show('뜬 눈'); if (robot.connected) robot.eyes('뜬 눈');                    // 일어나면서 눈을 뜬다
   standLockUntil = performance.now() + STAND_SEC * 1000 + 2500;
+  // 일어나는 동안과 다 일어난 뒤에도 로봇 눈이 뜬 눈인지 몇 번 더 맞춘다 (로봇이 앞서 돌리던 씬이 끝나면서 눈을 바꿔 놓는 경우를 막는다). 다른 반응이 눈을 쓰고 있으면 건드리지 않는다
+  const gEnd = performance.now() + 12000; let gLast = 0;
+  standGuard = [setInterval(() => {
+    if (performance.now() > gEnd || S.playing) { clearInterval(standGuard[0]); return; }
+    if (armActive || happyOn || sideActive) return;                    // 다른 반응이 눈을 쓰면 건드리지 않는다
+    if (robot.connected && robot.eyesMode !== '뜬 눈' && performance.now() - gLast > 900) { gLast = performance.now(); robot.eyes('뜬 눈'); }   // 로봇이 알려 준 눈이 뜬 눈이 아니면 다시 보낸다
+  }, 500)];
   const from = (robot.connected && robot.deg) ? { ...robot.deg } : readJointAngles(), t0 = performance.now();
   const r1 = (v) => Math.round(v * 10) / 10;
   standTimer = setInterval(() => {
@@ -2162,7 +2184,7 @@ $('#sitDown').onclick = () => {
   followBase = null; sitLock = true;
   if ($('#sitKeep')) $('#sitKeep').checked = true;                                                    // 앉은 뒤에는 표정 버튼이 몸을 움직여 일으키지 않게 한다
   resetIdleReactions();                                                                               // 진행 중이던 반응은 모두 멈춘다 (로봇에 자세를 계속 보내 home 씬을 방해하지 않게)
-  wasSitting = true; eyes?.show('감은 눈'); if (robot.connected) robot.eyes('감은 눈');                  // 앉으면서 눈을 감는다
+  wasSitting = true; sitAt = performance.now(); eyes?.show('감은 눈'); if (robot.connected) robot.eyes('감은 눈');                  // 앉으면서 눈을 감는다
   clearTimeout(sitTimer); clearInterval(sitIv);
   sitTimer = setTimeout(() => {                                                                       // home 씬(3초)이 끝난 뒤 완전히 접힌 자세(0°)로 한 번 더 맞춘다 (그 사이 일어나기 등을 누르면 취소된다)
     sitTimer = 0; if (S.playing || !robot.sync) return;
