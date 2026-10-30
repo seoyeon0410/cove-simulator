@@ -470,7 +470,6 @@ button.rb.run,.rbc.run{background:var(--accent);color:#231b0c;opacity:1}
 /* 오른쪽 패널은 머리 들기·머리 숙이기·기본 포즈만 보인다. 나머지(선택 이름, 위치·회전·크기 입력칸, 키 버튼, 선택한 키)는 숨기기만 했다 — 다시 보이게 하려면 이 블록을 지운다. 키 찍기(I)·삭제(Delete) 단축키는 그대로 동작한다 */
 #right>section:first-of-type>h3:first-child,#right #keyState,#right .grid3,#right #btnKey,#right #btnKeyAll,#right #btnDelKey,#right #keyProps{display:none!important}
 #right .row:has(#btnKey){display:none}
-#right .row:has(#btnRest) #btnRest{flex:1}
 
 /* 오른쪽 패널의 빨간 모터 토크 끄기 버튼 */
 #headTorqueOff{flex:1;background:#b3382a;color:#fff;font-weight:600;box-shadow:none}
@@ -484,3 +483,34 @@ button.rb.run,.rbc.run{background:var(--accent);color:#231b0c;opacity:1}
 
 /* 실행 취소·다시 실행 버튼은 화면에서 숨긴다(Ctrl+Z / Ctrl+Shift+Z 단축키는 그대로 동작) */
 #btnUndo,#btnRedo{display:none!important}
+
+/* ───── 화면 정리 (2026-10-30) ───── */
+/* 위쪽: 파일 관련 버튼 5개를 "파일 ▾" 메뉴 하나로 */
+#fileMenu{position:relative}
+#fileMenu>summary{list-style:none;cursor:pointer;padding:6px 12px;border-radius:var(--r-ctl);background:var(--ctl);color:var(--text);font-weight:600;user-select:none}
+#fileMenu>summary::-webkit-details-marker{display:none}
+#fileMenu>summary:hover,#fileMenu[open]>summary{background:var(--ctl-hover)}
+#fileMenu .menu-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:60;display:flex;flex-direction:column;gap:2px;min-width:180px;padding:6px;background:var(--panel);box-shadow:0 8px 24px rgba(0,0,0,.45),inset 0 0 0 1px var(--line)}
+#fileMenu .menu-pop button{text-align:left;width:100%;background:transparent;box-shadow:none;padding:8px 10px}
+#fileMenu .menu-pop button:hover{background:var(--ctl-hover)}
+#fileMenu .menu-pop hr{border:0;border-top:1px solid var(--line);margin:4px 2px}
+/* 오른쪽: 로봇 자세 묶음 (앉기 · 머리 들기 · 머리 숙이기 한 줄, 아래 모터 토크) */
+#right .sub-title{font-size:11px;letter-spacing:.08em;color:var(--dim);margin:2px 0 6px}
+#right .row.pose3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+#right .row.pose3 button{width:100%}
+#right .row.keyrow{display:none}
+/* 가운데: 클립 만들기·복사·이름·삭제와 클립 설정은 "클립 관리"를 펼쳐야 보인다 */
+#clipTools{margin-top:6px}
+#clipTools>summary{cursor:pointer;color:var(--dim);font-size:12px;padding:6px 0;list-style:none}
+#clipTools>summary::-webkit-details-marker{display:none}
+#clipTools>summary::before{content:"▸ "}
+#clipTools[open]>summary::before{content:"▾ "}
+#clipTools>summary:hover{color:var(--text)}
+
+/* 보기 묶음: 자주 쓰는 것(카메라·자세 초기화·로봇 한계/속도·투명도)만 보이고, 본 편집 도구는 "편집 도구"를 펼쳐야 보인다 */
+#editTools{margin-top:6px}
+#editTools>summary{cursor:pointer;color:var(--dim);font-size:12px;padding:6px 0;list-style:none}
+#editTools>summary::-webkit-details-marker{display:none}
+#editTools>summary::before{content:"▸ "}
+#editTools[open]>summary::before{content:"▾ "}
+#editTools>summary:hover{color:var(--text)}

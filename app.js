@@ -1336,7 +1336,7 @@ function resizeTL() {
 new ResizeObserver(resizeTL).observe(tlc);
 
 function tlRows() {
-  if (!S.model) return [];
+  if (!S.model || !$('#tlBones')?.checked) return [];                 // 평소에는 본 줄을 숨기고 장면·눈 줄만 보인다 ("본 트랙"을 켜면 보인다)
   const rows = [...S.boneIdx];
   const clip = curClip();
   for (const idx in clip.tracks) if (clip.tracks[idx].length && !rows.includes(+idx)) rows.push(+idx);
@@ -1961,6 +1961,10 @@ $('#editSw').onchange = (e) => setEditOpen(e.target.checked);
 let editWas = false; try { editWas = localStorage.getItem('cove-edit-open') === '1'; } catch { /* 무시 */ }
 setEditOpen(editWas);
 $('#btnOpen').onclick = () => $('#fileGlb').click();
+{ const b = $('#tlBones'); try { b.checked = localStorage.getItem('cove-tl-bones') === '1'; } catch { /* 무시 */ } b.onchange = () => { try { localStorage.setItem('cove-tl-bones', b.checked ? '1' : '0'); } catch { /* 무시 */ } TL.sy = 0; drawTL(); }; }
+// 파일 메뉴: 항목을 누르거나 메뉴 바깥을 누르면 닫는다
+document.querySelectorAll('#fileMenu .menu-pop button').forEach((b) => b.addEventListener('click', () => { $('#fileMenu').open = false; }));
+document.addEventListener('pointerdown', (e) => { const m = $('#fileMenu'); if (m?.open && !m.contains(e.target)) m.open = false; });
 $('#fileGlb').onchange = (e) => openFile(e.target.files[0]);
 async function openFile(f) {
   if (!f) return;
