@@ -82,7 +82,7 @@ kbd{background:var(--ctl);border-radius:var(--r-xs);padding:0 5px;font:inherit;f
 #drop.show{display:flex}
 
 /* 타임라인 */
-footer{height:160px;background:var(--panel);display:flex;flex-direction:column;flex:none;margin:10px;border-radius:var(--r-panel);overflow:hidden}
+footer{position:relative;height:var(--tl-h,160px);background:var(--panel);display:flex;flex-direction:column;flex:none;margin:10px;border-radius:var(--r-panel);overflow:hidden}
 #transport{display:flex;align-items:center;gap:6px;padding:10px 14px}
 #transport .check{margin:0 8px}
 #timeLabel{min-width:110px;text-align:center}
@@ -123,7 +123,7 @@ progress::-webkit-progress-value{background:var(--accent)}
 #viewWrap{background:#e9e3d8}
 
 /* 레이아웃: 뷰포트가 왼쪽 세로 전체를 차지하고, 오른쪽에 패널 두 개와 그 아래 타임라인이 놓인다 */
-body{display:grid;grid-template-columns:minmax(0,46fr) minmax(190px,27fr) minmax(210px,27fr);grid-template-rows:auto minmax(0,1fr) 160px;gap:10px;padding:0 10px 10px}
+body{display:grid;grid-template-columns:minmax(0,46fr) minmax(190px,27fr) minmax(210px,27fr);grid-template-rows:auto minmax(0,1fr) var(--tl-h,160px);gap:10px;padding:0 10px 10px}
 header{grid-column:1/-1;margin:0 -10px}
 main{display:contents}
 #viewWrap{grid-column:1;grid-row:2/4;margin:0}
@@ -524,3 +524,23 @@ button.rb.run,.rbc.run{background:var(--accent);color:#231b0c;opacity:1}
 
 /* "클립 관리"(새 클립·복사·이름 바꾸기·삭제, 클립 설정)는 화면에서 숨긴다 — 이 줄만 지우면 다시 보인다 */
 #clipTools{display:none!important}
+
+/* 타임라인 높이 조절 손잡이: 아래 패널의 윗가장자리를 위아래로 끈다 */
+#tlResize{position:absolute;left:0;right:0;top:0;height:14px;z-index:6;cursor:ns-resize;touch-action:none;display:flex;align-items:center;justify-content:center}
+#tlResize i{display:block;width:44px;height:4px;border-radius:2px;background:#5a564c;transition:background .15s}
+#tlResize:hover i,#tlResize.drag i{background:var(--accent)}
+
+/* 타임라인을 위로 늘려 패널이 낮아지면(내용이 안 들어가면) body.tight 가 붙어 여백·간격을 줄여서 칸에 맞춘다 (JS fitPanels) */
+body.tight #left>section,body.tight #right>section{padding-top:2px;padding-bottom:6px}
+body.tight #left section,body.tight #right section{padding-left:12px;padding-right:12px}
+body.tight .sec-head{padding-top:3px;padding-bottom:3px}
+body.tight #right .row,body.tight .vt-row{margin-top:2px;margin-bottom:2px}
+body.tight #viewTools{gap:3px;padding:0 6px 4px}
+body.tight #right .row.pose3,body.tight #right .row{gap:4px}
+body.tight #right .sub-title{margin:0 0 3px}
+body.tight #right button,body.tight #left .clip-item{padding-top:4px;padding-bottom:4px}
+body.tight #right>section:first-of-type{padding-top:6px}
+body.tight #eyeSwipe{margin:0 0 4px}
+body.tight #clipList{margin-bottom:4px}
+body.tight #clipList .grp{margin:6px 0 2px}
+body.tight .vt-sw .check{margin-top:0}

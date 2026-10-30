@@ -1961,6 +1961,29 @@ $('#editSw').onchange = (e) => setEditOpen(e.target.checked);
 let editWas = false; try { editWas = localStorage.getItem('cove-edit-open') === '1'; } catch { /* 무시 */ }
 setEditOpen(editWas);
 $('#btnOpen').onclick = () => $('#fileGlb').click();
+// 패널 맞춤: 타임라인을 위로 늘려 가운데·오른쪽 패널이 낮아져 내용이 넘치면 여백을 줄여(tight) 최대한 스크롤 없이 칸에 맞춘다
+{
+  const panels = () => [$('#left'), $('#right')];
+  const fit = () => {
+    const b = document.body; b.classList.remove('tight');
+    if (panels().some((p) => p && p.scrollHeight > p.clientHeight + 1)) b.classList.add('tight');
+  };
+  window.fitPanels = fit;
+  const ro = new ResizeObserver(fit); panels().forEach((p) => p && ro.observe(p));
+  document.addEventListener('toggle', fit, true); document.addEventListener('click', () => setTimeout(fit, 320), true);
+  window.addEventListener('resize', fit); setInterval(fit, 1000); setTimeout(fit, 500);
+}
+// 타임라인 높이 조절: 손잡이를 위아래로 끌면 높이가 바뀌고(90~480px) 값은 기억한다. 더블클릭하면 기본(160px)
+{
+  const h = $('#tlResize'), MIN = 90, MAX = 480, DEF = 160;
+  const set = (v) => { v = Math.round(Math.max(MIN, Math.min(MAX, v))); document.documentElement.style.setProperty('--tl-h', v + 'px'); try { localStorage.setItem('cove-tl-h', String(v)); } catch { /* 무시 */ } return v; };
+  try { const v = +localStorage.getItem('cove-tl-h'); if (v) set(v); } catch { /* 무시 */ }
+  let y0 = 0, h0 = 0;
+  h.onpointerdown = (e) => { e.preventDefault(); h.setPointerCapture(e.pointerId); h.classList.add('drag'); y0 = e.clientY; h0 = document.querySelector('footer').getBoundingClientRect().height; };
+  h.onpointermove = (e) => { if (h.classList.contains('drag')) set(h0 + (y0 - e.clientY)); };
+  h.onpointerup = h.onpointercancel = () => h.classList.remove('drag');
+  h.ondblclick = () => set(DEF);
+}
 { const b = $('#tlBones'); try { b.checked = localStorage.getItem('cove-tl-bones') === '1'; } catch { /* 무시 */ } b.onchange = () => { try { localStorage.setItem('cove-tl-bones', b.checked ? '1' : '0'); } catch { /* 무시 */ } TL.sy = 0; drawTL(); }; }
 // 파일 메뉴: 항목을 누르거나 메뉴 바깥을 누르면 닫는다
 document.querySelectorAll('#fileMenu .menu-pop button').forEach((b) => b.addEventListener('click', () => { $('#fileMenu').open = false; }));
