@@ -2006,23 +2006,21 @@ $('#opacity').oninput = applyOpacity;
 $('#camReset').onclick = fitCamera;
 EXPRESSIONS.forEach((n) => $('#eyeSel').add(new Option(n, n)));
 // 양쪽 표정 선택 / 눈 만들기 독 (눈 그림을 끌어 놓기)
-/* 표정 쓸어서 고르기: 줄 위에서 마우스를 누른 채 좌우로 끌면 그 위치의 표정이 뷰포트(와 연결된 로봇)에 바로 나온다 */
+/* 표정 직접 고르기: 표정 그림을 누르면 그 표정이 뷰포트(와 연결된 로봇)에 바로 나온다. 동작에 기록하지는 않는다(기록은 동작 줄의 표정 버튼이나 눈 만들기에서) */
 {
-  const track = $('#esTrack'), thumb = $('#esThumb'), name = $('#esName'), n = EXPRESSIONS.length;
-  const pos = (i) => ((i + 0.5) / n) * 100;
-  EXPRESSIONS.forEach((_, i) => { const d = document.createElement('i'); d.style.left = pos(i) + '%'; track.insertBefore(d, thumb); });
-  let cur = -1, drag = false, sendT = 0;
-  const pick = (ev) => {
-    const r = track.getBoundingClientRect(), i = Math.max(0, Math.min(n - 1, Math.floor(((ev.clientX - r.left) / r.width) * n)));
-    if (i === cur) return;
-    cur = i; const e = EXPRESSIONS[i];
-    thumb.style.left = pos(i) + '%'; name.textContent = e;
-    eyes?.show(e); eyeUserAt = performance.now();
-    clearTimeout(sendT); sendT = setTimeout(() => { if (robot.connected) robot.eyes(e, true); }, 120);   // 쓸어 지나가는 동안은 멈춘 표정만 로봇에 보낸다
-  };
-  track.onpointerdown = (ev) => { ev.preventDefault(); drag = true; track.setPointerCapture(ev.pointerId); pick(ev); };
-  track.onpointermove = (ev) => { if (drag) pick(ev); };
-  track.onpointerup = track.onpointercancel = () => { drag = false; };
+  const grid = $('#esGrid'), name = $('#esName'); let cur = '';
+  EXPRESSIONS.forEach((e) => {
+    const b = document.createElement('button'); b.className = 'es-i'; b.dataset.e = e; b.title = e;
+    const cv = document.createElement('canvas'); cv.width = cv.height = 48; drawPattern(cv, eyeRows(e, 0, 0));
+    const l = document.createElement('span'); l.textContent = e.replace(/ 눈$/, ''); b.append(cv, l);
+    b.onclick = () => {
+      cur = e; name.textContent = e;
+      grid.querySelectorAll('.es-i').forEach((x) => x.classList.toggle('on', x.dataset.e === e));
+      eyes?.show(e); eyeUserAt = performance.now();
+      if (robot.connected) robot.eyes(e, true);
+    };
+    grid.appendChild(b);
+  });
 }
 $('#eyeSel').onchange = (e) => {                 // 선택한 표정을 현재 시간의 눈 키로 기록한다
   if (!curClip()) return;
