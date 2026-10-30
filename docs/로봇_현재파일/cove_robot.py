@@ -96,6 +96,7 @@ PIN_TOF_XSHUT = 4                  # 전면 ToF(사람 감지) XSHUT — 위 ToF
 MULTI_RES, MULTI_HZ = 4, 10        # 전면 다구역 ToF(VL53L5CX, 2026-10-26 교체): 4x4, 초당 10회
 DIR_MM = 2500                      # 이 거리 안의 가장 가까운 물체로 사람 방향(왼쪽~오른쪽)을 계산 (연속 모드로 거리 늘려서 1500 → 2500)
 TOF_PUB_SEC = 0.2                  # 대시보드로 4x4 값을 보내는 간격 (booth/<id>/tof)
+SENSE_PUB_SEC = 0.05                # 터치·1번 거리센서가 바뀌었는지 보는 간격 (booth/<id>/sense, 바뀔 때만 보낸다)
 
 # ---- 웹(코브 애니메이터) 실시간 조그: {"cmd":"pose","deg":{"neck":10,"head":-12,"tilt":0,"body":0}} (2026-10-28 웹 요청서 4번) ----
 # 웹 각도 0° = 접힌 기본 자세 = HOME. neck = ID2, head = ID3 (목 기준 상대각), tilt = ID4, body = ID1 (COVE_인수인계/로봇연동_답변서.md 2번)
@@ -766,6 +767,31 @@ class Robot(BaseRobot):
         self.posing, self.pose_t = False, 0.0       # 웹 실시간 조그 중인지
         self.senses = Senses(self.log)
         threading.Thread(target=self._tof_pub_loop, daemon=True).start()
+        threading.Thread(target=self._sense_pub_loop, daemon=True).start()
+
+    def _sense_pub_loop(self):
+        """터치센서 3개와 1번 거리센서(머리) 값을, 상태(약 1.5초 간격)와 따로 바뀌는 즉시 booth/<id>/sense 로 보낸다.
+        짧게 톡 쳐도 놓치지 않고 웹 반응이 0.1초 안에 시작된다. 바뀐 게 없으면 1초마다 한 번만 보낸다(웹이 '최근 닿음'을 갱신할 수 있게)."""
+        import json
+        last_key, last_t = None, 0.0
+        while True:
+            time.sleep(SENSE_PUB_SEC)
+            if not (self.client and self.connected):
+                continue
+            try:
+                sn = self.senses.snapshot()
+                top = sn.get("top_mm")
+                key = (sn.get("touch"), tuple(sn.get("touch_each") or ()), tuple(sn.get("touch_recent") or ()),
+                       tuple(sn.get("touch_order") or ()), sn.get("arm"), round(top / 4) if isinstance(top, (int, float)) else None)
+                now = time.time()
+                if key == last_key and now - last_t < 1.0:
+                    continue
+                last_key, last_t = key, now
+                m = {k: sn.get(k) for k in ("touch", "touch_each", "touch_recent", "touch_order", "arm", "top_mm", "top_ok", "top_base")}
+                m["ts"] = now
+                self.client.publish(f"booth/{self.id}/sense", json.dumps(m), qos=0)
+            except Exception as e:
+                self.log(f"센서 빠른 보고 실패: {e}", "warn")
 
     def _tof_pub_loop(self):
         """전면 다구역 ToF 4x4 값을 대시보드로 (상태 1초 간격보다 자주)"""

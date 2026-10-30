@@ -12,7 +12,7 @@ const EYES = [['idle', '뜬 눈'], ['blink', '깜빡'], ['look_left', '왼쪽 �
 const MODES = [['rest', '휴식'], ['tickle', '간지럽히기'], ['snack', '간식'], ['track', '따라보기'], ['off', '반응 끄기']];
 
 let client = null, st = 'off', lastStatus = 0, torqueArm = 0, statusTimer = null;
-let scenes = [], current = null, sig = '', sync = false, touch = false, touchAt = 0, arm = false, topMm = null, topOk = false, senseAt = 0, motorPos = null, motorAt = 0, torqueOffNow = false, torqueAt = 0, zNow = null, zPresent = false, zNearMm = null, zDropAt = 0, zAt = 0, zSettleUntil = 0, touchEach = null, touchRecent = null, touchOrder = null, armWeb = false, webBase = null, topBase = null, person = false, frontMm = null, frontDir = null, frontOk = false, frontAt = 0, autoMode = false;
+let scenes = [], current = null, sig = '', sync = false, touch = false, touchAt = 0, arm = false, topMm = null, topOk = false, senseAt = 0, motorPos = null, motorAt = 0, torqueOffNow = false, torqueAt = 0, zNow = null, zPresent = false, zNearMm = null, zDropAt = 0, zAt = 0, zSettleUntil = 0, touchEach = null, touchRecent = null, touchOrder = null, senseTs = 0, touchHold = 0, topEmaAt = 0, armWeb = false, webBase = null, topBase = null, person = false, frontMm = null, frontDir = null, frontOk = false, frontAt = 0, autoMode = false;
 const listeners = new Set();
 const isOn = () => st === 'online' || st === 'live';
 // 동작 목록 같은 다른 화면이 쓸 수 있게: 연결 여부 · 씬 목록 · 지금 도는 씬이 바뀔 때만 알린다
@@ -36,7 +36,7 @@ export const robot = {
   // 정지 명령만 보내고 동기는 그대로 둔다 (웹을 일시정지했다가 다시 재생하면 이어서 따라 한다)
   hold() { return send({ cmd: 'stop' }); },
   get sync() { return sync; },
-  get touch() { return touch && Date.now() - touchAt < 3500; },     // 로봇 머리의 터치센서(TTP223 ×3) 중 하나라도 닿아 있음 (상태 메시지 sense.touch, 상태가 끊기면 닿지 않은 것으로)
+  get touch() { return (touch || Date.now() < touchHold) && Date.now() - touchAt < 3500; },     // 로봇 머리의 터치센서(TTP223 ×3) 중 하나라도 닿아 있음 (상태 메시지 sense.touch, 상태가 끊기면 닿지 않은 것으로)
   get arm() { return (arm || armWeb) && topOk && Date.now() - senseAt < 3500; },   // 1번 거리센서(머리, 턱 아래·위 쉘이 아래를 봄) VL53L0X에 팔/손이 들어옴 (sense.arm, 상태가 끊기면 없는 것으로)
   // 로봇 모터의 지금 위치를 웹 각도(도)로 (status.motors 의 pos, 변환은 robotexport.toTicks 의 거꾸로). 값이 오래됐으면 null
   get deg() {
@@ -142,7 +142,7 @@ function connect() {
   client = c;
   c.on('connect', () => {
     setState('online'); log('sys', '브로커에 연결됐어요');
-    c.subscribe([topic('status', robot), topic('event', robot), topic('tof', robot)], (err) => { if (err) log('err', '구독 실패: ' + err.message); });
+    c.subscribe([topic('status', robot), topic('event', robot), topic('tof', robot), topic('sense', robot)], (err) => { if (err) log('err', '구독 실패: ' + err.message); });
   });
   c.on('reconnect', () => { if (client === c) setState('connecting'); });
   c.on('close', () => { if (client === c && st !== 'off') setState('connecting', '연결이 끊겼어요 · 다시 시도 중'); });
@@ -152,6 +152,7 @@ function connect() {
     try { msg = JSON.parse(s); } catch { msg = s; }
     if (t.endsWith('/status')) onStatus(msg);
     else if (t.endsWith('/tof')) onTof(msg);
+    else if (t.endsWith('/sense')) { if (msg && typeof msg === 'object') { applySense(msg, msg.ts); notify(); } }   // 터치·1번 거리센서를 바뀌는 즉시 (상태보다 빠르다)
     else if (t.endsWith('/event')) log('in', typeof msg === 'string' ? msg : (msg.msg || msg.text || JSON.stringify(msg)));
   });
   clearInterval(statusTimer);
@@ -180,6 +181,29 @@ function rows(obj, prefix = '', depth = 0, out = []) {
   return out;
 }
 let sceneKey = '';
+// 터치센서(3개)와 1번 거리센서(머리) 값을 적용한다. 상태(약 1.5초 간격)와 빠른 sense 메시지(바뀌는 즉시)가 같이 쓴다.
+// 로봇 시각(ts)이 이미 받은 것보다 오래된 메시지는 무시한다 (늦게 도착한 옛 상태가 새 값을 되돌리지 않게)
+function applySense(sn, ts) {
+  if (!sn || typeof sn !== 'object') return;
+  if (typeof ts === 'number') { if (ts < senseTs && senseTs - ts < 3) return; senseTs = ts; }   // 3초 넘게 거꾸로 가면 로봇 시계가 바뀐 것(재부팅·시간 맞춤)이니 그냥 받는다
+  const nowMs = Date.now();
+  if (typeof sn.touch === 'boolean') { touch = sn.touch; touchAt = nowMs; }
+  touchOrder = Array.isArray(sn.touch_order) ? sn.touch_order.map(Number) : null;
+  if (Array.isArray(sn.touch_each)) {                                // 센서별 [1번 왼쪽 위, 2번 가운데, 3번 오른쪽 위]
+    const was = touchEach; touchEach = sn.touch_each.map(Boolean); touchRecent = Array.isArray(sn.touch_recent) ? sn.touch_recent.map(Boolean) : touchEach;
+    if (touchEach.some(Boolean) && !(was && was.some(Boolean))) touchHold = nowMs + 400;   // 새로 닿았으면 아주 짧게 쳐도 0.4초는 닿은 것으로 본다 (반응 확인이 0.1초마다라서)
+  }
+  if (typeof sn.top_mm === 'number') {
+    // 웹에서도 따로 본다: 로봇은 "평소 거리보다 8cm 넘게 가까울 때"만 손으로 치는데, 머리가 접힌 자세처럼 평소 거리가 짧으면 손이 아무리 가까워도 8cm가 안 돼서 못 잡는다.
+    // 그래서 평소 거리보다 25% 넘게(그리고 20mm 이상) 가까워지면 손이 있는 것으로 본다. 손이 있는 동안은 기준을 고정하고, 85% 이상 돌아오면 없는 것으로 한다.
+    // 평소 거리를 따라가는 건 1.2초에 한 번만 (값이 빠르게 와도 손이 다가오는 동안 기준이 같이 내려가 버리지 않게).
+    const t = sn.top_mm; topBase = typeof sn.top_base === 'number' ? sn.top_base : null;
+    if (webBase == null) { webBase = t; topEmaAt = nowMs; }
+    else if (!armWeb) { if (t < webBase * 0.75 && webBase - t >= 20) armWeb = true; else if (nowMs - topEmaAt >= 1200) { webBase = webBase * 0.7 + t * 0.3; topEmaAt = nowMs; } }
+    else if (t > webBase * 0.85) { armWeb = false; webBase = t; topEmaAt = nowMs; }
+  }
+  if (typeof sn.arm === 'boolean') { arm = sn.arm; topMm = typeof sn.top_mm === 'number' ? sn.top_mm : null; topOk = !!sn.top_ok; senseAt = nowMs; }
+}
 function onStatus(msg) {
   lastStatus = Date.now();
   if (st === 'online' || st === 'live') setState('live');
@@ -191,22 +215,11 @@ function onStatus(msg) {
     const list2 = Array.isArray(msg.scenes) ? msg.scenes.map((x) => (typeof x === 'string' ? x : x.name)).filter(Boolean) : null;
     if (list2 && list2.join('|') !== sceneKey) { sceneKey = list2.join('|'); scenes = list2; buildScenes(list2); }
     current = typeof msg.scene === 'string' && msg.scene ? msg.scene : null;
-    if (msg.sense && typeof msg.sense.touch === 'boolean') { touch = msg.sense.touch; touchAt = Date.now(); }
-    if (msg.sense) touchOrder = Array.isArray(msg.sense.touch_order) ? msg.sense.touch_order.map(Number) : null;
-    if (msg.sense && Array.isArray(msg.sense.touch_each)) { touchEach = msg.sense.touch_each.map(Boolean); touchRecent = Array.isArray(msg.sense.touch_recent) ? msg.sense.touch_recent.map(Boolean) : touchEach; }   // 센서별 [1번 왼쪽 위, 2번 가운데, 3번 오른쪽 위] (로봇 프로그램에 추가한 값)
+    if (msg.sense) applySense(msg.sense, msg.ts);                       // 터치센서·1번 거리센서 값 (아래 applySense, 빠른 sense 메시지와 같이 쓴다)
     if (typeof msg.auto === 'boolean') autoMode = msg.auto;
     if (Array.isArray(msg.motors) && msg.motors.length) { torqueOffNow = msg.motors.every((m) => m && m.torque === false); torqueAt = Date.now(); updateTorqueBtn(); }
     if (msg.sense && typeof msg.sense.person === 'boolean') { person = msg.sense.person; frontMm = typeof msg.sense.front_mm === 'number' ? msg.sense.front_mm : null; frontDir = typeof msg.sense.dir === 'number' ? msg.sense.dir : null; frontOk = !!msg.sense.front_ok; frontAt = Date.now(); }
     if (Array.isArray(msg.motors)) { const prev = motorPos; const p = {}; msg.motors.forEach((m) => { if (m && typeof m.pos === 'number') p[m.id] = m.pos; }); if (p[1] != null && p[2] != null && p[3] != null && p[4] != null) { if (prev && [1, 2, 3, 4].some((id) => Math.abs(p[id] - prev[id]) > 30)) { zSettleUntil = Date.now() + 2500; zHist = null; zPresent = false; zNearMm = null; zStreak = 0; } motorPos = p; motorAt = Date.now(); } }
-    if (msg.sense && typeof msg.sense.top_mm === 'number') {
-      // 웹에서도 따로 본다: 로봇은 "평소 거리보다 8cm 넘게 가까울 때"만 손으로 치는데, 머리가 접힌 자세처럼 평소 거리가 짧으면 손이 아무리 가까워도 8cm가 안 돼서 못 잡는다.
-      // 그래서 평소 거리보다 25% 넘게(그리고 20mm 이상) 가까워지면 손이 있는 것으로 본다. 손이 있는 동안은 기준을 고정하고, 85% 이상 돌아오면 없는 것으로 한다.
-      const t = msg.sense.top_mm; topBase = typeof msg.sense.top_base === 'number' ? msg.sense.top_base : null;
-      if (webBase == null) webBase = t;
-      else if (!armWeb) { if (t < webBase * 0.75 && webBase - t >= 20) armWeb = true; else webBase = webBase * 0.7 + t * 0.3; }
-      else if (t > webBase * 0.85) { armWeb = false; webBase = t; }
-    }
-    if (msg.sense && typeof msg.sense.arm === 'boolean') { arm = msg.sense.arm; topMm = typeof msg.sense.top_mm === 'number' ? msg.sense.top_mm : null; topOk = !!msg.sense.top_ok; senseAt = Date.now(); }
     notify();
   } else box.textContent = String(msg);
 }

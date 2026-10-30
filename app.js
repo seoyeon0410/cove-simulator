@@ -1118,8 +1118,8 @@ let syncEye = '';
 // 재생 중이 아닐 때(멈춤 지점도 아닐 때)도 머리를 쓰다듬으면 신난 눈으로 기뻐하고, 손을 떼고 3초 뒤 원래 눈으로 돌아간다
 let lastTorqueWarn = 0;
 let happyUntil = 0, happyOn = false, prevTouch = false, wiggleTimer = 0, tapTimer = 0, tapBase = null, tapEnd = 0;
-const STROKE_MS = 5000; let allTouchSince = 0;   // 쓰다듬기로 치는 시간: 세 센서를 전부 이만큼 계속 만져야 한다
-let touchState = 'idle', pendSample = 0, pendAt = 0, tapWaitSample = 0, tapWaitAt = 0, tapWaitMs = 1500;
+const STROKE_MS = 5000, STROKE_GAP_MS = 2000; let allTouchSince = 0, allGapAt = 0;   // 쓰다듬기로 치는 시간: 세 센서를 전부 이만큼 계속 만져야 한다
+let touchState = 'idle';   // 'idle' | 'stroking'
 // 일어나기 애니메이션 / 눈 감기 잠금 / 앉기 뒤 접힌 자세 맞추기 타이머 (반응을 한 번에 멈출 수 있게 센서 반응 상태와 함께 둔다)
 let standTimer = 0, standLockUntil = 0, sitTimer = 0, sitIv = 0;
 // 터치 판정 상태: idle → pending(닿은 걸 처음 봄) → 떨어졌으면 tapwait(다음 센서가 이어 닿는지 한 번 더 본다) → 톡
@@ -1158,10 +1158,9 @@ function takeOverPose() {
 // 머리를 톡톡 치면 고개를 올렸다가(머리 10°, 얼굴이 위) 1.5초 뒤 원래대로. 연타하면 올린 채 시간이 늘어난다. 웹 동기가 켜져 있어야 움직인다
 const TAP_UP = 10, TAP_HOLD_MS = 1500;
 const TAP_BOW_HEAD = -30, TAP_LIFT_HEAD = -36;                       // 머리가 -30°보다 숙여져(0°에 가까워져) 있으면 톡 쳤을 때 -36°까지 들어 그대로 둔다 (갸웃도 바로 세운다)
-function tapRaise() {                                              // 머리를 짧게 톡톡 치면 앉아 있던 로봇이 일어난다 (이미 서 있거나 일어나는 중이면 아무것도 하지 않는다)
-  toast('머리를 톡톡 쳤어요');
-  if (standTimer) return;
-  if (!isSitting()) return toast('이미 일어나 있어요');
+function tapRaise() {                                              // 앉아 있는 로봇의 머리에 손이 닿으면 일어난다 (서 있거나 일어나는 중이면 부르지 않는다)
+  if (standTimer || !isSitting()) return;
+  toast('머리를 만졌어요 · 일어나요');
   $('#standUp').click();
 }
 function happyWiggle() {
@@ -1397,24 +1396,15 @@ function startStroke() {
 }
 function idleHappy() {
   const now = Date.now(), t = robot.connected && robot.touch, idle = !S.playing && S.heldAt == null;
-  // 로봇의 터치 값은 1초쯤마다 오므로, 처음 닿은 걸 본 뒤 다음 값이 오면: 이미 떨어졌으면 톡, 계속 닿아 있으면 쓰다듬기
-  if (touchState === 'idle' && t && !prevTouch && idle && !sideActive && !standTimer && !robot.auto && !robotSceneBusy() && !sideTouchDir() && $('#rpHappy')?.checked) { touchState = 'pending'; pendSample = robot.touchSampleAt; pendAt = now; }   // 일어나는 중·로봇 자동 모드면 보지 않는다
-  else if (touchState === 'pending') {
-    if (!idle || sideActive || sideTouchDir()) touchState = 'idle';
-    else if (robot.touchSampleAt !== pendSample || now - pendAt > 2500) {
-      const many = (robot.touchRecent || []).filter(Boolean).length > 1;      // 센서 두 개 이상을 만졌으면 톡이 아니다 (3번→2번 같은 순서 만지기)
-      if (t || many) touchState = 'idle'; else { touchState = 'tapwait'; tapWaitSample = robot.touchSampleAt; tapWaitAt = now; tapWaitMs = 1500; }   // 1번·3번이었으면 이어서 2번을 만질 수 있어 더 기다린다
-    }
-  }
-  else if (touchState === 'tapwait') {                                    // 떨어진 뒤 다음 값까지 기다린다: 그사이 또 닿으면(순서 만지기) 톡으로 치지 않는다
-    if (!idle || sideActive || t) touchState = 'idle';
-    else if (now - tapWaitAt >= tapWaitMs && robot.touchSampleAt !== tapWaitSample) { touchState = 'idle'; tapRaise(); }
-  }
+  // 앉아 있을 때 머리에 손이 닿으면 바로 일어난다 (톡톡이든 쓰다듬든 처음 닿은 순간). 예전에는 "금방 떨어졌는지"를 보려고 센서 값을 두 번 더 기다려서 3초 넘게 걸렸다.
+  // 서 있을 때의 쓰다듬기(기뻐하기)는 아래에서 따로 센다. 로봇 센서 값은 1.5초마다 오므로 닿은 뒤 최대 1.5초쯤 걸린다
+  if (t && !prevTouch && idle && !standTimer && !robot.auto && !robotSceneBusy() && !sideActive && $('#rpHappy')?.checked && isSitting()) tapRaise();
   // 쓰다듬기(기뻐하기)는 터치센서 1·2·3번을 전부 5초 넘게 계속 만졌을 때만 한다
-  const all = !!(t && robot.touchEach?.every(Boolean));
-  if (!all) allTouchSince = 0;
-  else if (!allTouchSince) allTouchSince = now;
-  else if (now - allTouchSince >= STROKE_MS && !happyOn && idle && !sideActive && !standTimer && !robot.auto && !robotSceneBusy() && touchState !== 'stroking' && $('#rpHappy')?.checked) startStroke();
+  // 센서 값은 1.5초마다 오고 손바닥이 세 센서를 항상 동시에 덮고 있지는 않으므로: 세 센서가 모두 "최근 1.6초 안에 닿았음"이면 닿고 있는 걸로 보고, 잠깐(2초) 끊겨도 5초를 처음부터 다시 세지 않는다
+  const all = !!(robot.connected && robot.touchRecent?.every(Boolean));
+  if (all) { allGapAt = 0; if (!allTouchSince) { allTouchSince = now; if (!happyOn && idle) toast('1·2·3번이 모두 닿았어요 · 5초 동안 계속 쓰다듬어 주세요'); } }
+  else if (allTouchSince) { if (!allGapAt) allGapAt = now; else if (now - allGapAt > STROKE_GAP_MS) { allTouchSince = 0; allGapAt = 0; } }
+  if (allTouchSince && now - allTouchSince >= STROKE_MS && !happyOn && idle && !sideActive && !standTimer && !robot.auto && !robotSceneBusy() && touchState !== 'stroking' && $('#rpHappy')?.checked) startStroke();
   if (happyOn) {
     if (t) happyUntil = now + 3000;
     if (!idle || (!t && now > happyUntil)) {
@@ -2133,7 +2123,7 @@ $('#btnRest').onclick = resetPose;
 function resetIdleReactions() {                                    // 진행 중이던 센서 반응(톡·쓰다듬기·1번·갸우뚱·일어나기·앉기 뒤 맞추기·일어난 뒤 눈·기둥)을 모두 멈춘다
   [wiggleTimer, tapTimer, armTimer, sideTimer, standTimer, sitIv].forEach((t) => clearInterval(t)); clearTimeout(sitTimer);
   wiggleTimer = tapTimer = armTimer = sideTimer = standTimer = sitIv = sitTimer = 0; standLockUntil = 0;
-  armActive = false; armResume = false; armWait = false; armBase = null; sideActive = false; happyOn = false; touchState = 'idle'; allTouchSince = 0; standEyesUntil = 0; standHeadAt = 0; followBase = null;
+  armActive = false; armResume = false; armWait = false; armBase = null; sideActive = false; happyOn = false; touchState = 'idle'; allTouchSince = 0; allGapAt = 0; standEyesUntil = 0; standHeadAt = 0; followBase = null;
 }
 // 일어나: 앉은(접힌) 자세에서 기둥 25° · 머리 -34°(깨어난 기본 자세)로 2.2초에 걸쳐 부드럽게 일어난다. 로봇은 연결돼 있으면 지금 로봇의 자세에서, 아니면 화면 자세에서 시작한다
 const STAND_POSE = { neck: 25, head: -34, tilt: 0, body: 0 }, STAND_SEC = 2.2;
