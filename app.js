@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { PRESET_GROUPS } from './presets.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { applyLook, buildEyes, EXPRESSIONS } from './look.js';
+import { applyLook, buildEyes, EXPRESSIONS, drawPattern, eyeRows } from './look.js';
 import { initRobotPanel, robot } from './robot.js';
 import { linkFor, restrictTo, robotOnlyGroups, webSceneName, SCENE_LABEL } from './robotmap.js';
 import { csvOf, report, zip, limitFrames, STEP, LIMITS, tiltRange } from './robotexport.js';
@@ -684,7 +684,7 @@ let homeTimer = 0, playStartedAt = 0;
 S.released = new Set(); S.heldAt = null;
 const nextHold = (t = S.time) => (curClip()?.holds || []).filter((h) => !S.released.has(h.t) && h.t > t - 1e-6).sort((a, b) => a.t - b.t)[0] || null;
 let holdKey = '';
-const HEAD_UP = -30;                                              // 머리 들기 목표 (도). 음수 = 얼굴이 위, 허용 범위 -46 ~ 0
+const HEAD_UP = -42;                                              // 머리 들기 목표 (도). 음수 = 얼굴이 위, 허용 범위 -46 ~ 0
 function refreshHeadBar() {                                       // 머리 들기·숙이기 버튼은 어느 클립에서나 보인다
   $('#headBar').hidden = false;
 }
@@ -881,6 +881,47 @@ function robotBlock(link, clipIdx) {
 const stepParent = new Map(PRESET_GROUPS[0].items.filter((d) => d.group === '단계별').map((d) => [d.markers[0].label, d.parent]));
 const parentOf = (c) => c.parent || stepParent.get(c.markers?.[0]?.label) || null;
 const scenarioTitle = (c) => c.name.replace(/^시나리오\d+\s*/, '');
+// 표정 고르는 작은 창: 고른 표정으로 그 동작의 눈을 통째로 바꾼다 (전에 있던 눈 키는 대체된다, Ctrl+Z로 되돌릴 수 있다)
+const stepOrigDef = (c) => PRESET_GROUPS[0].items.find((d) => d.group === '단계별' && d.parent === parentOf(c) && d.markers[0].label === c.markers?.[0]?.label);   // 단계별 동작의 처음(프리셋) 정의
+const origEyes = (d) => d.eyes.map(([t, e, gx = 0, gy = 0]) => ({ t, e, gx, gy }));
+let eyePicker = null;
+function closeEyePicker() { eyePicker?.remove(); eyePicker = null; }
+function openEyePicker(anchor, i) {
+  closeEyePicker();
+  const box = document.createElement('div'); box.className = 'eye-picker';
+  const title = document.createElement('div'); title.className = 'ep-t'; title.textContent = '표정 고르기 · 이 동작의 눈을 바꿔요'; box.appendChild(title);
+  const origDef = stepOrigDef(S.clips[i]);                                // 이 동작의 처음(프리셋) 눈
+  const finish = (name, what) => {
+    const playingNow = S.playing, other = S.clip !== i;
+    if (other) { const sl = $('#clipSel'); sl.value = String(i); sl.dispatchEvent(new Event('change')); }   // 다른 동작의 버튼이면 그 동작으로 옮겨 간다
+    syncEye = '';                                                         // 재생 중이면 다음 0.1초에 로봇 눈도 새 표정으로 다시 보낸다
+    applyEyes(S.time); if (!playingNow && name) eyes?.show(name);          // 뷰포트 눈을 지금 바로 바꾼다 (재생 중이면 재생이 이어서 새 표정을 보인다)
+    if (robot.connected && !playingNow) robot.eyes(name || eyeKeyAt(S.time).e);   // 재생 중이 아니면 연결된 로봇의 눈도 바로 바꾼다
+    if (playingNow && other) playAll();                                    // 재생 중에 다른 동작의 버튼을 눌렀으면 그 동작을 처음부터 이어서 재생한다
+    snapshot(); renderClipList(); closeEyePicker();
+    toast(`'${S.clips[i].name}'의 표정을 ${what}`);
+  };
+  if (origDef) {                                                         // 처음 표정으로 되돌리기 (눈이 여러 번 바뀌던 것도 처음 그대로)
+    const rb = document.createElement('button'); rb.className = 'ep-reset'; rb.textContent = '↺ 처음 표정으로 되돌리기';
+    rb.title = `처음 눈: ${[...new Set(origDef.eyes.map((x) => x[1]))].join(' → ')}`;
+    rb.onclick = (e) => { e.stopPropagation(); S.clips[i].eyes = origEyes(origDef); finish(origDef.eyes[0]?.[1], '처음 표정으로 되돌렸어요'); };
+    box.appendChild(rb);
+  }
+  const grid = document.createElement('div'); grid.className = 'ep-g'; box.appendChild(grid);
+  EXPRESSIONS.forEach((name) => {
+    const b = document.createElement('button'); b.className = 'ep-i' + (S.clips[i].eyes?.[0]?.e === name && S.clips[i].eyes.length === 1 ? ' on' : '');
+    const cv = document.createElement('canvas'); cv.width = cv.height = 48; drawPattern(cv, eyeRows(name, 0, 0));
+    const l = document.createElement('span'); l.textContent = name; b.append(cv, l);
+    b.onclick = (e) => { e.stopPropagation(); S.clips[i].eyes = [{ t: 0, e: name, gx: 0, gy: 0 }]; finish(name, `'${name}'으로 바꿨어요`); };
+    grid.appendChild(b);
+  });
+  document.body.appendChild(box); eyePicker = box;
+  const r = anchor.getBoundingClientRect(), w = box.offsetWidth, h = box.offsetHeight;
+  box.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
+  box.style.top = (r.bottom + h + 8 > innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4) + 'px';
+}
+addEventListener('pointerdown', (e) => { if (eyePicker && !eyePicker.contains(e.target) && !e.target.closest?.('.eye-pick')) closeEyePicker(); }, true);
+addEventListener('keydown', (e) => { if (e.key === 'Escape') closeEyePicker(); }, true);
 let dragStep = -1;                                                    // 끌고 있는 단계별 동작의 번호
 function clipRowEl(c, i, sub) {
   const sel = $('#clipSel');
@@ -892,6 +933,14 @@ function clipRowEl(c, i, sub) {
   el.children[0].textContent = m ? m[1].padStart(2, '0') : '';
   el.children[1].textContent = m ? m[2] : c.name;
   el.children[2].textContent = `${+c.duration.toFixed(1)}초`;
+  if (c.group === '단계별') {                                          // 시간(초) 왼쪽에 지금 표정을 보여 주는 버튼: 누르면 표정을 골라 이 동작의 눈을 바꾼다
+    const cur = c.eyes?.[0]?.e || '뜬 눈', eb = document.createElement('span');
+    eb.className = 'eye-pick'; eb.setAttribute('role', 'button'); eb.tabIndex = 0; eb.title = `표정 바꾸기 (지금: ${cur}${c.eyes?.length > 1 ? ' 외 ' + (c.eyes.length - 1) + '개' : ''})`;
+    const cv = document.createElement('canvas'); cv.width = cv.height = 48; drawPattern(cv, eyeRows(cur, 0, 0)); eb.appendChild(cv);
+    eb.onclick = (e) => { e.stopPropagation(); openEyePicker(eb, i); };
+    eb.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openEyePicker(eb, i); } };
+    el.insertBefore(eb, el.children[2]); el.classList.add('has-eye');
+  }
   el.onclick = () => { sel.value = i; sel.dispatchEvent(new Event('change')); if (c.group === '단계별') playAll(); };   // 단계별 동작은 누르는 바로 처음부터 재생한다
   el.ondblclick = () => startRename(i, el);
   wrap.appendChild(el);
@@ -977,6 +1026,14 @@ function renderClipList() {
         const folded = subFolded.has(title), cb = document.createElement('button'); cb.className = 'rb fold'; cb.textContent = folded ? '▸' : '▾'; cb.title = folded ? '단계 동작 펼치기' : '단계 동작 접기';
         cb.onclick = () => { if (folded) subFolded.delete(title); else subFolded.add(title); try { localStorage.setItem('cove-sub-fold', JSON.stringify([...subFolded])); } catch { /* 무시 */ } renderClipList(); };
         rowEl.insertBefore(cb, rowEl.children[1]);
+        const rs = document.createElement('button'); rs.className = 'rb reset-eyes'; rs.textContent = '↺'; rs.title = `'${title}' 단계 동작의 표정을 모두 처음대로 되돌리기 (Ctrl+Z로 되돌릴 수 있어요)`;
+        rs.onclick = (e) => {
+          e.stopPropagation(); let n = 0;
+          kids.forEach(([k]) => { const d = stepOrigDef(k); if (d) { k.eyes = origEyes(d); n++; } });
+          if (!n) return toast('되돌릴 단계 동작이 없어요');
+          syncEye = ''; applyEyes(S.time); snapshot(); renderClipList(); toast(`'${title}' 단계 ${n}개의 표정을 처음대로 되돌렸어요`);
+        };
+        rowEl.insertBefore(rs, rowEl.children[2]);
         if (!folded) kids.forEach(([k, j]) => list.appendChild(clipRowEl(k, j, true)));
       }
     }
@@ -1062,7 +1119,10 @@ let syncEye = '';
 let lastTorqueWarn = 0;
 let happyUntil = 0, happyOn = false, prevTouch = false, wiggleTimer = 0, tapTimer = 0, tapBase = null, tapEnd = 0;
 const STROKE_MS = 5000; let allTouchSince = 0;   // 쓰다듬기로 치는 시간: 세 센서를 전부 이만큼 계속 만져야 한다
-let touchState = 'idle', pendSample = 0, pendAt = 0, tapWaitSample = 0, tapWaitAt = 0, tapWaitMs = 1500;   // idle → pending(닿은 걸 처음 봄) → 떨어졌으면 tapwait(다음 센서가 이어 닿는지 한 번 더 본다) → 톡
+let touchState = 'idle', pendSample = 0, pendAt = 0, tapWaitSample = 0, tapWaitAt = 0, tapWaitMs = 1500;
+// 일어나기 애니메이션 / 눈 감기 잠금 / 앉기 뒤 접힌 자세 맞추기 타이머 (반응을 한 번에 멈출 수 있게 센서 반응 상태와 함께 둔다)
+let standTimer = 0, standLockUntil = 0, sitTimer = 0, sitIv = 0;
+// 터치 판정 상태: idle → pending(닿은 걸 처음 봄) → 떨어졌으면 tapwait(다음 센서가 이어 닿는지 한 번 더 본다) → 톡
 // 몸도 흔든다: 로봇의 지금 자세를 기준으로 머리를 조금 숙이고 몸통을 3초간 좌우로 (웹 동기가 켜져 있어야 한다 = 주변 확인 + 동기 켬). 끝나면 그 자세로 돌아온다
 const WIGGLE_SEC = 3;                                           // 몸 흔드는 시간 (초)
 // 재생 안 할 때 센서 반응들(톡·쓰다듬기·1번·2번 기둥 올리기)이 로봇에 자세를 보내는 길을 하나로 맞춘다.
@@ -1073,34 +1133,36 @@ function driveIdlePose(p) {
   if (manualActive) { Object.assign(jtVal, p); applyManual(); renderJoint(); }
   else robot.pose(p);
 }
+// 지금 앉아 있는지: 로봇이 연결돼 있으면 로봇의 기둥(15° 미만), 아니면 화면 자세로 본다
+const isSitting = () => {
+  if ((armActive || armResume) && armBase) return armBase.neck < 15;     // 손 숙이기로 기둥이 낮아진 건 앉은 게 아니다: 숙이기 전 자세로 본다
+  const d = robot.connected ? robot.deg : null; return d ? d.neck < 15 : (manualActive ? jtVal.neck : readJointAngles().neck) < 15;
+};
+// 반응이 끝났을 때 눈을 되돌린다: 앉아 있으면 감은 눈, 아니면 지금 동작의 눈(표정 고르기로 바꾼 눈도 그대로). 재생이 시작됐으면 재생이 눈을 맡긴다
+function restoreEyes() {
+  if (S.playing) return;
+  if (isSitting()) { wasSitting = true; eyes?.show('감은 눈'); if (robot.connected) robot.eyes('감은 눈'); return; }
+  applyEyes(S.time); if (robot.connected) robot.eyes('뜬 눈');                 // 화면은 동작의 눈, 로봇은 기본 뜬 눈 (예전과 같다)
+}
+// 자세를 쓰는 반응(손 숙이기·갸우뚱·쓰다듬기·톡·일어나기)이 하나라도 진행 중인지. 자세는 한 번에 하나만 쓴다: 새 반응은 이게 끝날 때까지 기다리고, 버튼은 이걸 멈추고 자리를 차지한다
+// 로봇이 자기 씬(앉기의 home 등)을 돌리고 있는 중: 이때 웹 반응이 자세를 보내면 씬과 부딪치므로 반응을 시작하지 않는다
+const robotSceneBusy = () => !!(robot.connected && robot.current);
+const motionBusy = () => !!(armActive || sideActive || happyOn || tapTimer || standTimer);
+// 버튼(일어나기·머리 들기·숙이기)이 자세를 차지한다: 진행 중인 반응을 모두 멈추고, 로봇이 씬을 돌리고 있으면 그 자리에서 세운다 (두 곳에서 자세를 보내지 않게)
+function takeOverPose() {
+  const was = motionBusy();
+  resetIdleReactions();
+  if (robot.connected && robot.sync && robot.current) robot.hold();
+  return was;
+}
 // 머리를 톡톡 치면 고개를 올렸다가(머리 10°, 얼굴이 위) 1.5초 뒤 원래대로. 연타하면 올린 채 시간이 늘어난다. 웹 동기가 켜져 있어야 움직인다
 const TAP_UP = 10, TAP_HOLD_MS = 1500;
 const TAP_BOW_HEAD = -30, TAP_LIFT_HEAD = -36;                       // 머리가 -30°보다 숙여져(0°에 가까워져) 있으면 톡 쳤을 때 -36°까지 들어 그대로 둔다 (갸웃도 바로 세운다)
-function tapRaise() {
+function tapRaise() {                                              // 머리를 짧게 톡톡 치면 앉아 있던 로봇이 일어난다 (이미 서 있거나 일어나는 중이면 아무것도 하지 않는다)
   toast('머리를 톡톡 쳤어요');
-  if (!robot.sync) return;
-  const now = performance.now();
-  if (tapTimer) { tapEnd = now + TAP_HOLD_MS; return; }
-  const base = idleBase(); if (!base) return;
-  if (base.head > TAP_BOW_HEAD) {                                    // 고개를 숙이고 있으면: 톡 치면 고개를 들고 그 자세를 유지한다
-    toast('고개를 숙이고 있어서 들어요');
-    const t0 = now, h0 = base.head, tl0 = base.tilt, r1 = (v) => Math.round(v * 10) / 10;
-    tapTimer = setInterval(() => {
-      if (S.playing || !robot.sync) { clearInterval(tapTimer); tapTimer = 0; return; }
-      const k = Math.min(1, (performance.now() - t0) / 800), ks = k * k * (3 - 2 * k);
-      driveIdlePose({ neck: r1(base.neck), head: r1(h0 + (TAP_LIFT_HEAD - h0) * ks), tilt: r1(tl0 * (1 - ks)), body: r1(base.body) });
-      if (k >= 1) { clearInterval(tapTimer); tapTimer = 0; }
-    }, 100);
-    return;
-  }
-  tapBase = base; tapEnd = now + TAP_HOLD_MS;
-  const t0 = now, r1 = (v) => Math.round(v * 10) / 10;
-  tapTimer = setInterval(() => {
-    if (S.playing || !robot.sync) { clearInterval(tapTimer); tapTimer = 0; return; }
-    const n = performance.now(), up = Math.min(1, (n - t0) / 400), down = Math.max(0, 1 - (n - tapEnd) / 600), k = Math.min(up, n < tapEnd ? 1 : down), ks = k * k * (3 - 2 * k);
-    driveIdlePose({ neck: r1(tapBase.neck), head: r1(Math.max(-46, tapBase.head - TAP_UP * ks)), tilt: r1(tapBase.tilt), body: r1(tapBase.body) });
-    if (n >= tapEnd + 600) { clearInterval(tapTimer); tapTimer = 0; }
-  }, 100);
+  if (standTimer) return;
+  if (!isSitting()) return toast('이미 일어나 있어요');
+  $('#standUp').click();
 }
 function happyWiggle() {
   const base = tapTimer ? tapBase : (robot.sync ? idleBase() : null);   // 고개를 올리던 중이면 올리기 전 자세에서 시작한다
@@ -1112,7 +1174,7 @@ function happyWiggle() {
     if (S.playing || !robot.sync) { clearInterval(wiggleTimer); return; }        // 재생이 시작됐거나 동기가 꺼졌으면 재생·동기에 맡기고 그만둔다
     const t = (performance.now() - t0) / 1000, done = t >= WIGGLE_SEC;
     const e = Math.max(0, Math.min(1, t / 0.5, (WIGGLE_SEC - t) / 0.5)), es = e * e * (3 - 2 * e), off = done ? 0 : 12 * Math.sin((2 * Math.PI * t) / 1.4) * es;
-    const bow = done ? 0 : 10 * es;                                             // 머리는 10° 숙였다가(0°가 숙인 쪽) 돌아온다
+    const bow = 0;                                                             // 머리는 움직이지 않고 몸통만 좌우로 흔든다 (도리도리)
     driveIdlePose({ neck: r1(base.neck), head: r1(Math.min(0, base.head + bow)), tilt: r1(base.tilt), body: r1(base.body + off) });
     if (done) clearInterval(wiggleTimer);
   }, 100);
@@ -1120,38 +1182,65 @@ function happyWiggle() {
 // 1번 거리센서(머리, 턱 아래)에 손이 닿으면(재생 중이 아닐 때): 고개를 갸우뚱(머리를 숙이고 정면에서 보이는 왼쪽으로 갸웃) 하고, 표정은 편안한 눈으로 바꾼다.
 // 손이 떨어지고 1.5초 뒤 원래대로. 눈은 뷰포트에만 나온다(로봇 눈은 시선을 못 바꾼다), 고개는 로봇 동기가 켜져 있을 때만 움직인다
 const ARM_HEAD = -26, ARM_TILT_FRAC = 0.85, ARM_HOLD_MS = 150, ARM_BACK_SEC = 0.25;   // 손이 떨어지면 바로(0.15초 여유) 고개를 세우고(0.25초) 눈도 뜬 눈으로 돌아온다   // 갸우뚱: 머리를 -26°까지 숙이고(이미 더 숙였으면 그대로) 그 머리 각도에서 로봇이 허용하는 갸웃의 85%만큼 기울인다 (머리를 많이 든 자세에서는 갸웃이 거의 안 되기 때문)
-let armActive = false, armUntil = 0, armTimer = 0, armBase = null, armT0 = 0, prevArm = false;
-function armLookEnd() {
+// 손 높이에 맞춰 숙이기: 1번 거리센서(턱 아래) 값이 올 때마다(약 1.5초) 손까지 남은 거리만큼 머리를 더 숙인다.
+// 거리가 ARM_STOP_MM(1cm) 이내가 되면 거기서 멈추고 더 숙이지도 눌러 주지도 않는다. 손이 높이 올라오면 그만큼만 숙인다
+const ARM_EASE_SEC = 0.5;                                           // 목표를 따라가는 시간 상수(초): 클수록 더 부드럽고 느리게
+const ARM_STOP_MM = 10, ARM_DEG_PER_MM = 0.45, ARM_STEP_MAX = 12, ARM_HEAD_RATE = 22;   // mm, 도/mm, 도/값 한 번, 도/초 — 거리가 ARM_STOP_MM(1cm) 이내가 되면 거기서 더 숙이지 않는다. 그 전에는 살살 닿도록 작게·천천히
+const ARM_NECK_SPLIT = 0.5, ARM_NECK_DROP_MAX = 20;                // 숙이는 양의 절반은 기둥을 낮춰서 한다(머리 앞쪽만 숙이지 않고 머리 전체가 내려가게). 기둥은 처음보다 최대 이만큼(도)만 낮춘다
+let armActive = false, armUntil = 0, armTimer = 0, armBase = null, armT0 = 0, prevArm = false, armResume = false, armWait = false;   // armResume: 터치 반응에 자리를 내줬다가 손이 아직 있으면 같은 처음 자세로 이어간다 / armWait: 다른 반응 중에 손이 들어와서, 끝나면 새로 시작한다
+let armHeadT = 0, armHeadCur = 0, armNeckT = 0, armNeckCur = 0, armSample = 0, armTick = 0;
+function armLookEnd(keepEyes) {
   armActive = false; clearInterval(armTimer); armTimer = 0;
-  applyEyes(S.time);                                               // 눈은 동작의 눈으로 돌아간다
-  if (!S.playing) robot.eyes('뜬 눈');                              // 로봇 눈도 뜬 눈으로 (재생이 시작됐으면 재생이 맡는다)
+  if (!keepEyes) restoreEyes();                                     // 눈은 동작의 눈(앉아 있으면 감은 눈)으로 돌아간다. 자리를 내주는 경우에는 다음 반응이 눈을 정한다
 }
-function armLookStart() {
-  armActive = true; armEyesBack = false; armUntil = Date.now() + ARM_HOLD_MS; armT0 = performance.now();
-  toast('1번 거리센서에 손이 닿았어요');
+// 손을 누르고 있는 중에 머리 터치센서(쓰다듬기·갸우뚱·톡)가 닿으면, 숙이기는 잠시 멈추고 터치 반응을 먼저 한다. 터치 반응이 끝났을 때 손이 아직 있으면 숙이기를 다시 이어간다
+function yieldToTouch() {
+  if (!armActive) return;
+  armResume = true; armLookEnd(true);
+}
+function armLookStart(resumed) {
+  const reuse = !!(resumed && armResume && armBase);                 // 자리를 내줬다가 이어가는 경우: 돌아갈 처음 자세는 그대로 두고, 지금 자세에서 이어간다 (숙인 자세를 처음 자세로 잘못 잡지 않게)
+  armActive = true; armResume = false; armWait = false; armEyesBack = false; armUntil = Date.now() + ARM_HOLD_MS; armT0 = performance.now();
+  standEyesUntil = 0;                                                // 인사 뒤 웃는 눈 유지가 있었으면 그만둔다 (이 반응의 눈이 우선)
+  if (!resumed) toast('1번 거리센서에 손이 닿았어요');
   eyes?.show('편안한 눈'); robot.eyes('편안한 눈');                    // 갸우뚱하면서 편안한 표정(뷰포트·로봇 모두)
-  armBase = robot.sync ? idleBase() : null;
+  if (!reuse) armBase = robot.sync ? idleBase() : null;
+  if (armBase) { const cur = reuse ? (idleBase() || armBase) : armBase; armHeadT = armHeadCur = cur.head; armNeckT = armNeckCur = cur.neck; armSample = 0; armTick = performance.now(); }
   clearInterval(armTimer);
   const r1 = (v) => Math.round(v * 10) / 10;
   armTimer = setInterval(() => {
     if (S.playing || S.heldAt != null) { armLookEnd(); return; }     // 재생이 시작되면 재생에 맡긴다
     const now = Date.now(), n = performance.now(), on = now < armUntil;
     const up = Math.min(1, (n - armT0) / 500);
-    if (!on && !armEyesBack) { armEyesBack = true; applyEyes(S.time); if (!S.playing) robot.eyes('뜬 눈'); }   // 손이 떨어지는 순간 눈부터 돌려놓는다
+    if (!on && !armEyesBack) { armEyesBack = true; restoreEyes(); }   // 손이 떨어지는 순간 눈부터 돌려놓는다
     if (!on) armDown = Math.max(0, (armDown ?? 1) - 0.1 / ARM_BACK_SEC); else { armDown = 1; armEyesBack = false; }
     const k = Math.min(up, armDown), ks = k * k * (3 - 2 * k);
     if (armBase && robot.sync) {
-      const headT = Math.min(0, Math.max(armBase.head, ARM_HEAD)), tiltT = Math.max(0, tiltRange(headT)[1] * ARM_TILT_FRAC);
-      driveIdlePose({ neck: r1(armBase.neck), head: r1(armBase.head + (headT - armBase.head) * ks), tilt: r1(armBase.tilt + tiltT * ks), body: r1(armBase.body) });
+      const dt = Math.min(0.3, (n - armTick) / 1000); armTick = n;
+      const d = robot.topMm, sample = robot.senseSampleAt;
+      if (on && d != null && sample !== armSample) {                  // 새 거리 값이 오면 손까지 남은 만큼 머리 목표를 조정한다
+        armSample = sample;
+        const err = d - ARM_STOP_MM;
+        const delta = err > 0 ? Math.min(ARM_STEP_MAX, err * ARM_DEG_PER_MM) : 0;                     // 아직 1cm보다 멀면 더 숙이고, 1cm 이내면 그 자리에서 멈춘다 (더 누르지도 물러나지도 않는다)
+        armHeadT = Math.min(0, Math.max(armBase.head, armHeadT + delta * (1 - ARM_NECK_SPLIT)));        // 머리는 절반
+        armNeckT = Math.min(armBase.neck, Math.max(Math.max(0, armBase.neck - ARM_NECK_DROP_MAX), armNeckT - delta * ARM_NECK_SPLIT));   // 기둥은 나머지 절반을 낮춘다
+      }
+      const goal = on ? armHeadT : armBase.head, neckGoal = on ? armNeckT : armBase.neck;   // 손이 떨어지면 처음 각도로 돌아간다
+      // 부드럽게: 목표를 향해 남은 거리의 일부씩 다가가서(처음엔 빠르다가 목표에 가까워질수록 느려진다) 거리 값이 1.5초마다 바뀌어도 멈칫하지 않고, 속도는 ARM_HEAD_RATE를 넘지 않는다
+      const ease = 1 - Math.exp(-dt / (on ? ARM_EASE_SEC : ARM_EASE_SEC * 0.6)), cap = ARM_HEAD_RATE * dt * (on ? 1 : 2);
+      armHeadCur += Math.max(-cap, Math.min(cap, (goal - armHeadCur) * ease)); armNeckCur += Math.max(-cap, Math.min(cap, (neckGoal - armNeckCur) * ease));
+      const bow = Math.max(0, Math.min(1, (armHeadCur - armBase.head) / 6)), tiltT = Math.max(0, tiltRange(armHeadCur)[1] * ARM_TILT_FRAC);   // 숙인 만큼 갸웃도 따라 한다
+      driveIdlePose({ neck: r1(armNeckCur), head: r1(armHeadCur), tilt: r1(armBase.tilt + (tiltT - armBase.tilt) * bow), body: r1(armBase.body) });
     }
-    if (!on && armDown <= 0) { armDown = 1; armLookEnd(); }
+    if (!on && armDown <= 0 && (!armBase || !robot.sync || Math.abs(armHeadCur - armBase.head) < 0.3 && Math.abs(armNeckCur - armBase.neck) < 0.3)) { armDown = 1; armLookEnd(); }   // 손이 떨어지면 머리가 처음 각도로 돌아온 뒤에 끝낸다
   }, 100);
 }
 let armDown = 1, armEyesBack = false;
 // 터치센서 두 개를 같이 만지면 그 방향으로 고개를 들어 갸우뚱하고 눈은 위를 본다: 2+3번(오른쪽) → 3번 쪽, 1+2번(왼쪽) → 1번 쪽.
 // 갸웃은 머리를 -26°로 맞춘 뒤 로봇이 허용하는 만큼(85%)이고, 실물 로봇 시험으로 1번 쪽이 −, 3번 쪽이 +다(armLook과 반대). 손이 떨어지면 원래 자세와 뜬 눈으로 돌아온다
+const SIDE_NECK = 30, SIDE_NECK_RATE = 30;                          // 쓰다듬을 때 기둥을 올리는 높이(도, 로봇 한계 34)와 올리는 속도(도/초). 이미 더 높으면 그대로 둔다
 const SIDE_HEAD = -26, SIDE_TILT_FRAC = 0.85, SIDE_HEAD_RATE = 60, SIDE_TILT_RATE = 70;   // 도, 비율, 도/초, 도/초
-let sideActive = false, sideTimer = 0, sideBase = null, sideDirNow = 0, sideT = 0, sideHead = 0, sideTilt = 0;
+let sideNeck = 0, sideUntil = 0, sideActive = false, sideTimer = 0, sideBase = null, sideDirNow = 0, sideT = 0, sideHead = 0, sideTilt = 0;
 function sideTouchDir() {                                             // 1: 1+2번(왼쪽), -1: 2+3번(오른쪽), 0: 그 밖
   if (!robot.connected) return 0;
   const e = robot.touchEach; if (!e) return 0;
@@ -1161,42 +1250,45 @@ function sideTouchDir() {                                             // 1: 1+2�
 }
 function sideLookEnd() {
   sideActive = false; clearInterval(sideTimer); sideTimer = 0;
-  if (!S.playing && S.heldAt == null) { applyEyes(S.time); robot.eyes('뜬 눈'); }
+  if (S.heldAt == null) restoreEyes();
 }
 function sideLookStart(dir) {
-  sideActive = true; sideDirNow = dir; touchState = 'idle'; sideT = performance.now();
-  toast(dir > 0 ? '터치 1번 → 2번 · 1번 쪽으로 갸우뚱' : '터치 3번 → 2번 · 3번 쪽으로 갸우뚱');
+  sideActive = true; sideDirNow = dir; touchState = 'idle'; sideT = performance.now(); sideUntil = sideT + 2500; standEyesUntil = 0;
+  toast(dir > 0 ? '터치 1번 → 2번 · 기둥을 올리고 1번 쪽으로 갸우뚱' : '터치 3번 → 2번 · 기둥을 올리고 3번 쪽으로 갸우뚱');
   eyes?.show('위 보는 눈'); robot.eyes('위 보는 눈');
   sideBase = robot.sync ? idleBase() : null;
-  if (sideBase) { sideHead = sideBase.head; sideTilt = sideBase.tilt; }
+  if (sideBase) { sideHead = sideBase.head; sideTilt = sideBase.tilt; sideNeck = sideBase.neck; }
   clearInterval(sideTimer);
   const r1 = (v) => Math.round(v * 10) / 10, step = (cur, to, max) => cur + Math.max(-max, Math.min(max, to - cur));
   sideTimer = setInterval(() => {
     if (S.playing || S.heldAt != null) { sideLookEnd(); return; }
     const n = performance.now(), dt = Math.min(0.3, (n - sideT) / 1000); sideT = n;
-    const on = !!robot.touchEach?.[1];                               // 2번에 손이 닿아 있는 동안
+    if (robot.touchEach?.[1]) sideUntil = Math.max(sideUntil, n + 800);
+    const on = n < sideUntil;                                        // 처음 2.5초는 짧게 쳐도 유지하고, 그 뒤에는 2번에 손이 닿아 있는 동안만 (손을 떼고 0.8초 뒤 돌아온다)
     if (on) eyes?.show('위 보는 눈');
     if (sideBase && robot.sync) {
       const headT = on ? Math.min(0, Math.max(sideBase.head, SIDE_HEAD)) : sideBase.head;
       const [lo, hi] = tiltRange(headT), tiltT = on ? (sideDirNow > 0 ? Math.min(0, lo * SIDE_TILT_FRAC) : Math.max(0, hi * SIDE_TILT_FRAC)) : sideBase.tilt;
-      sideHead = step(sideHead, headT, SIDE_HEAD_RATE * dt); sideTilt = step(sideTilt, tiltT, SIDE_TILT_RATE * dt);
-      driveIdlePose({ neck: r1(sideBase.neck), head: r1(sideHead), tilt: r1(sideTilt), body: r1(sideBase.body) });
-      if (!on && Math.abs(sideHead - sideBase.head) < 0.2 && Math.abs(sideTilt - sideBase.tilt) < 0.2) sideLookEnd();
+      const neckT = on ? Math.max(sideBase.neck, SIDE_NECK) : sideBase.neck;                     // 기둥도 같이 올린다
+      sideNeck = step(sideNeck, neckT, SIDE_NECK_RATE * dt); sideHead = step(sideHead, headT, SIDE_HEAD_RATE * dt); sideTilt = step(sideTilt, tiltT, SIDE_TILT_RATE * dt);
+      driveIdlePose({ neck: r1(sideNeck), head: r1(sideHead), tilt: r1(sideTilt), body: r1(sideBase.body) });
+      if (!on && Math.abs(sideNeck - sideBase.neck) < 0.3 && Math.abs(sideHead - sideBase.head) < 0.2 && Math.abs(sideTilt - sideBase.tilt) < 0.2) sideLookEnd();
     } else if (!on) sideLookEnd();
   }, 100);
 }
 // 1번·3번을 만진 시각을 기억해 두고, 2번이 새로 닿으면 그 직전(SIDE_GAP_MS 안)에 닿은 쪽 방향으로 한다: 3번 → 2번이면 3번 쪽(−), 1번 → 2번이면 1번 쪽(+).
 // 3번을 떼고 나서 2번을 만져도 된다(같이 닿아 있지 않아도). 갸우뚱은 2번에 손이 닿아 있는 동안 이어간다
-const SIDE_GAP_MS = 5000;
+const SIDE_GAP_MS = 5000, SIDE_LOOK_ON = false;   // SIDE_LOOK_ON: 터치 3번→2번 / 1번→2번 갸우뚱 반응 (지금은 끔)
 let sideRise = [0, 0, 0], prevSideEach = [false, false, false], prevSideRecent = [false, false, false];
 function sideLook() {
+  if (!SIDE_LOOK_ON) return;                                        // 3번→2번 / 1번→2번 갸우뚱은 없앴다
   const idle = !S.playing && S.heldAt == null, e = robot.connected ? robot.touchEach : null, rc = robot.connected ? robot.touchRecent : null;
   if (!e) { prevSideEach = [false, false, false]; prevSideRecent = [false, false, false]; return; }
   const now = Date.now(), o = robot.touchOrder || [];
   [0, 1, 2].forEach((i) => { if ((e[i] && !prevSideEach[i]) || (rc && rc[i] && !prevSideRecent[i])) sideRise[i] = now; });   // 새로 닿았음(짧게 쳐서 센서 값에 못 잡힌 것도 최근 값으로)
-  const rose2 = (e[1] && !prevSideEach[1]) || (rc && rc[1] && !prevSideRecent[1] && e[1]);
+  const rose2 = (e[1] && !prevSideEach[1]) || (rc && rc[1] && !prevSideRecent[1]);   // 짧게 톡 친 것도(센서 값은 1.5초마다 와서 이미 손이 떨어졌어도) 최근 1.6초 값으로 잡는다
   prevSideEach = e.slice(); prevSideRecent = rc ? rc.slice() : e.slice();
-  if (!rose2 || sideActive || !idle || armActive || happyOn || !$('#rpSideLook')?.checked) return;
+  if (!rose2 || sideActive || !idle || happyOn || standTimer || robot.auto || robotSceneBusy() || !$('#rpSideLook')?.checked) return;
   let d = 0;
   const i2 = o.lastIndexOf(2), o1 = o.lastIndexOf(1), o3 = o.lastIndexOf(3);
   if (i2 >= 0 && (o1 >= 0 || o3 >= 0) && o1 !== o3) d = o3 > o1 ? (o3 < i2 ? -1 : 0) : (o1 < i2 ? 1 : 0);          // 로봇이 알려 준 닿은 순서가 있으면 그걸로 (3번 → 2번 / 1번 → 2번)
@@ -1207,12 +1299,18 @@ function sideLook() {
   }
   if (!d) return;
   if (tapTimer) { clearInterval(tapTimer); tapTimer = 0; }          // 톡 반응 중이었으면 그만두고 갸우뚱으로
+  yieldToTouch();                                                   // 손을 누르는 중이었으면 숙이기는 잠시 멈춘다
   sideLookStart(d);
 }
 function armLook() {
   const a = robot.connected && robot.arm, idle = !S.playing && S.heldAt == null;
   if (a) armUntil = Date.now() + ARM_HOLD_MS;
-  if (a && !prevArm && !armActive && !sideActive && idle && !happyOn && !tapTimer && touchState === 'idle' && $('#rpArmLook')?.checked) armLookStart();
+  const busy = sideActive || happyOn || tapTimer || standTimer || touchState !== 'idle' || robotSceneBusy();   // 다른 반응이나 로봇 씬이 자세를 쓰는 중 (톡인지 보는 중도 포함)
+  if (!a) { armResume = false; armWait = false; }
+  else if (!armActive && idle && !robot.auto && $('#rpArmLook')?.checked) {               // 로봇 자동 모드면 로봇이 직접 반응하므로 웹은 하지 않는다
+    if (busy) armWait = true;                                                              // 끝나면 손이 아직 있을 때 시작한다
+    else if (!prevArm || armResume || armWait) armLookStart(armResume || armWait);
+  }
   prevArm = a;
 }
 // 2번 거리센서(몸통 앞): 앉아 있을 때 손이 새로 다가오면 시나리오 4 인사를 처음부터 재생한다(목록에는 숨겨 둔 센서 전용, 끝에 접지 않고 선 채로 끝). 로봇이 자동 모드면 로봇이 직접 반응하므로 하지 않는다
@@ -1221,7 +1319,7 @@ const STAND_HEAD = -42;                                            // 일어선 
 function standHeadUp() {
   if (!standHeadAt) return;
   const t = performance.now() - standHeadAt;
-  if (t > 8000 || S.heldAt != null) { standHeadAt = 0; return; }       // 다른 일이 끼어들었으면 그만둔다
+  if (t > 8000 || S.heldAt != null || motionBusy()) { standHeadAt = 0; return; }   // 다른 일(센서 반응·버튼)이 끼어들었으면 그만둔다
   if (t < 800 || S.playing) return;                                  // 일어서는 장면이 끝날 때까지 기다린다
   standHeadAt = 0;
   if (S.sceneLoop && S.time >= 2.9) {
@@ -1232,8 +1330,8 @@ function standHeadUp() {
 // 앉아 있을 때(로봇의 기둥이 15° 미만, 로봇 값이 없으면 화면이 처음 자세)는 눈을 감는다. 앉은 상태가 새로 시작되는 순간 한 번만 바꾼다(그 뒤 표정 고르기 등은 방해하지 않는다)
 let wasSitting = false;
 function sittingEyes() {
-  const d = robot.connected ? robot.deg : null, sitting = d ? d.neck < 15 : (S.time <= 0.05 && !manualActive);
-  const idle = !S.playing && S.heldAt == null && !armActive && !sideActive && !happyOn && !tapTimer && !standEyesUntil && !standHeadAt;
+  const d = robot.connected ? robot.deg : null, sitting = d ? isSitting() : (S.time <= 0.05 && !manualActive);
+  const idle = !S.playing && S.heldAt == null && !motionBusy() && !armResume && !standEyesUntil && !standHeadAt && performance.now() > standLockUntil;
   if (sitting && idle) {
     if (!wasSitting) { wasSitting = true; eyes?.show('감은 눈'); if (robot.connected) robot.eyes('감은 눈'); }
   } else if (!sitting) wasSitting = false;
@@ -1242,9 +1340,9 @@ const STAND_EYES_MS = 4000;
 let standEyesUntil = 0;
 function standEyesOn(first) {
   if (!standEyesUntil) return;
-  if (S.playing) { standEyesUntil = 0; return; }                    // 재생이 시작되면 재생이 눈을 맡는다
+  if (S.playing || motionBusy()) { standEyesUntil = 0; return; }    // 재생이 시작되거나 다른 반응이 눈을 쓰면 그만둔다 (그쪽 눈이 우선)
   if (performance.now() < standEyesUntil) { eyes?.show('웃는 눈'); if (first) robot.eyes('웃는 눈'); return; }
-  standEyesUntil = 0; eyes?.show('뜬 눈'); robot.eyes('뜬 눈');
+  standEyesUntil = 0; restoreEyes();
 }
 function frontApproach() {
   const st = $('#rpFrontState'), on = $('#rpFront')?.checked;
@@ -1253,10 +1351,10 @@ function frontApproach() {
   if (p === null) { prevPerson = null; return; }
   const rising = prevPerson === false && p === true;                 // 처음 값(이미 사람이 있던 상태)은 다가온 걸로 치지 않는다
   prevPerson = p;
-  if (!rising || !on || robot.auto || S.playing || S.heldAt != null || Date.now() - personLastStart < 5000) return;
+  if (!rising || !on || robot.auto || S.playing || S.heldAt != null || motionBusy() || robotSceneBusy() || Date.now() - personLastStart < 5000) return;   // 다른 반응이 진행 중이면 끼어들지 않는다
   const idx = S.clips.findIndex((c) => c.name.includes('인사')); if (idx < 0) return;
   // 앉아 있을 때만 일어난다. 앉아 있는지는 로봇의 실제 기둥 위치(15° 미만)로 보고, 로봇 값이 없으면 화면이 처음(또는 끝난) 상태인지로 본다 — 몇 번이고 앉았다 일어난다
-  const cur = S.clips[S.clip], d = robot.deg, sitting = d ? d.neck < 15 : (S.time <= 0.05 || S.time >= cur.duration - 0.05);
+  const cur = S.clips[S.clip], d = robot.deg, sitting = d ? isSitting() : (S.time <= 0.05 || S.time >= cur.duration - 0.05);
   if (!sitting) return;
   personLastStart = Date.now();
   toast('사람이 다가왔어요 · 인사해요');
@@ -1273,7 +1371,7 @@ function frontFollow() {
   if (!FOLLOW_ON) { followBase = null; return; }
   if (sitLock) { if (!robot.approach) sitLock = false; followBase = null; return; }   // 앉기를 누른 뒤에는 사람이 떠날 때까지 기둥을 올리지 않는다
   if (!robot.connected || !robot.sync || robot.auto || !$('#rpFront')?.checked || S.playing || S.heldAt != null) { followBase = null; return; }   // 꺼졌거나 재생이 시작되면 재생·동기에 맡긴다
-  if (armActive || happyOn || tapTimer) { followTimer = performance.now(); return; }                                                            // 다른 반응 중에는 잠시 쉰다
+  if (motionBusy()) { followTimer = performance.now(); return; }                                                                                 // 다른 반응 중에는 잠시 쉰다
   const near = robot.approach && robot.approachMm != null;
   if (!followBase) {
     const d = near ? idleBase() : null;
@@ -1291,6 +1389,8 @@ function frontFollow() {
   if (!near && Math.abs(followCur - followBase.neck) < 0.15) followBase = null;   // 다 내려왔으면 끝
 }
 function startStroke() {
+  yieldToTouch();                                                   // 손을 누르는 중이었으면 숙이기는 잠시 멈추고, 끝나면 이어간다
+  standEyesUntil = 0;
   touchState = 'stroking'; happyOn = true; toast('쓰다듬어 줘서 기뻐요');
   eyes?.show('신난 눈'); robot.eyes('신난 눈');
   happyWiggle();
@@ -1298,12 +1398,12 @@ function startStroke() {
 function idleHappy() {
   const now = Date.now(), t = robot.connected && robot.touch, idle = !S.playing && S.heldAt == null;
   // 로봇의 터치 값은 1초쯤마다 오므로, 처음 닿은 걸 본 뒤 다음 값이 오면: 이미 떨어졌으면 톡, 계속 닿아 있으면 쓰다듬기
-  if (touchState === 'idle' && t && !prevTouch && idle && !armActive && !sideActive && !sideTouchDir() && $('#rpHappy')?.checked) { touchState = 'pending'; pendSample = robot.touchSampleAt; pendAt = now; }
+  if (touchState === 'idle' && t && !prevTouch && idle && !sideActive && !standTimer && !robot.auto && !robotSceneBusy() && !sideTouchDir() && $('#rpHappy')?.checked) { touchState = 'pending'; pendSample = robot.touchSampleAt; pendAt = now; }   // 일어나는 중·로봇 자동 모드면 보지 않는다
   else if (touchState === 'pending') {
     if (!idle || sideActive || sideTouchDir()) touchState = 'idle';
     else if (robot.touchSampleAt !== pendSample || now - pendAt > 2500) {
       const many = (robot.touchRecent || []).filter(Boolean).length > 1;      // 센서 두 개 이상을 만졌으면 톡이 아니다 (3번→2번 같은 순서 만지기)
-      if (t || many) touchState = 'idle'; else { touchState = 'tapwait'; tapWaitSample = robot.touchSampleAt; tapWaitAt = now; tapWaitMs = (robot.touchRecent?.[0] || robot.touchRecent?.[2]) ? 4500 : 1500; }   // 1번·3번이었으면 이어서 2번을 만질 수 있어 더 기다린다
+      if (t || many) touchState = 'idle'; else { touchState = 'tapwait'; tapWaitSample = robot.touchSampleAt; tapWaitAt = now; tapWaitMs = 1500; }   // 1번·3번이었으면 이어서 2번을 만질 수 있어 더 기다린다
     }
   }
   else if (touchState === 'tapwait') {                                    // 떨어진 뒤 다음 값까지 기다린다: 그사이 또 닿으면(순서 만지기) 톡으로 치지 않는다
@@ -1314,12 +1414,12 @@ function idleHappy() {
   const all = !!(t && robot.touchEach?.every(Boolean));
   if (!all) allTouchSince = 0;
   else if (!allTouchSince) allTouchSince = now;
-  else if (now - allTouchSince >= STROKE_MS && !happyOn && idle && !armActive && !sideActive && touchState !== 'stroking' && $('#rpHappy')?.checked) startStroke();
+  else if (now - allTouchSince >= STROKE_MS && !happyOn && idle && !sideActive && !standTimer && !robot.auto && !robotSceneBusy() && touchState !== 'stroking' && $('#rpHappy')?.checked) startStroke();
   if (happyOn) {
     if (t) happyUntil = now + 3000;
     if (!idle || (!t && now > happyUntil)) {
       happyOn = false; touchState = 'idle';
-      if (idle) { applyEyes(S.time); robot.eyes('뜬 눈'); }   // 재생이 시작됐으면 재생이 눈을 맡는다
+      if (idle) restoreEyes();                                  // 앉아 있으면 감은 눈, 아니면 동작의 눈으로 (재생이 시작됐으면 재생이 눈을 맡는다)
     }
   }
   prevTouch = t;
@@ -1861,8 +1961,24 @@ $('#loop').onchange = (e) => (S.loop = e.target.checked);
 $('#autoKey').onchange = (e) => (S.autoKey = e.target.checked);
 $('#showAll').onchange = (e) => { S.showAll = e.target.checked; buildTree(); };
 $('#showBones').onchange = () => {};
-$('#headUp').onclick = () => { if (S.model) setJoint('head', HEAD_UP); };
-$('#headDown').onclick = () => { if (!S.model) return; const cur = readJointAngles().head; setJoint('head', cur * 0.5); };   // 절반만 숙인다 (예: -30° → -15°)
+// 머리 들기·숙이기는 머리만 움직인다. 로봇이 연결돼 있으면 기둥·갸웃·몸통은 화면 모델 값이 아니라 로봇의 지금 값 그대로 둔다
+// (그러지 않으면 앉아 있는 로봇이 화면 모델의 기둥 높이를 따라 일어난다)
+function moveHeadOnly(v) {
+  if (takeOverPose()) restoreEyes();                               // 반응이 돌고 있었으면 멈추고(두 곳에서 자세를 보내지 않게) 그 반응의 눈도 되돌린다
+  const d = robot.connected ? robot.deg : null;
+  setJoint('head', v);
+  if (d) {
+    const [tl, th] = jtLimits('tilt');
+    Object.assign(jtVal, { neck: d.neck, tilt: Math.max(tl, Math.min(th, d.tilt)), body: d.body });
+    applyManual(); renderJoint();
+  }
+}
+$('#headUp').onclick = () => {
+  if (!S.model) return;
+  moveHeadOnly(HEAD_UP);
+  eyes?.show('뜬 눈'); if (robot.connected) robot.eyes('뜬 눈');          // 머리를 들 때는 눈을 뜬 눈으로
+};
+$('#headDown').onclick = () => { if (!S.model) return; const cur = readJointAngles().head; moveHeadOnly(cur * 0.5); };   // 절반만 숙인다 (예: -30° → -15°)
 $('#vpPrev').onclick = () => stepScene(-1);
 $('#vpNext').onclick = () => stepScene(1);
 { const setView = (open) => { $('#viewBody').classList.toggle('closed', !open); $('#viewHead').setAttribute('aria-expanded', open ? 'true' : 'false'); try { localStorage.setItem('cove-view-open', open ? '1' : '0'); } catch { /* 무시 */ } };
@@ -2014,9 +2130,32 @@ $('#btnDelKey').onclick = deleteKeys;
 $('#btnRest').onclick = resetPose;
 // 앉기: 재생·멈춤·센서 반응을 멈추고 처음(접힌) 자세로. 연결돼 있고 주변 확인이 되어 있으면 로봇도 home 씬으로 앉는다.
 // 사람이 아직 다가와 있는 동안 기둥 올리기가 다시 일으키지 않도록, 그 사람이 떠날 때까지 기둥 올리기를 쉰다
-function resetIdleReactions() {                                    // 진행 중이던 센서 반응(톡·쓰다듬기·1번·일어난 뒤 눈·기둥)을 모두 멈춘다
-  [wiggleTimer, tapTimer, armTimer, sideTimer].forEach((t) => clearInterval(t)); tapTimer = 0; armTimer = 0; sideTimer = 0; armActive = false; sideActive = false; happyOn = false; touchState = 'idle'; standEyesUntil = 0; standHeadAt = 0; followBase = null;
+function resetIdleReactions() {                                    // 진행 중이던 센서 반응(톡·쓰다듬기·1번·갸우뚱·일어나기·앉기 뒤 맞추기·일어난 뒤 눈·기둥)을 모두 멈춘다
+  [wiggleTimer, tapTimer, armTimer, sideTimer, standTimer, sitIv].forEach((t) => clearInterval(t)); clearTimeout(sitTimer);
+  wiggleTimer = tapTimer = armTimer = sideTimer = standTimer = sitIv = sitTimer = 0; standLockUntil = 0;
+  armActive = false; armResume = false; armWait = false; armBase = null; sideActive = false; happyOn = false; touchState = 'idle'; allTouchSince = 0; standEyesUntil = 0; standHeadAt = 0; followBase = null;
 }
+// 일어나: 앉은(접힌) 자세에서 기둥 25° · 머리 -34°(깨어난 기본 자세)로 2.2초에 걸쳐 부드럽게 일어난다. 로봇은 연결돼 있으면 지금 로봇의 자세에서, 아니면 화면 자세에서 시작한다
+const STAND_POSE = { neck: 25, head: -34, tilt: 0, body: 0 }, STAND_SEC = 2.2;
+$('#standUp').onclick = () => {
+  if (!S.model) return;
+  if (S.playing) stopPlay();
+  S.sceneLoop = false; S.heldAt = null; S.released = new Set(); refreshHoldUI(); updateSceneTag();
+  takeOverPose(); sitLock = false;                                                                     // 진행 중인 반응을 멈추고 로봇이 씬(앉기 등)을 돌리고 있으면 세운다
+  if ($('#sitKeep')) $('#sitKeep').checked = false;                                                    // 일어났으니 표정 버튼이 다시 몸을 움직일 수 있게 한다
+  wasSitting = false; eyes?.show('뜬 눈'); if (robot.connected) robot.eyes('뜬 눈');                    // 일어나면서 눈을 뜬다
+  standLockUntil = performance.now() + STAND_SEC * 1000 + 2500;
+  const from = (robot.connected && robot.deg) ? { ...robot.deg } : readJointAngles(), t0 = performance.now();
+  const r1 = (v) => Math.round(v * 10) / 10;
+  standTimer = setInterval(() => {
+    if (S.playing) { clearInterval(standTimer); standTimer = 0; return; }
+    const k = Math.min(1, (performance.now() - t0) / (STAND_SEC * 1000)), e = k * k * (3 - 2 * k), p = {};
+    for (const j of ['neck', 'head', 'tilt', 'body']) p[j] = r1(from[j] + (STAND_POSE[j] - from[j]) * e);
+    Object.assign(jtVal, p); applyManual(); renderJoint();                                              // 화면 자세를 바꾸면 로봇 동기가 같은 자세를 로봇에 보낸다
+    if (k >= 1) { clearInterval(standTimer); standTimer = 0; eyes?.show('뜬 눈'); if (robot.connected) robot.eyes('뜬 눈'); }   // 다 일어나면 눈을 한 번 더 뜬 눈으로 맞춘다 (타이머를 0으로 해야 다른 반응이 다시 시작된다)
+  }, 50);
+  toast(robot.sync ? '일어나요' : '일어나요 (화면) · 로봇 동기를 켜면 로봇도 일어나요');
+};
 $('#sitDown').onclick = () => {
   if (S.playing) stopPlay();
   S.sceneLoop = false; S.heldAt = null; S.released = new Set(); refreshHoldUI();
@@ -2025,9 +2164,10 @@ $('#sitDown').onclick = () => {
   if ($('#sitKeep')) $('#sitKeep').checked = true;                                                    // 앉은 뒤에는 표정 버튼이 몸을 움직여 일으키지 않게 한다
   resetIdleReactions();                                                                               // 진행 중이던 반응은 모두 멈춘다 (로봇에 자세를 계속 보내 home 씬을 방해하지 않게)
   wasSitting = true; eyes?.show('감은 눈'); if (robot.connected) robot.eyes('감은 눈');                  // 앉으면서 눈을 감는다
-  setTimeout(() => {                                                                                  // home 씬(3초)이 끝난 뒤 완전히 접힌 자세(0°)로 한 번 더 맞춘다
-    if (S.playing || !robot.sync) return;
-    let n = 0; const iv = setInterval(() => { if (S.playing || ++n > 8) { clearInterval(iv); return; } robot.pose({ neck: 0, head: 0, tilt: 0, body: 0 }); }, 100);
+  clearTimeout(sitTimer); clearInterval(sitIv);
+  sitTimer = setTimeout(() => {                                                                       // home 씬(3초)이 끝난 뒤 완전히 접힌 자세(0°)로 한 번 더 맞춘다 (그 사이 일어나기 등을 누르면 취소된다)
+    sitTimer = 0; if (S.playing || !robot.sync) return;
+    let n = 0; sitIv = setInterval(() => { if (S.playing || ++n > 8) { clearInterval(sitIv); sitIv = 0; return; } robot.pose({ neck: 0, head: 0, tilt: 0, body: 0 }); }, 100);
   }, 3500);
   if (robot.connected) { const r = robot.run('home'); toast(r === 'ok' ? '앉아요' : r === 'unsafe' ? '로봇 주변 확인을 체크하면 로봇도 앉아요' : '앉았어요 (화면)'); } else toast('앉았어요 (화면) · 로봇이 연결돼 있지 않아요');
 };
@@ -2119,7 +2259,7 @@ function setClipOpen(open) {
 }
 $('#clipHead').onclick = () => setClipOpen($('#clipBody').classList.contains('closed'));
 let clipOpenSaved = true; try { clipOpenSaved = localStorage.getItem('cove-clip-open') !== '0'; } catch { /* 무시 */ }
-setClipOpen(clipOpenSaved);
+setClipOpen(true);   // 제목 줄(동작 목록)은 숨겼으므로 목록은 항상 펼쳐 둔다
 $('#editSw').onchange = (e) => setEditOpen(e.target.checked);
 let editWas = false; try { editWas = localStorage.getItem('cove-edit-open') === '1'; } catch { /* 무시 */ }
 setEditOpen(editWas);
@@ -2146,6 +2286,16 @@ $('#btnOpen').onclick = () => $('#fileGlb').click();
   h.onpointermove = (e) => { if (h.classList.contains('drag')) set(h0 + (y0 - e.clientY)); };
   h.onpointerup = h.onpointercancel = () => h.classList.remove('drag');
   h.ondblclick = () => set(DEF);
+  // 완전 접기: 버튼을 누르면 타임라인이 막대 한 줄만 남기고 접히고, 다시 누르면 원래 높이로 펼쳐진다 (상태를 기억한다)
+  const fold = $('#tlFold');
+  const setFold = (on) => {
+    document.body.classList.toggle('tl-collapsed', on); fold.textContent = on ? '▴ 타임라인 펼치기' : '▾ 접기';
+    try { localStorage.setItem('cove-tl-fold', on ? '1' : '0'); } catch { /* 무시 */ }
+    requestAnimationFrame(() => { resizeView(); resizeTL(); });
+  };
+  fold.onclick = () => setFold(!document.body.classList.contains('tl-collapsed'));
+  let was = false; try { was = localStorage.getItem('cove-tl-fold') === '1'; } catch { /* 무시 */ }
+  setFold(was);
 }
 { const b = $('#tlBones'); try { b.checked = localStorage.getItem('cove-tl-bones') === '1'; } catch { /* 무시 */ } b.onchange = () => { try { localStorage.setItem('cove-tl-bones', b.checked ? '1' : '0'); } catch { /* 무시 */ } TL.sy = 0; drawTL(); }; }
 // 파일 메뉴: 항목을 누르거나 메뉴 바깥을 누르면 닫는다

@@ -62,6 +62,7 @@ export const robot = {
   get armKnown() { return senseAt > 0 && Date.now() - senseAt < 3500; },
   get topOk() { return topOk; },
   get topMm() { return topMm; },
+  get senseSampleAt() { return senseAt; },                       // 거리센서 값이 마지막으로 들어온 때 (값이 올 때마다 바뀐다, 약 1.5초 간격)
   get topBase() { return webBase != null ? Math.round(webBase) : topBase; },   // 손이 없을 때의 평소 거리(mm)                                     // 아래 방향 거리 (mm)
   get touchKnown() { return touchAt > 0 && Date.now() - touchAt < 3500; },
   // 웹 재생을 로봇이 실시간으로 따라 하게 한다(pose 명령, 10Hz). 연결 + "주변 확인" 체크가 있어야 켜진다.

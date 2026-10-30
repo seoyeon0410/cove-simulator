@@ -582,3 +582,37 @@ button.rb.fold{opacity:.8;width:26px}
 #clipList .cat-empty{margin:2px 10px 6px 18px;padding:8px;font-size:12px;color:var(--dim);border:1px dashed #4a463e;border-radius:var(--r-ctl);text-align:center}
 #clipList .clip-row[draggable=true]{cursor:grab}
 #clipList .clip-row.dragging{opacity:.4}
+
+/* 단계별 줄의 표정 버튼(시간 왼쪽)과 표정 고르는 창 */
+.clip-item.has-eye{grid-template-columns:22px 1fr auto auto}
+.clip-row.sub .clip-item.has-eye{grid-template-columns:22px 1fr auto auto}
+.eye-pick{display:inline-flex;align-items:center;justify-content:center;width:26px;height:20px;border-radius:5px;background:#0b0b0e;box-shadow:inset 0 0 0 1px #3a3630;cursor:pointer}
+.eye-pick canvas{width:20px;height:20px}
+.eye-pick:hover{box-shadow:inset 0 0 0 1px var(--accent)}
+.eye-picker{position:fixed;z-index:1000;width:300px;max-width:calc(100vw - 16px);padding:10px;background:var(--panel, #1b1a17);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.55),inset 0 0 0 1px #3a3630}
+.eye-picker .ep-t{font-size:11px;color:var(--dim);margin-bottom:8px}
+.eye-picker .ep-g{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.eye-picker .ep-i{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;background:#0f0f12;border-radius:8px;box-shadow:inset 0 0 0 1px #2d2a25}
+.eye-picker .ep-i canvas{width:40px;height:40px}
+.eye-picker .ep-i span{font-size:10.5px;color:var(--text)}
+.eye-picker .ep-i:hover{box-shadow:inset 0 0 0 1px var(--accent)}
+.eye-picker .ep-i.on{background:var(--rowsel);box-shadow:inset 0 0 0 1px var(--accent)}
+.eye-picker .ep-reset{width:100%;margin-bottom:8px;padding:7px 8px;font-size:12px;color:var(--accent);background:#0f0f12;border-radius:8px;box-shadow:inset 0 0 0 1px #3a3630;text-align:center}
+.eye-picker .ep-reset:hover{box-shadow:inset 0 0 0 1px var(--accent)}
+/* '동작 목록' 제목 줄은 숨겼다 (목록은 항상 펼쳐 둔다). 되살리려면 이 줄을 지운다 */
+#clipHead{display:none !important}
+button.rb.reset-eyes{color:var(--accent);width:28px;font-size:14px;opacity:.75}
+button.rb.reset-eyes:hover{opacity:1}
+
+/* 로봇 자세 버튼(앉기·머리 들기·머리 숙이기)은 맨 위 줄, 로봇 동기 버튼 옆에 둔다 */
+.hdr-pose{display:inline-flex;gap:6px;align-items:center}
+.hdr-pose button{background:var(--accent);color:#231b0c;font-weight:600}
+.hdr-pose button:hover{filter:brightness(1.08)}
+.hdr-pose button:active{filter:brightness(.94)}
+
+/* 타임라인 완전 접기: 접으면 맨 아래에 펼치기 막대만 남는다 */
+#tlFold{position:absolute;right:10px;top:4px;z-index:7;padding:2px 10px;font-size:11px;background:#1e1d1a;color:var(--dim);border-radius:6px;box-shadow:inset 0 0 0 1px #3a3630}
+#tlFold:hover{color:var(--accent)}
+body.tl-collapsed{grid-template-rows:auto minmax(0,1fr) 30px}
+body.tl-collapsed footer #transport,body.tl-collapsed footer #tl,body.tl-collapsed footer #tlResize{display:none}
+body.tl-collapsed #tlFold{top:3px;left:10px;right:auto;color:var(--accent)}
