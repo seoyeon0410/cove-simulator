@@ -20,8 +20,8 @@
   <strong class="brand">코브 애니메이터</strong>
   <span id="fileName" class="dim"></span>
   <span class="spacer"></span>
-  <button id="btnUndo" title="실행 취소 (Ctrl+Z)">↶</button>
-  <button id="btnRedo" title="다시 실행 (Ctrl+Shift+Z)">↷</button>
+  <button id="btnUndo" title="실행 취소 (Ctrl+Z)" hidden>↶</button>
+  <button id="btnRedo" title="다시 실행 (Ctrl+Shift+Z)" hidden>↷</button>
   <span class="sep"></span>
   <button id="robotSync" title="웹에서 재생하는 동작을 로봇이 실시간으로 따라 해요 (켜기 전에 주변을 확인하세요)" hidden>로봇 동기</button>
   <button id="robotStop" class="danger" title="연결된 로봇을 바로 정지 (그 자리에서 힘 유지)" hidden>■ 정지</button>
@@ -249,7 +249,7 @@
       <label class="check rp-ok"><input type="checkbox" id="rpSafe"> 로봇 주변을 확인했어요 (움직이는 명령 허용)</label>
       <label class="check rp-ok" title="휴식에서 쓰다듬기를 기다리는 동안 로봇 머리의 터치센서가 닿으면 반응하기를 자동으로 넘겨요"><input type="checkbox" id="rpTouch" checked> 터치센서로 "반응하기" 넘기기 <span id="rpTouchState" class="dim"></span></label>
       <label class="check rp-ok" title="휴식에서 머리를 숙이기 전에 멈춰 있는 동안 1번 거리센서(머리, 턱 아래를 보는 VL53L0X)에 손이 들어오면 숙이기를 자동으로 넘겨요"><input type="checkbox" id="rpArm" checked> 1번 거리센서(머리)로 "숙이기" 넘기기 <span id="rpArmState" class="dim"></span></label>
-      <label class="check rp-ok" title="재생 중이 아닐 때 2번 거리센서(몸통 앞, VL53L5CX 4×4)의 구역 중 하나가 평소보다 30% 넘게 가까워지면서 손이 약 10cm 안으로 들어오면(센서 값 14cm 이하) 앉아 있던 로봇이 일어나요(휴식 시나리오의 첫 장면만 재생하고 선 채로 멈춰요). 서 있을 때는 이 센서를 보지 않아요. 로봇 자동 모드가 켜져 있으면 로봇이 직접 반응하니 건너뛰어요"><input type="checkbox" id="rpFront" checked> 2번 거리센서(몸통)로 사람이 다가오면 일어나기 <span id="rpFrontState" class="dim"></span></label>
+      <label class="check rp-ok" title="재생 중이 아닐 때 2번 거리센서(몸통 앞, VL53L5CX 4×4)의 구역 중 하나가 평소보다 30% 넘게 가까워지면서 손이 약 10cm 안으로 들어오면(센서 값 14cm 이하) 앉아 있던 로봇이 일어나 인사해요(인사 시나리오를 재생하고 끝에 접지 않고 선 채로 끝나요). 서 있을 때는 이 센서를 보지 않아요. 로봇 자동 모드가 켜져 있으면 로봇이 직접 반응하니 건너뛰어요"><input type="checkbox" id="rpFront" checked> 2번 거리센서(몸통)로 손이 다가오면 일어나 인사하기 <span id="rpFrontState" class="dim"></span></label>
       <label class="check rp-ok" title="재생 중이 아닐 때 1번 거리센서(머리)에 손이 닿으면 고개를 갸우뚱(머리를 -26°까지 숙이고 로봇이 허용하는 만큼 왼쪽으로 갸웃) 하고 표정은 편안한 눈으로 바뀌어요. 손이 떨어지고 1.5초 뒤 원래대로. 고개는 로봇 동기가 켜져 있을 때만 움직여요"><input type="checkbox" id="rpArmLook" checked> 1번 거리센서를 만지면 고개 갸우뚱 · 편안한 눈</label>
       <label class="check rp-ok" title="동작을 재생하고 있지 않을 때: 머리를 톡 치면(금방 떨어지면) 고개를 올렸다 내리고, 계속 쓰다듬으면 신난 눈으로 기뻐해요(손을 떼고 3초 뒤 원래 눈으로). 로봇 동기가 켜져 있으면 쓰다듬을 때 머리를 숙이고 몸통을 3초간 좌우로 흔들어요"><input type="checkbox" id="rpHappy" checked> 재생 안 할 때 머리 반응 (톡톡 = 고개 올리기, 쓰다듬기 = 기뻐하기)</label>
       <label class="rp-row" title="로봇은 명령을 받고 실제로 움직이기까지 약 1초 늦어요(실측). 동기 중에는 그만큼 앞선 자세를 보내서 뷰포트와 로봇이 같은 때에 같은 자세가 되게 해요."><span>동기 앞서기(초)</span><input type="number" id="rpLead" min="0" max="2" step="0.1" value="0.9"></label>

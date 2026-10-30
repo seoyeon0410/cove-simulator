@@ -482,6 +482,7 @@ function buildPresetClip(def) {
   if (def.markers) clip.markers = def.markers;
   if (def.hold && def.markers) clip.holds = def.hold.map((h) => ({ t: def.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '', touch: !!h.touch, arm: !!h.arm }));   // 재생 중 여기서 멈추고 버튼을 눌러야 이어간다
   if (def.group) clip.group = def.group;
+  if (def.hidden) clip.hidden = true;                                // 동작 목록에는 나오지 않는다(센서가 부르는 시나리오)
   if (def.noTail) clip.keepEnd = true;                               // 끝에서 원자세로 접지 않고 마지막 자세를 유지한다
   if (def.rev) clip.rev = def.rev;                                   // 프리셋 개정 번호 (저장된 예전 클립을 새 프리셋으로 바꾸는 데 쓴다)
   if (def.eyes) clip.eyes = def.eyes.map(([t, e, gx = 0, gy = 0]) => ({ t, e, gx, gy }));
@@ -880,6 +881,7 @@ function renderClipList() {
   list.innerHTML = '';
   let lastGroup = null;
   S.clips.forEach((c, i) => {
+    if (c.hidden) return;                                               // 센서 전용 시나리오는 목록에 보이지 않는다
     const g = c.group || (c.markers?.length ? '시나리오' : '내 클립');
     if (g !== lastGroup) { lastGroup = g; const h = document.createElement('div'); h.className = 'grp'; h.textContent = g; list.appendChild(h); }
     const wrap = document.createElement('div'); wrap.className = 'clip-row';
@@ -1089,7 +1091,7 @@ function armLook() {
   if (a && !prevArm && !armActive && idle && !happyOn && !tapTimer && touchState === 'idle' && $('#rpArmLook')?.checked) armLookStart();
   prevArm = a;
 }
-// 2번 거리센서(몸통 앞): 재생 중이 아니고 처음(또는 끝난) 상태일 때 사람이 새로 다가오면 휴식의 첫 장면(앉아 있다가 일어나기)만 재생하고 선 채로 멈춘다. 로봇이 자동 모드면 로봇이 직접 반응하므로 하지 않는다
+// 2번 거리센서(몸통 앞): 앉아 있을 때 손이 새로 다가오면 시나리오 4 인사를 처음부터 재생한다(목록에는 숨겨 둔 센서 전용, 끝에 접지 않고 선 채로 끝). 로봇이 자동 모드면 로봇이 직접 반응하므로 하지 않는다
 let prevPerson = null, personLastStart = 0, standHeadAt = 0;
 const STAND_HEAD = -42;                                            // 일어선 뒤 고개를 드는 각도 (도, 음수 = 얼굴이 위, 로봇 한계 -46). 일어서는 장면의 끝 자세는 -34
 function standHeadUp() {
@@ -1128,16 +1130,15 @@ function frontApproach() {
   const rising = prevPerson === false && p === true;                 // 처음 값(이미 사람이 있던 상태)은 다가온 걸로 치지 않는다
   prevPerson = p;
   if (!rising || !on || robot.auto || S.playing || S.heldAt != null || Date.now() - personLastStart < 5000) return;
-  const idx = S.clips.findIndex((c) => c.name.includes('휴식')); if (idx < 0) return;
+  const idx = S.clips.findIndex((c) => c.name.includes('인사')); if (idx < 0) return;
   // 앉아 있을 때만 일어난다. 앉아 있는지는 로봇의 실제 기둥 위치(15° 미만)로 보고, 로봇 값이 없으면 화면이 처음(또는 끝난) 상태인지로 본다 — 몇 번이고 앉았다 일어난다
   const cur = S.clips[S.clip], d = robot.deg, sitting = d ? d.neck < 15 : (S.time <= 0.05 || S.time >= cur.duration - 0.05);
   if (!sitting) return;
   personLastStart = Date.now();
-  toast('사람이 다가왔어요 · 일어나요');
+  toast('사람이 다가왔어요 · 인사해요');
   if (S.clip !== idx) { const sel = $('#clipSel'); sel.value = String(idx); sel.dispatchEvent(new Event('change')); }
-  playScene(0);                                                    // 첫 장면(앉아 있다가 일어나는 3초)만 재생하고 선 채로 멈춘다
+  playAll();                                                       // 인사 시나리오를 처음부터 끝까지 재생한다(앉은 자세에서 일어나 인사하고, 끝에 접지 않고 선 채로 끝)
   playStartedAt = performance.now() - 5000;                        // 앞서 보내는 양(로봇이 늦는 약 1초)을 서서히 늘리지 않고 처음부터 다 준다 — 앉은 자세에서 시작이라 튈 걱정이 없다
-  standHeadAt = performance.now();                                 // 다 일어서면 고개도 든다
 }
 // 2번 거리센서: 서 있는 로봇에게 가까이 올수록 기둥을 더 올린다(손 약 10cm에서 시작, 약 5cm에서 최대 33°). 사람이 떠나면 원래 높이로 내려온다.
 // 로봇 동기가 켜져 있고 재생·다른 반응 중이 아닐 때만 움직이고, 기둥만 바꾼다(나머지는 시작할 때 자세 그대로)
