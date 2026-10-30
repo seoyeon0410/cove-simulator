@@ -142,7 +142,7 @@ function connect() {
   });
   c.on('reconnect', () => { if (client === c) setState('connecting'); });
   c.on('close', () => { if (client === c && st !== 'off') setState('connecting', '연결이 끊겼어요 · 다시 시도 중'); });
-  c.on('error', (e) => { log('err', '오류: ' + (e && e.message)); if (client === c) setState('error', '연결 오류 (주소를 확인하세요)'); });
+  c.on('error', (e) => { log('err', '오류: ' + (e && e.message)); if (client === c) setState('error', /connack timeout/i.test((e && e.message) || '') ? `로봇 서버(${url.replace(/^wss?:\/\//, '')})가 응답하지 않아요 · 서버 PC가 켜져 있는지, 같은 와이파이인지 확인하세요 (자동으로 다시 시도 중)` : '연결 오류 (주소를 확인하세요)'); });
   c.on('message', (t, payload) => {
     let msg; const s = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
     try { msg = JSON.parse(s); } catch { msg = s; }
