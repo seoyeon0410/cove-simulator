@@ -1304,10 +1304,10 @@ function updateSceneTag() {
   sit.textContent = mk.desc || mk.label; sit.hidden = false;       // 뷰포트 아래쪽에 지금 상황을 보여 준다
   $('#vpActions').hidden = false;
   // 오른쪽 위: 몇 장면 중 몇 단계인지, 그리고 바로 앞·뒤 단계가 무엇인지(이름만). 매 프레임 불리므로 바뀔 때만 쓴다
-  const stepTxt = `${marks.length}장면 중 ${i + 1}단계`, pn = i > 0 ? marks[i - 1].label : '(처음 단계예요)', nn = i < marks.length - 1 ? marks[i + 1].label : '(마지막 단계예요)';
+  const stepTxt = `${i + 1} / ${marks.length} 단계`, pn = i > 0 ? marks[i - 1].label : '(처음 단계예요)', nn = i < marks.length - 1 ? marks[i + 1].label : '(마지막 단계예요)';
   if ($('#vpStep').textContent !== stepTxt) $('#vpStep').textContent = stepTxt;
-  if ($('#vpPrevName').textContent !== pn) $('#vpPrevName').textContent = pn;
-  if ($('#vpNextName').textContent !== nn) $('#vpNextName').textContent = nn;
+  if ($('#vpPrevName').textContent !== pn) { $('#vpPrevName').textContent = pn; $('#vpPrev').title = `이전 단계: ${pn} ([)`; }
+  if ($('#vpNextName').textContent !== nn) { $('#vpNextName').textContent = nn; $('#vpNext').title = `다음 단계: ${nn} (])`; }
 }
 function updateTimeLabel() {
   updateSceneTag();
