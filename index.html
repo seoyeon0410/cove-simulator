@@ -74,7 +74,11 @@
   <div id="viewWrap">
     <div id="view"></div>
     <div id="vpActions" class="glass" hidden>
-        <div class="vp-nav"><button id="vpPrev" title="이전 장면 ([)">◀ 이전 장면</button><button id="vpNext" title="다음 장면 (])">다음 장면 ▶</button></div>
+        <div id="vpStep" class="vp-step"></div>
+        <div class="vp-nav">
+          <button id="vpPrev" title="이전 단계 ([)"><small>◀ 이전 단계</small><span id="vpPrevName"></span></button>
+          <button id="vpNext" title="다음 단계 (])"><small>다음 단계 ▶</small><span id="vpNextName"></span></button>
+        </div>
     </div>
     <div id="situation" hidden></div>
     <div id="holdBar" hidden></div>

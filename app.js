@@ -1274,7 +1274,9 @@ function gotoScene(i) {
 }
 function stepScene(dir) {
   const i = sceneIndex(S.time);
+  if (S.heldAt != null) { S.heldAt = null; refreshHoldUI(); }      // 멈춰서 기다리던 중이어도 단계 버튼은 바로 먹는다
   if (dir < 0) gotoScene(S.time - sceneRange(i)[0] > 0.5 ? i : i - 1); else gotoScene(i + 1);
+  updateSceneTag();
 }
 function playScene(i) { S.sceneLoop = true; gotoScene(i); if (!S.playing) togglePlay(); updateSceneTag(); }
 function playAll() { S.sceneLoop = false; setTime(0); if (!S.playing) togglePlay(); updateSceneTag(); }
@@ -1301,6 +1303,11 @@ function updateSceneTag() {
   const mk = marks[i], sit = $('#situation');
   sit.textContent = mk.desc || mk.label; sit.hidden = false;       // 뷰포트 아래쪽에 지금 상황을 보여 준다
   $('#vpActions').hidden = false;
+  // 오른쪽 위: 몇 장면 중 몇 단계인지, 그리고 바로 앞·뒤 단계가 무엇인지(이름만). 매 프레임 불리므로 바뀔 때만 쓴다
+  const stepTxt = `${marks.length}장면 중 ${i + 1}단계`, pn = i > 0 ? marks[i - 1].label : '(처음 단계예요)', nn = i < marks.length - 1 ? marks[i + 1].label : '(마지막 단계예요)';
+  if ($('#vpStep').textContent !== stepTxt) $('#vpStep').textContent = stepTxt;
+  if ($('#vpPrevName').textContent !== pn) $('#vpPrevName').textContent = pn;
+  if ($('#vpNextName').textContent !== nn) $('#vpNextName').textContent = nn;
 }
 function updateTimeLabel() {
   updateSceneTag();
@@ -1847,12 +1854,15 @@ $('#btnDelKey').onclick = deleteKeys;
 $('#btnRest').onclick = resetPose;
 // 앉기: 재생·멈춤·센서 반응을 멈추고 처음(접힌) 자세로. 연결돼 있고 주변 확인이 되어 있으면 로봇도 home 씬으로 앉는다.
 // 사람이 아직 다가와 있는 동안 기둥 올리기가 다시 일으키지 않도록, 그 사람이 떠날 때까지 기둥 올리기를 쉰다
+function resetIdleReactions() {                                    // 진행 중이던 센서 반응(톡·쓰다듬기·1번·일어난 뒤 눈·기둥)을 모두 멈춘다
+  [wiggleTimer, tapTimer, armTimer].forEach((t) => clearInterval(t)); tapTimer = 0; armTimer = 0; armActive = false; happyOn = false; touchState = 'idle'; standEyesUntil = 0; standHeadAt = 0; followBase = null;
+}
 $('#sitDown').onclick = () => {
   if (S.playing) stopPlay();
   S.sceneLoop = false; S.heldAt = null; S.released = new Set(); refreshHoldUI();
   setTime(0); updateSceneTag();
   followBase = null; sitLock = true;
-  [wiggleTimer, tapTimer, armTimer].forEach((t) => clearInterval(t)); tapTimer = 0; armTimer = 0; armActive = false; happyOn = false; touchState = 'idle'; standEyesUntil = 0; standHeadAt = 0;   // 진행 중이던 반응은 모두 멈춘다 (로봇에 자세를 계속 보내 home 씬을 방해하지 않게)
+  resetIdleReactions();                                                                               // 진행 중이던 반응은 모두 멈춘다 (로봇에 자세를 계속 보내 home 씬을 방해하지 않게)
   wasSitting = true; eyes?.show('감은 눈'); if (robot.connected) robot.eyes('감은 눈');                  // 앉으면서 눈을 감는다
   setTimeout(() => {                                                                                  // home 씬(3초)이 끝난 뒤 완전히 접힌 자세(0°)로 한 번 더 맞춘다
     if (S.playing || !robot.sync) return;
@@ -1875,7 +1885,13 @@ $('#spaceBtn').onclick = () => {
 };
 tc.setSpace('local');
 
-$('#clipSel').onchange = (e) => { S.clip = +e.target.value; S.selKeys.clear(); S.released = new Set(); S.heldAt = null; refreshHoldUI(); S.time = Math.min(S.time, curClip().duration); applyPose(S.time); refreshClipUI(); snapshot(); };
+// 동작 목록에서 시나리오를 누르면(이미 고른 것을 다시 눌러도) 무조건 처음 상태로: 재생을 멈추고 0초, 멈춤 기록·진행 중이던 센서 반응도 모두 초기화
+$('#clipSel').onchange = (e) => {
+  S.clip = +e.target.value; S.selKeys.clear(); S.released = new Set(); S.heldAt = null; refreshHoldUI();
+  if (S.playing) stopPlay();
+  S.sceneLoop = false; S.time = 0; resetIdleReactions();
+  applyPose(S.time); refreshClipUI(); updateSceneTag(); snapshot();
+};
 $('#clipNew').onclick = () => { const nc = newClipData(`새 클립 ${S.clips.filter((x) => x.group === '내 클립').length + 1}`); nc.group = '내 클립'; S.clips.push(nc); S.clip = S.clips.length - 1; S.selKeys.clear(); S.time = 0; applyPose(0); refreshClipUI(); snapshot(); };
 $('#clipDup').onclick = () => { const c = JSON.parse(JSON.stringify(curClip())); c.name += ' 복사'; c.group = '내 클립'; S.clips.push(c); S.clip = S.clips.length - 1; S.selKeys.clear(); refreshClipUI(); snapshot(); };
 // 이름 바꾸기: 브라우저 prompt 대신 목록 줄 안에서 바로 입력한다 (Enter 확정 · Esc 취소)
