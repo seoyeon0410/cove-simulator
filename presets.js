@@ -210,12 +210,10 @@ const SCENARIOS = [
   ] },
   { name: '시나리오2 간지럽히기', rev: 5, interp: 'linear', eyes: EYES_TICKLE, noTail: true, hold: [{ at: 2, label: '간지럽히기', msg: '간지럽혀 주길 기다리고 있어요. 준비되면 눌러 주세요.' }, { at: 3, label: '손 떼기', msg: '간지럽히다가 손을 떼는 순간에 멈춰 있어요. 더 놀고 싶어 하기 전에 준비되면 눌러 주세요.' }, { at: 4, label: '뒤로 넘어가기', msg: '너무 웃겨서 뒤로 넘어가기 직전에 멈춰 있어요. 준비되면 눌러 주세요.' }], steps: tickleMergedSteps() },   // 3번째 장면(간지러워요!) 앞에서 멈추고, 버튼을 누르면 간지럽다는 듯 움직인다
   { name: '시나리오3 간식주기', interp: 'linear', eyes: EYES_SNACK, tailLabel: '졸려요', steps: snackMergedSteps() },
-  { name: '시나리오4 인사', rev: 1, hidden: true, noTail: true, eyes: autoEyes([3, 3, 4, 4, 4], [['졸린 눈', '뜬 눈'], ['반짝 눈', '뜬 눈'], ['신난 눈', '윙크'], ['신난 눈', '신난 눈'], ['뜬 눈', '반짝 눈']]), natural: true, steps: [   // 2번 센서(손이 다가옴)가 부르는 시나리오: 동작 목록에는 숨기고, 끝에 '다시 쉬어요'(접기)를 붙이지 않아 기둥이 선 채로 끝난다
+  { name: '시나리오4 인사', rev: 3, hidden: true, noTail: true, eyes: [...autoEyes([3, 3, 4], [['졸린 눈', '뜬 눈'], ['반짝 눈', '뜬 눈'], ['신난 눈', '윙크']]), [10, '뜬 눈']], natural: true, steps: [   // 2번 센서(손이 다가옴)가 부르는 시나리오: 동작 목록에는 숨기고, 끝에 '다시 쉬어요'(접기)를 붙이지 않아 기둥이 선 채로 끝난다
     { name: '누가 지나가요', duration: 3, keys: WAKE },
     { name: '반가워서 고개를 들어요', duration: 3, keys: [k(0, 25, -34), k(1.2, 33, -42), k(3, 33, -42)] },
     { name: '안녕! 인사해요', duration: 4, keys: [k(0, 33, -42), k(0.8, 31, -30), k(1.6, 33, -42), k(2.4, 31, -30), k(3.2, 33, -42), k(4, 33, -42)] },
-    { name: '같이 놀자고 몸을 흔들어요', duration: 4, keys: [k(0, 33, -42), k(1, 33, -42, 10, 10), k(2, 33, -42, -10, -10), k(3, 33, -42, 10, 10), k(4, 33, -42)] },
-    { name: '손 흔들어 주길 기다려요', duration: 4, keys: [k(0, 33, -42), k(1, 30, -36, 20, 0), k(2.5, 30, -36, 20, 0), k(4, 28, -34)] },
   ] },
 ];
 
@@ -266,6 +264,26 @@ const seq = (items) => items.map((d) => {
   return { ...t, keys: microSway(keys) };
 });
 
+// 시나리오의 단계(장면)마다 따로 재생·편집할 수 있는 동작으로 쪼갠다. 이미 다듬어진 키를 단계 시간 구간만큼 잘라 0초부터로 옮기고, 눈도 그 구간 것만 가져간다.
+// (센서 전용 숨김 시나리오와 표정 모음은 쪼개지 않는다)
+function splitSteps(items) {
+  const out = [];
+  items.forEach((c) => {
+    if (c.hidden || c.group || !c.markers?.length) return;
+    const title = c.name.replace(/^시나리오\d+\s*/, ''), EPS = 1e-6;
+    c.markers.forEach((m, i) => {
+      const t0 = m.t, t1 = i + 1 < c.markers.length ? c.markers[i + 1].t : c.duration, dur = +(t1 - t0).toFixed(3);
+      if (dur < 0.2) return;
+      const keys = c.keys.filter((x) => x[0] >= t0 - EPS && x[0] <= t1 + EPS).map((x) => [+(x[0] - t0).toFixed(3), ...x.slice(1)]);
+      const eyes = [], before = (c.eyes || []).filter((x) => x[0] <= t0 + EPS).pop();
+      if (before) eyes.push([0, ...before.slice(1)]);
+      (c.eyes || []).filter((x) => x[0] > t0 + EPS && x[0] < t1 - EPS).forEach((x) => eyes.push([+(x[0] - t0).toFixed(2), ...x.slice(1)]));
+      out.push({ name: `${title} ${i + 1}단계 ${m.label}`, group: '단계별', parent: title, rev: (c.rev || 0) * 100 + 1, duration: dur, keys, interp: c.interp, noTail: true, eyes, markers: [{ t: 0, label: m.label }] });
+    });
+  });
+  return out;
+}
+const scenarios = seq(whole);
 export const PRESET_GROUPS = [
-  { label: '시나리오', items: seq(whole) },
+  { label: '시나리오', items: [...scenarios, ...splitSteps(scenarios)] },
 ];

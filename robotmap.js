@@ -1,3 +1,6 @@
+// 로봇 전용 씬 버튼에 보여 줄 한글 이름 (여기에 없는 씬은 로봇 씬 이름 그대로). 실행은 원래 씬 이름으로 한다
+export const SCENE_LABEL = { home: '원점 자세', bite: '한입 먹기', hand1_play: '손으로 놀기', check_tilt: '갸웃 점검', check_body: '몸통 점검', web_praise: '칭찬받기', web_surprise: '깜짝 놀람', web_look: '두리번 탐색', web_bye: '작별 인사' };
+
 // 웹 동작(시나리오) ↔ 로봇 씬 연결표. 키는 동작 이름에서 "시나리오N "을 뺀 제목이다.
 //   main  : 처음부터 끝까지 한 번에 도는 씬
 //   steps : 장면(1, 2, 3 …)별 씬

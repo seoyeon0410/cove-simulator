@@ -6,7 +6,7 @@ import { PRESET_GROUPS } from './presets.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { applyLook, buildEyes, EXPRESSIONS } from './look.js';
 import { initRobotPanel, robot } from './robot.js';
-import { linkFor, restrictTo, robotOnlyGroups, webSceneName } from './robotmap.js';
+import { linkFor, restrictTo, robotOnlyGroups, webSceneName, SCENE_LABEL } from './robotmap.js';
 import { csvOf, report, zip, limitFrames, STEP, LIMITS, tiltRange } from './robotexport.js';
 import { eyesJson } from './roboteyes.js';
 import { initEyeDock, EYE_MIME } from './eyedock.js';
@@ -199,7 +199,7 @@ function loadGLB(buffer, name) {
       const saved = loadSaved();
       S.clips = saved?.clips || PRESET_GROUPS[0].items.map(buildPresetClip);
       // 없앤 표정이 저장된 클립에 남아 있으면 바꿔 준다: 표정 모음은 새로 만들고, 나머지는 비슷한 표정으로 대체
-      const GONE = { '초롱 눈': '반짝 눈', '또렷한 눈': '뜬 눈', '위 보는 눈': '뜬 눈' };
+      const GONE = { '초롱 눈': '반짝 눈', '또렷한 눈': '뜬 눈' };
       if (saved) S.clips = S.clips.filter((c) => !/칭찬받기|깜짝 놀람|두리번 탐색|작별 인사/.test(c.name)).map((c) => {   // 없앤 시나리오(5 칭찬받기, 6 깜짝 놀람, 7 두리번 탐색, 8 작별 인사)가 저장돼 있으면 지운다
         { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.rev && c.rev !== d.rev) return buildPresetClip(d); }   // 프리셋이 새로 다듬어졌으면 저장된 예전 클립은 새 것으로 바꾼다
         { const d = PRESET_GROUPS[0].items.find((i) => i.name === c.name); if (d?.hold && c.markers?.length) c.holds = d.hold.map((h) => ({ t: c.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '', touch: !!h.touch, arm: !!h.arm })); }   // 멈춤 지점은 프리셋 그대로 맞춘다
@@ -208,6 +208,7 @@ function loadGLB(buffer, name) {
         if (c.group !== '표정') (c.eyes || []).forEach((k) => { for (const f of ['e', 'eL', 'eR']) { if (k[f] === '웃는 눈') k[f] = '신난 눈'; else if (k[f] === '슬픈 눈') k[f] = '눈물 눈'; } });   // 기분 좋을 때 눈은 신난 눈, 슬퍼할 때 눈은 눈물 눈으로 통일 (표정 모음은 그대로)
         return c;
       });
+      if (saved && !saved.steps) PRESET_GROUPS[0].items.filter((d) => d.group === '단계별' && !S.clips.some((c) => c.name === d.name)).forEach((d) => S.clips.push(buildPresetClip(d)));   // 저장돼 있던 작업에는 새로 생긴 단계별 동작을 뒤에 붙인다
       S.clip = Math.min(saved?.clip || 0, Math.max(S.clips.length - 1, 0));
       if (!S.clips.length) S.clips = [newClipData('새 클립')];
       S.time = 0;
@@ -482,6 +483,7 @@ function buildPresetClip(def) {
   if (def.markers) clip.markers = def.markers;
   if (def.hold && def.markers) clip.holds = def.hold.map((h) => ({ t: def.markers[h.at].t, label: h.label || '숙이기', msg: h.msg || '', touch: !!h.touch, arm: !!h.arm }));   // 재생 중 여기서 멈추고 버튼을 눌러야 이어간다
   if (def.group) clip.group = def.group;
+  if (def.parent) clip.parent = def.parent;                          // 단계별 동작이 속한 시나리오 이름 (시나리오 아래 하위항목으로 보여 줄 때 쓴다)
   if (def.hidden) clip.hidden = true;                                // 동작 목록에는 나오지 않는다(센서가 부르는 시나리오)
   if (def.noTail) clip.keepEnd = true;                               // 끝에서 원자세로 접지 않고 마지막 자세를 유지한다
   if (def.rev) clip.rev = def.rev;                                   // 프리셋 개정 번호 (저장된 예전 클립을 새 프리셋으로 바꾸는 데 쓴다)
@@ -523,7 +525,7 @@ function loadSaved() {
   try { const d = JSON.parse(localStorage.getItem(storeKey())); return d?.v === SAVE_VERSION ? d : null; } catch { return null; }
 }
 function snapshot(initial) {
-  const str = JSON.stringify({ v: SAVE_VERSION, clips: S.clips, clip: S.clip });
+  const str = JSON.stringify({ v: SAVE_VERSION, clips: S.clips, clip: S.clip, steps: 1 });   // steps: 단계별 동작을 이미 넣었다는 표시 (지운 걸 다시 되살리지 않게)
   if (hist[hi] === str) return;
   hist = hist.slice(0, hi + 1); hist.push(str);
   if (hist.length > 80) hist.shift();
@@ -869,59 +871,118 @@ function robotBlock(link, clipIdx) {
   };
   const top = [];
   if (robot.scenes.includes(web)) { const b = sceneChip(web, '▶ 웹과 같은 모션'); b.classList.add('main'); b.title = '뷰포트에 보이는 동작 그대로 (웹에서 만든 모션 파일)'; top.push(b); }
-  if (l.main) { const b = sceneChip(l.main, '▶ 로봇 기본 씬'); top.push(b); }
+  // '▶ 로봇 기본 씬' 버튼은 숨겼다 (웹과 따로 도는 로봇 안의 씬이라서). 되살리려면 l.main 으로 sceneChip()을 top에 넣는다
   row('로봇', top);
-  row('장면별', l.steps.map((n) => sceneChip(n, n.replace(/^[a-z]+_(\d+)_/, '$1 '))));
-  row('관련', l.more.map((n) => sceneChip(n)));
+  // 장면별·관련 로봇 씬 줄은 숨겼다 (웹 전체 재생과 따로 도는 씬이라 헷갈려서). 되살리려면 l.steps / l.more 로 row()를 다시 부른다
   if (!box.children.length) { box.className = 'rb-block'; box.textContent = '이 로봇에는 연결된 씬이 아직 없어요'; box.classList.add('rb-hint'); }
   return box;
 }
+// 단계별 동작이 어느 시나리오의 단계인지: 클립에 적어 둔 parent, 없으면(예전에 저장된 것) 그 동작의 첫 장면 이름으로 프리셋에서 찾는다 (동작 이름은 바꿔도 장면 이름은 그대로라서)
+const stepParent = new Map(PRESET_GROUPS[0].items.filter((d) => d.group === '단계별').map((d) => [d.markers[0].label, d.parent]));
+const parentOf = (c) => c.parent || stepParent.get(c.markers?.[0]?.label) || null;
+const scenarioTitle = (c) => c.name.replace(/^시나리오\d+\s*/, '');
+let dragStep = -1;                                                    // 끌고 있는 단계별 동작의 번호
+function clipRowEl(c, i, sub) {
+  const sel = $('#clipSel');
+  const wrap = document.createElement('div'); wrap.className = 'clip-row' + (sub ? ' sub' : '');
+  const el = document.createElement('button');
+  el.className = 'clip-item' + (i === S.clip ? ' on' : ''); el.dataset.i = i;
+  const m = c.name.match(/^시나리오(\d+)\s*(.*)$/);                      // "시나리오1 휴식" → 번호 01 + 제목 "휴식"
+  el.innerHTML = '<span class="no"></span><span class="nm"></span><span class="du"></span>';
+  el.children[0].textContent = m ? m[1].padStart(2, '0') : '';
+  el.children[1].textContent = m ? m[2] : c.name;
+  el.children[2].textContent = `${+c.duration.toFixed(1)}초`;
+  el.onclick = () => { sel.value = i; sel.dispatchEvent(new Event('change')); if (c.group === '단계별') playAll(); };   // 단계별 동작은 누르는 바로 처음부터 재생한다
+  el.ondblclick = () => startRename(i, el);
+  wrap.appendChild(el);
+  if (c.group === '단계별' && !sub) {                                  // 단계별 줄은 잡아서 다른 칸(표정만 / 동작만 / 표정 + 동작)으로 끌어 옮길 수 있다
+    wrap.draggable = true;
+    wrap.ondragstart = (e) => { dragStep = i; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', c.name); wrap.classList.add('dragging'); };
+    wrap.ondragend = () => { dragStep = -1; wrap.classList.remove('dragging'); document.querySelectorAll('#clipList .cat.over').forEach((x) => x.classList.remove('over')); };
+  }
+  if (c.group === '단계별') {                                          // 단계별 동작은 줄마다 이름 바꾸기(✎)·지우기(×)를 둔다
+    const ed = document.createElement('button'); ed.className = 'rb ed'; ed.textContent = '✎'; ed.title = '이름 바꾸기 (더블클릭도 가능)';
+    ed.onclick = () => startRename(i, el);
+    const del = document.createElement('button'); del.className = 'rb ed'; del.textContent = '×'; del.title = '이 동작 지우기 (Ctrl+Z로 되돌릴 수 있어요)';
+    del.onclick = () => deleteClipAt(i);
+    wrap.append(ed, del);
+  }
+  const link = linkFor(c.name), main = link && robot.connected && restrictTo(link, robot.scenes).main;
+  if (main) {
+    const rb = document.createElement('button'); rb.className = 'rb' + (robot.current === main ? ' run' : ''); rb.textContent = '▶';
+    rb.title = `로봇에서 "${main}" 실행`;
+    rb.onclick = () => { if (runOnRobot(main) === 'ok' && i !== S.clip) { sel.value = i; sel.dispatchEvent(new Event('change')); } };
+    wrap.appendChild(rb);
+  }
+  return wrap;
+}
+// 단계별 동작이 표정만 바뀌는지, 몸(기둥·머리·갸웃·몸통)만 움직이는지, 둘 다인지 가른다. 몸은 어느 관절이든 각도가 10° 넘게 달라지면 움직이는 것으로, 표정은 그 안에서 서로 다른 눈이 두 가지 이상 나오면 바뀌는 것으로 본다
+const STEP_KINDS = ['표정만', '동작만', '표정 + 동작'];
+function stepKind(c) {
+  if (c.kind) return c.kind;                                           // 직접 끌어다 옮겨 둔 곳이 있으면 그대로
+  const ids = jointIds(), N = Math.max(4, Math.ceil(c.duration / 0.25));
+  let moves = false;
+  for (const j of ['neck', 'head', 'tilt', 'body']) {
+    let lo = Infinity, hi = -Infinity;
+    for (let n = 0; n <= N; n++) { const v = jointDeg(c, ids[j], JOINT_AXES[j], c.duration * n / N); lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    if (hi - lo > 10) { moves = true; break; }
+  }
+  const face = new Set((c.eyes || []).flatMap((k) => [k.e, k.eL, k.eR]).filter(Boolean)).size > 1;
+  return face && moves ? '표정 + 동작' : face ? '표정만' : moves ? '동작만' : '둘 다 거의 없음';
+}
+let subFolded = new Set(); try { subFolded = new Set(JSON.parse(localStorage.getItem('cove-sub-fold') || '[]')); } catch { /* 무시 */ }   // 접어 둔 시나리오(하위 단계 동작)
+let stepsFolded = false; try { stepsFolded = localStorage.getItem('cove-steps-fold') === '1'; } catch { /* 무시 */ }
 function renderClipList() {
-  const sel = $('#clipSel'), list = $('#clipList');
+  const list = $('#clipList');
   list.innerHTML = '';
-  let lastGroup = null;
+  let lastGroup = null, stepsDone = false;
   S.clips.forEach((c, i) => {
     if (c.hidden) return;                                               // 센서 전용 시나리오는 목록에 보이지 않는다
     const g = c.group || (c.markers?.length ? '시나리오' : '내 클립');
-    if (g !== lastGroup) { lastGroup = g; const h = document.createElement('div'); h.className = 'grp'; h.textContent = g; list.appendChild(h); }
-    const wrap = document.createElement('div'); wrap.className = 'clip-row';
-    const el = document.createElement('button');
-    el.className = 'clip-item' + (i === S.clip ? ' on' : '');
-    const m = c.name.match(/^시나리오(\d+)\s*(.*)$/);                      // "시나리오1 휴식" → 번호 01 + 제목 "휴식"
-    el.innerHTML = '<span class="no"></span><span class="nm"></span><span class="du"></span>';
-    el.children[0].textContent = m ? m[1].padStart(2, '0') : '';
-    el.children[1].textContent = m ? m[2] : c.name;
-    el.children[2].textContent = `${+c.duration.toFixed(1)}초`;
-    el.onclick = () => { sel.value = i; sel.dispatchEvent(new Event('change')); };
-    el.ondblclick = () => startRename(i);
-    wrap.appendChild(el);
-    const link = linkFor(c.name), main = link && robot.connected && restrictTo(link, robot.scenes).main;
-    if (main) {
-      const rb = document.createElement('button'); rb.className = 'rb' + (robot.current === main ? ' run' : ''); rb.textContent = '▶';
-      rb.title = `로봇에서 "${main}" 실행`;
-      rb.onclick = () => { if (runOnRobot(main) === 'ok' && i !== S.clip) { sel.value = i; sel.dispatchEvent(new Event('change')); } };
-      wrap.appendChild(rb);
+    if (g !== lastGroup) {
+      lastGroup = g; const h = document.createElement('div'); h.className = 'grp'; list.appendChild(h);
+      if (g === '단계별') {                                               // 단계별 묶음은 제목을 눌러 접고 펼친다 (상태를 기억한다)
+        h.classList.add('fold'); h.setAttribute('role', 'button'); h.title = '눌러서 접기/펼치기';
+        h.textContent = `${stepsFolded ? '▸' : '▾'} ${g}`;
+        h.onclick = () => { stepsFolded = !stepsFolded; try { localStorage.setItem('cove-steps-fold', stepsFolded ? '1' : '0'); } catch { /* 무시 */ } renderClipList(); };
+      } else h.textContent = g;
     }
-    list.appendChild(wrap);
-    if (i === S.clip && link) list.appendChild(robotBlock(link, i));
-  });
-  if (robot.connected && robot.scenes.length) {
-    const groups = robotOnlyGroups(robot.scenes);
-    if (groups.length) { const h = document.createElement('div'); h.className = 'grp'; h.textContent = '로봇 전용'; list.appendChild(h); }
-    groups.forEach((g) => {
-      const open = rbOpen.has(g.label);
-      const el = document.createElement('button'); el.className = 'clip-item rb-only';
-      el.innerHTML = '<span class="no"></span><span class="nm"></span><span class="du"></span>';
-      el.children[0].textContent = open ? '−' : '+'; el.children[1].textContent = g.label; el.children[2].textContent = `${g.scenes.length}개`;
-      el.onclick = () => { if (open) rbOpen.delete(g.label); else rbOpen.add(g.label); renderClipList(); };
-      list.appendChild(el);
-      if (open) {
-        const box = document.createElement('div'); box.className = 'rb-block';
-        const c = document.createElement('div'); c.className = 'rb-c'; c.append(...g.scenes.map((n) => sceneChip(n))); box.appendChild(c);
+    if (g === '단계별') {
+      if (stepsFolded || stepsDone) return;
+      stepsDone = true;                                                 // 단계별 동작은 한 번에 종류별로 나눠 그린다 (표정만 / 동작만 / 표정+동작)
+      const cats = { '표정만': [], '동작만': [], '표정 + 동작': [], '둘 다 거의 없음': [] };
+      S.clips.forEach((k, j) => { if (k.group === '단계별') (cats[stepKind(k)] ||= []).push([k, j]); });
+      Object.entries(cats).forEach(([label, items]) => {
+        if (!items.length && !STEP_KINDS.includes(label)) return;       // 세 칸은 비어 있어도 보여 줘서 끌어다 놓을 수 있다
+        const box = document.createElement('div'); box.className = 'cat'; box.dataset.kind = label;
+        const sh = document.createElement('div'); sh.className = 'grp sub-grp'; sh.textContent = `${label} · ${items.length}`; box.appendChild(sh);
+        items.forEach(([k, j]) => box.appendChild(clipRowEl(k, j)));
+        if (!items.length) { const em = document.createElement('div'); em.className = 'cat-empty'; em.textContent = '여기로 끌어다 놓아요'; box.appendChild(em); }
+        box.ondragover = (e) => { if (dragStep < 0) return; e.preventDefault(); box.classList.add('over'); };
+        box.ondragleave = (e) => { if (!box.contains(e.relatedTarget)) box.classList.remove('over'); };
+        box.ondrop = (e) => {                                            // 끌어 온 동작을 이 칸으로 옮긴다
+          e.preventDefault(); box.classList.remove('over');
+          const n = dragStep; dragStep = -1;
+          if (n < 0 || !S.clips[n] || stepKind(S.clips[n]) === label) return;
+          S.clips[n].kind = label; snapshot(); renderClipList(); toast(`'${S.clips[n].name}'을(를) '${label}'으로 옮겼어요`);
+        };
         list.appendChild(box);
+      });
+      return;
+    }
+    const rowEl = clipRowEl(c, i); list.appendChild(rowEl);
+    if (g === '시나리오') {                                             // 각 시나리오 아래에 그 단계 동작이 하위항목으로 항상 펼쳐져 있다. 줄의 ▾를 눌러 접을 수 있다
+      const title = scenarioTitle(c), kids = S.clips.map((k, j) => [k, j]).filter(([k]) => k.group === '단계별' && parentOf(k) === title);
+      if (kids.length) {
+        const folded = subFolded.has(title), cb = document.createElement('button'); cb.className = 'rb fold'; cb.textContent = folded ? '▸' : '▾'; cb.title = folded ? '단계 동작 펼치기' : '단계 동작 접기';
+        cb.onclick = () => { if (folded) subFolded.delete(title); else subFolded.add(title); try { localStorage.setItem('cove-sub-fold', JSON.stringify([...subFolded])); } catch { /* 무시 */ } renderClipList(); };
+        rowEl.insertBefore(cb, rowEl.children[1]);
+        if (!folded) kids.forEach(([k, j]) => list.appendChild(clipRowEl(k, j, true)));
       }
-    });
-  }
+    }
+    // 선택한 동작 아래의 로봇 씬 묶음(▶ 웹과 같은 모션 등)은 숨겼다. 되살리려면 if (i === S.clip && linkFor(c.name)) list.appendChild(robotBlock(linkFor(c.name), i));
+  });
+  // '로봇 전용' 묶음(로봇 안의 씬 버튼들)은 없앴다. 시나리오의 단계를 동작으로 쪼갠 '단계별' 묶음은 아래에 그대로 있고, 위 시나리오 밑에도 하위항목으로 보인다
 }
 robot.onChange(() => { if (!document.querySelector('#clipList input.rename')) renderClipList(); const cb = $('#jtRobot'); if (cb) cb.checked = robot.sync; });
 /* ───────────── 로봇용 내보내기 (뷰포트에 보이는 각도 그대로) ───────────── */
@@ -1000,7 +1061,8 @@ let syncEye = '';
 // 재생 중이 아닐 때(멈춤 지점도 아닐 때)도 머리를 쓰다듬으면 신난 눈으로 기뻐하고, 손을 떼고 3초 뒤 원래 눈으로 돌아간다
 let lastTorqueWarn = 0;
 let happyUntil = 0, happyOn = false, prevTouch = false, wiggleTimer = 0, tapTimer = 0, tapBase = null, tapEnd = 0;
-let touchState = 'idle', pendSample = 0, pendAt = 0;   // idle → pending(닿은 걸 처음 봄) → 다음 값으로 톡(떨어짐)/쓰다듬기(계속 닿음)를 가른다
+const STROKE_MS = 5000; let allTouchSince = 0;   // 쓰다듬기로 치는 시간: 세 센서를 전부 이만큼 계속 만져야 한다
+let touchState = 'idle', pendSample = 0, pendAt = 0, tapWaitSample = 0, tapWaitAt = 0, tapWaitMs = 1500;   // idle → pending(닿은 걸 처음 봄) → 떨어졌으면 tapwait(다음 센서가 이어 닿는지 한 번 더 본다) → 톡
 // 몸도 흔든다: 로봇의 지금 자세를 기준으로 머리를 조금 숙이고 몸통을 3초간 좌우로 (웹 동기가 켜져 있어야 한다 = 주변 확인 + 동기 켬). 끝나면 그 자세로 돌아온다
 const WIGGLE_SEC = 3;                                           // 몸 흔드는 시간 (초)
 // 재생 안 할 때 센서 반응들(톡·쓰다듬기·1번·2번 기둥 올리기)이 로봇에 자세를 보내는 길을 하나로 맞춘다.
@@ -1086,10 +1148,71 @@ function armLookStart() {
   }, 100);
 }
 let armDown = 1, armEyesBack = false;
+// 터치센서 두 개를 같이 만지면 그 방향으로 고개를 들어 갸우뚱하고 눈은 위를 본다: 2+3번(오른쪽) → 3번 쪽, 1+2번(왼쪽) → 1번 쪽.
+// 갸웃은 머리를 -26°로 맞춘 뒤 로봇이 허용하는 만큼(85%)이고, 실물 로봇 시험으로 1번 쪽이 −, 3번 쪽이 +다(armLook과 반대). 손이 떨어지면 원래 자세와 뜬 눈으로 돌아온다
+const SIDE_HEAD = -26, SIDE_TILT_FRAC = 0.85, SIDE_HEAD_RATE = 60, SIDE_TILT_RATE = 70;   // 도, 비율, 도/초, 도/초
+let sideActive = false, sideTimer = 0, sideBase = null, sideDirNow = 0, sideT = 0, sideHead = 0, sideTilt = 0;
+function sideTouchDir() {                                             // 1: 1+2번(왼쪽), -1: 2+3번(오른쪽), 0: 그 밖
+  if (!robot.connected) return 0;
+  const e = robot.touchEach; if (!e) return 0;
+  if (e[1] && e[0] && !e[2]) return 1;
+  if (e[1] && e[2] && !e[0]) return -1;
+  return 0;
+}
+function sideLookEnd() {
+  sideActive = false; clearInterval(sideTimer); sideTimer = 0;
+  if (!S.playing && S.heldAt == null) { applyEyes(S.time); robot.eyes('뜬 눈'); }
+}
+function sideLookStart(dir) {
+  sideActive = true; sideDirNow = dir; touchState = 'idle'; sideT = performance.now();
+  toast(dir > 0 ? '터치 1번 → 2번 · 1번 쪽으로 갸우뚱' : '터치 3번 → 2번 · 3번 쪽으로 갸우뚱');
+  eyes?.show('위 보는 눈'); robot.eyes('위 보는 눈');
+  sideBase = robot.sync ? idleBase() : null;
+  if (sideBase) { sideHead = sideBase.head; sideTilt = sideBase.tilt; }
+  clearInterval(sideTimer);
+  const r1 = (v) => Math.round(v * 10) / 10, step = (cur, to, max) => cur + Math.max(-max, Math.min(max, to - cur));
+  sideTimer = setInterval(() => {
+    if (S.playing || S.heldAt != null) { sideLookEnd(); return; }
+    const n = performance.now(), dt = Math.min(0.3, (n - sideT) / 1000); sideT = n;
+    const on = !!robot.touchEach?.[1];                               // 2번에 손이 닿아 있는 동안
+    if (on) eyes?.show('위 보는 눈');
+    if (sideBase && robot.sync) {
+      const headT = on ? Math.min(0, Math.max(sideBase.head, SIDE_HEAD)) : sideBase.head;
+      const [lo, hi] = tiltRange(headT), tiltT = on ? (sideDirNow > 0 ? Math.min(0, lo * SIDE_TILT_FRAC) : Math.max(0, hi * SIDE_TILT_FRAC)) : sideBase.tilt;
+      sideHead = step(sideHead, headT, SIDE_HEAD_RATE * dt); sideTilt = step(sideTilt, tiltT, SIDE_TILT_RATE * dt);
+      driveIdlePose({ neck: r1(sideBase.neck), head: r1(sideHead), tilt: r1(sideTilt), body: r1(sideBase.body) });
+      if (!on && Math.abs(sideHead - sideBase.head) < 0.2 && Math.abs(sideTilt - sideBase.tilt) < 0.2) sideLookEnd();
+    } else if (!on) sideLookEnd();
+  }, 100);
+}
+// 1번·3번을 만진 시각을 기억해 두고, 2번이 새로 닿으면 그 직전(SIDE_GAP_MS 안)에 닿은 쪽 방향으로 한다: 3번 → 2번이면 3번 쪽(−), 1번 → 2번이면 1번 쪽(+).
+// 3번을 떼고 나서 2번을 만져도 된다(같이 닿아 있지 않아도). 갸우뚱은 2번에 손이 닿아 있는 동안 이어간다
+const SIDE_GAP_MS = 5000;
+let sideRise = [0, 0, 0], prevSideEach = [false, false, false], prevSideRecent = [false, false, false];
+function sideLook() {
+  const idle = !S.playing && S.heldAt == null, e = robot.connected ? robot.touchEach : null, rc = robot.connected ? robot.touchRecent : null;
+  if (!e) { prevSideEach = [false, false, false]; prevSideRecent = [false, false, false]; return; }
+  const now = Date.now(), o = robot.touchOrder || [];
+  [0, 1, 2].forEach((i) => { if ((e[i] && !prevSideEach[i]) || (rc && rc[i] && !prevSideRecent[i])) sideRise[i] = now; });   // 새로 닿았음(짧게 쳐서 센서 값에 못 잡힌 것도 최근 값으로)
+  const rose2 = (e[1] && !prevSideEach[1]) || (rc && rc[1] && !prevSideRecent[1] && e[1]);
+  prevSideEach = e.slice(); prevSideRecent = rc ? rc.slice() : e.slice();
+  if (!rose2 || sideActive || !idle || armActive || happyOn || !$('#rpSideLook')?.checked) return;
+  let d = 0;
+  const i2 = o.lastIndexOf(2), o1 = o.lastIndexOf(1), o3 = o.lastIndexOf(3);
+  if (i2 >= 0 && (o1 >= 0 || o3 >= 0) && o1 !== o3) d = o3 > o1 ? (o3 < i2 ? -1 : 0) : (o1 < i2 ? 1 : 0);          // 로봇이 알려 준 닿은 순서가 있으면 그걸로 (3번 → 2번 / 1번 → 2번)
+  if (!d) {                                                         // 없거나 같은 값에 섞여 있으면 웹이 본 시각으로: 2번 직전에 가장 최근에 닿은 쪽
+    const r1 = sideRise[0], r3 = sideRise[2], r2 = sideRise[1];
+    if (r3 && r3 <= r2 && now - r3 < SIDE_GAP_MS && r3 > r1) d = -1;
+    else if (r1 && r1 <= r2 && now - r1 < SIDE_GAP_MS && r1 > r3) d = 1;
+  }
+  if (!d) return;
+  if (tapTimer) { clearInterval(tapTimer); tapTimer = 0; }          // 톡 반응 중이었으면 그만두고 갸우뚱으로
+  sideLookStart(d);
+}
 function armLook() {
   const a = robot.connected && robot.arm, idle = !S.playing && S.heldAt == null;
   if (a) armUntil = Date.now() + ARM_HOLD_MS;
-  if (a && !prevArm && !armActive && idle && !happyOn && !tapTimer && touchState === 'idle' && $('#rpArmLook')?.checked) armLookStart();
+  if (a && !prevArm && !armActive && !sideActive && idle && !happyOn && !tapTimer && touchState === 'idle' && $('#rpArmLook')?.checked) armLookStart();
   prevArm = a;
 }
 // 2번 거리센서(몸통 앞): 앉아 있을 때 손이 새로 다가오면 시나리오 4 인사를 처음부터 재생한다(목록에는 숨겨 둔 센서 전용, 끝에 접지 않고 선 채로 끝). 로봇이 자동 모드면 로봇이 직접 반응하므로 하지 않는다
@@ -1110,7 +1233,7 @@ function standHeadUp() {
 let wasSitting = false;
 function sittingEyes() {
   const d = robot.connected ? robot.deg : null, sitting = d ? d.neck < 15 : (S.time <= 0.05 && !manualActive);
-  const idle = !S.playing && S.heldAt == null && !armActive && !happyOn && !tapTimer && !standEyesUntil && !standHeadAt;
+  const idle = !S.playing && S.heldAt == null && !armActive && !sideActive && !happyOn && !tapTimer && !standEyesUntil && !standHeadAt;
   if (sitting && idle) {
     if (!wasSitting) { wasSitting = true; eyes?.show('감은 눈'); if (robot.connected) robot.eyes('감은 눈'); }
   } else if (!sitting) wasSitting = false;
@@ -1175,11 +1298,23 @@ function startStroke() {
 function idleHappy() {
   const now = Date.now(), t = robot.connected && robot.touch, idle = !S.playing && S.heldAt == null;
   // 로봇의 터치 값은 1초쯤마다 오므로, 처음 닿은 걸 본 뒤 다음 값이 오면: 이미 떨어졌으면 톡, 계속 닿아 있으면 쓰다듬기
-  if (touchState === 'idle' && t && !prevTouch && idle && !armActive && $('#rpHappy')?.checked) { touchState = 'pending'; pendSample = robot.touchSampleAt; pendAt = now; }
+  if (touchState === 'idle' && t && !prevTouch && idle && !armActive && !sideActive && !sideTouchDir() && $('#rpHappy')?.checked) { touchState = 'pending'; pendSample = robot.touchSampleAt; pendAt = now; }
   else if (touchState === 'pending') {
-    if (!idle) touchState = 'idle';
-    else if (robot.touchSampleAt !== pendSample || now - pendAt > 2500) { if (t) startStroke(); else { touchState = 'idle'; tapRaise(); } }
+    if (!idle || sideActive || sideTouchDir()) touchState = 'idle';
+    else if (robot.touchSampleAt !== pendSample || now - pendAt > 2500) {
+      const many = (robot.touchRecent || []).filter(Boolean).length > 1;      // 센서 두 개 이상을 만졌으면 톡이 아니다 (3번→2번 같은 순서 만지기)
+      if (t || many) touchState = 'idle'; else { touchState = 'tapwait'; tapWaitSample = robot.touchSampleAt; tapWaitAt = now; tapWaitMs = (robot.touchRecent?.[0] || robot.touchRecent?.[2]) ? 4500 : 1500; }   // 1번·3번이었으면 이어서 2번을 만질 수 있어 더 기다린다
+    }
   }
+  else if (touchState === 'tapwait') {                                    // 떨어진 뒤 다음 값까지 기다린다: 그사이 또 닿으면(순서 만지기) 톡으로 치지 않는다
+    if (!idle || sideActive || t) touchState = 'idle';
+    else if (now - tapWaitAt >= tapWaitMs && robot.touchSampleAt !== tapWaitSample) { touchState = 'idle'; tapRaise(); }
+  }
+  // 쓰다듬기(기뻐하기)는 터치센서 1·2·3번을 전부 5초 넘게 계속 만졌을 때만 한다
+  const all = !!(t && robot.touchEach?.every(Boolean));
+  if (!all) allTouchSince = 0;
+  else if (!allTouchSince) allTouchSince = now;
+  else if (now - allTouchSince >= STROKE_MS && !happyOn && idle && !armActive && !sideActive && touchState !== 'stroking' && $('#rpHappy')?.checked) startStroke();
   if (happyOn) {
     if (t) happyUntil = now + 3000;
     if (!idle || (!t && now > happyUntil)) {
@@ -1217,6 +1352,7 @@ setInterval(() => {
   updateSensorBar();
   idleHappy();
   armLook();
+  sideLook();
   frontApproach();
   standHeadUp();
   standEyesOn(false);
@@ -1314,7 +1450,10 @@ function updateSceneTag() {
     const all = document.createElement('button'); all.className = 'chip all'; all.textContent = '▶ 전체'; all.onclick = playAll; box.appendChild(all);
     marks.forEach((m, k) => {
       const b = document.createElement('button'); b.className = byName ? 'chip' : 'chip num'; b.textContent = byName ? m.label : String(k + 1);
-      b.onclick = () => { playScene(k); if (byName && robot.connected) robot.eyes(m.label, true); };   // 표정 버튼은 연결된 로봇의 눈도 바로 바꾼다
+      b.onclick = () => {
+        if (byName && $('#sitKeep')?.checked) { eyes?.show(m.label); if (robot.connected) robot.eyes(m.label, true); toast(`${m.label} · 앉은 채로 눈만 바뀌어요`); return; }   // 앉아 있을 땐 몸은 움직이지 않고 눈만 바꾼다
+        playScene(k); if (byName && robot.connected) robot.eyes(m.label, true);
+      };   // 표정 버튼은 연결된 로봇의 눈도 바로 바꾼다
       box.appendChild(b);
     });
   }
@@ -1876,13 +2015,14 @@ $('#btnRest').onclick = resetPose;
 // 앉기: 재생·멈춤·센서 반응을 멈추고 처음(접힌) 자세로. 연결돼 있고 주변 확인이 되어 있으면 로봇도 home 씬으로 앉는다.
 // 사람이 아직 다가와 있는 동안 기둥 올리기가 다시 일으키지 않도록, 그 사람이 떠날 때까지 기둥 올리기를 쉰다
 function resetIdleReactions() {                                    // 진행 중이던 센서 반응(톡·쓰다듬기·1번·일어난 뒤 눈·기둥)을 모두 멈춘다
-  [wiggleTimer, tapTimer, armTimer].forEach((t) => clearInterval(t)); tapTimer = 0; armTimer = 0; armActive = false; happyOn = false; touchState = 'idle'; standEyesUntil = 0; standHeadAt = 0; followBase = null;
+  [wiggleTimer, tapTimer, armTimer, sideTimer].forEach((t) => clearInterval(t)); tapTimer = 0; armTimer = 0; sideTimer = 0; armActive = false; sideActive = false; happyOn = false; touchState = 'idle'; standEyesUntil = 0; standHeadAt = 0; followBase = null;
 }
 $('#sitDown').onclick = () => {
   if (S.playing) stopPlay();
   S.sceneLoop = false; S.heldAt = null; S.released = new Set(); refreshHoldUI();
   setTime(0); updateSceneTag();
   followBase = null; sitLock = true;
+  if ($('#sitKeep')) $('#sitKeep').checked = true;                                                    // 앉은 뒤에는 표정 버튼이 몸을 움직여 일으키지 않게 한다
   resetIdleReactions();                                                                               // 진행 중이던 반응은 모두 멈춘다 (로봇에 자세를 계속 보내 home 씬을 방해하지 않게)
   wasSitting = true; eyes?.show('감은 눈'); if (robot.connected) robot.eyes('감은 눈');                  // 앉으면서 눈을 감는다
   setTimeout(() => {                                                                                  // home 씬(3초)이 끝난 뒤 완전히 접힌 자세(0°)로 한 번 더 맞춘다
@@ -1916,11 +2056,12 @@ $('#clipSel').onchange = (e) => {
 $('#clipNew').onclick = () => { const nc = newClipData(`새 클립 ${S.clips.filter((x) => x.group === '내 클립').length + 1}`); nc.group = '내 클립'; S.clips.push(nc); S.clip = S.clips.length - 1; S.selKeys.clear(); S.time = 0; applyPose(0); refreshClipUI(); snapshot(); };
 $('#clipDup').onclick = () => { const c = JSON.parse(JSON.stringify(curClip())); c.name += ' 복사'; c.group = '내 클립'; S.clips.push(c); S.clip = S.clips.length - 1; S.selKeys.clear(); refreshClipUI(); snapshot(); };
 // 이름 바꾸기: 브라우저 prompt 대신 목록 줄 안에서 바로 입력한다 (Enter 확정 · Esc 취소)
-function startRename(i) {
-  const row = [...document.querySelectorAll('#clipList .clip-item')][i]; if (!row) return;
-  const nmEl = row.querySelector('.nm'), input = document.createElement('input');
+function startRename(i, rowEl) {
+  const row = rowEl || document.querySelector(`#clipList .clip-item[data-i="${i}"]`); if (!row) return;   // 숨긴 클립이 있어서 목록 순서와 클립 번호가 다를 수 있다
+  const input = document.createElement('input');
   input.type = 'text'; input.value = S.clips[i].name; input.className = 'rename';
-  nmEl.replaceWith(input); input.focus(); input.select();
+  row.style.display = 'none'; row.parentElement.insertBefore(input, row);   // 버튼 안에 입력칸을 두면 띄어쓰기(스페이스)가 버튼 동작으로 먹혀서, 버튼 옆에 따로 둔다
+  input.focus(); input.select();
   let done = false;
   const finish = (ok) => {
     if (done) return; done = true;
@@ -1933,12 +2074,14 @@ function startRename(i) {
   input.onclick = (e) => e.stopPropagation();
 }
 $('#clipRen').onclick = () => startRename(S.clip);
-$('#clipDel').onclick = () => {
+function deleteClipAt(i) {
   if (S.clips.length < 2) return toast('마지막 클립은 삭제할 수 없어요');
-  const name = curClip().name;                    // 확인 창 대신 바로 지우고, Ctrl+Z로 되돌릴 수 있게 한다
-  S.clips.splice(S.clip, 1); S.clip = Math.max(0, S.clip - 1); S.selKeys.clear(); applyPose(S.time); refreshClipUI(); snapshot();
+  const name = S.clips[i].name;                   // 확인 창 대신 바로 지우고, Ctrl+Z로 되돌릴 수 있게 한다
+  if (S.playing) stopPlay();
+  S.clips.splice(i, 1); S.clip = i < S.clip ? S.clip - 1 : Math.min(S.clip, S.clips.length - 1); S.selKeys.clear(); S.time = 0; applyPose(0); refreshClipUI(); snapshot();
   toast(`'${name}' 삭제했어요 · Ctrl+Z로 되돌릴 수 있어요`);
-};
+}
+$('#clipDel').onclick = () => deleteClipAt(S.clip);
 $('#clipDur').onchange = (e) => { curClip().duration = Math.max(0.1, +e.target.value || 1); setTime(S.time); snapshot(); };
 $('#clipFps').onchange = (e) => { curClip().fps = +e.target.value; setTime(S.time); snapshot(); };
 $('#presetAdd').onchange = (e) => {

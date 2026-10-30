@@ -126,6 +126,7 @@
       </div>
       <div class="sub-title">로봇 자세</div>
       <div class="row pose3" id="headBar"><button id="sitDown" title="재생을 멈추고 로봇을 앉은(접힌) 자세로 되돌려요. 로봇 연결과 주변 확인이 있으면 로봇도 앉아요">앉기</button><button id="headUp" title="머리를 위로 들어 올려요 (얼굴이 위, -30°)">머리 들기</button><button id="headDown" title="지금 머리 각도의 절반만큼 숙여요">머리 숙이기</button></div>
+      <label class="check" title="켜 두면 표정 모음의 표정 버튼이 눈만 바꾸고 몸은 움직이지 않아요. 앉기를 누르면 자동으로 켜져요"><input type="checkbox" id="sitKeep"> 앉아 있을 땐 표정만 바꾸기 (일어나지 않음)</label>
       <div class="row"><button id="headTorqueOff" class="torque-off" title="모든 모터의 토크를 꺼서 손으로 돌릴 수 있게 해요. 머리가 처질 수 있어서 두 번 눌러야 해요 (로봇 연결 필요)">모터 토크 끄기</button></div>
       <div id="keyProps" hidden>
         <h3>선택한 키 <span id="keyCount"></span></h3>
@@ -285,7 +286,8 @@
       <label class="check rp-ok" title="휴식에서 머리를 숙이기 전에 멈춰 있는 동안 1번 거리센서(머리, 턱 아래를 보는 VL53L0X)에 손이 들어오면 숙이기를 자동으로 넘겨요"><input type="checkbox" id="rpArm" checked> 1번 거리센서(머리)로 "숙이기" 넘기기 <span id="rpArmState" class="dim"></span></label>
       <label class="check rp-ok" title="재생 중이 아닐 때 2번 거리센서(몸통 앞, VL53L5CX 4×4)의 구역 중 하나가 평소보다 30% 넘게 가까워지면서 센서 값이 120mm 이하(손 약 10cm 안)로 들어오면 앉아 있던 로봇이 일어나 인사해요(인사 시나리오를 재생하고 끝에 접지 않고 선 채로 끝나요). 서 있을 때는 이 센서를 보지 않아요. 로봇 자동 모드가 켜져 있으면 로봇이 직접 반응하니 건너뛰어요"><input type="checkbox" id="rpFront" checked> 2번 거리센서(몸통)로 손이 다가오면 일어나 인사하기 <span id="rpFrontState" class="dim"></span></label>
       <label class="check rp-ok" title="재생 중이 아닐 때 1번 거리센서(머리)에 손이 닿으면 고개를 갸우뚱(머리를 -26°까지 숙이고 로봇이 허용하는 만큼 왼쪽으로 갸웃) 하고 표정은 편안한 눈으로 바뀌어요. 손이 떨어지면 바로 고개를 세우고 눈도 돌아와요. 고개는 로봇 동기가 켜져 있을 때만 움직여요"><input type="checkbox" id="rpArmLook" checked> 1번 거리센서를 만지면 고개 갸우뚱 · 편안한 눈</label>
-      <label class="check rp-ok" title="동작을 재생하고 있지 않을 때: 머리를 톡 치면(금방 떨어지면) 고개를 올렸다 내리고, 계속 쓰다듬으면 신난 눈으로 기뻐해요(손을 떼고 3초 뒤 원래 눈으로). 로봇 동기가 켜져 있으면 쓰다듬을 때 머리를 숙이고 몸통을 3초간 좌우로 흔들어요"><input type="checkbox" id="rpHappy" checked> 재생 안 할 때 머리 반응 (톡톡 = 고개 올리기, 쓰다듬기 = 기뻐하기)</label>
+      <label class="check rp-ok" title="재생 중이 아닐 때 터치센서 3번을 먼저 만지고 이어서 2번을 만지면 3번(오른쪽) 쪽으로, 1번을 먼저 만지고 이어서 2번을 만지면 1번(왼쪽) 쪽으로 고개를 들어 갸우뚱하고 눈은 위를 봐요. 손을 떼면 원래 자세와 뜬 눈으로 돌아와요. 고개는 로봇 동기가 켜져 있을 때만 움직여요"><input type="checkbox" id="rpSideLook" checked> 터치 3번→2번 / 1번→2번 순서로 만지면 그쪽으로 고개 갸우뚱 · 위 보는 눈</label>
+      <label class="check rp-ok" title="동작을 재생하고 있지 않을 때: 머리를 톡 치면(금방 떨어지면) 고개를 올렸다 내리고, 터치센서 1·2·3번을 전부 5초 넘게 계속 만지면 신난 눈으로 기뻐해요(손을 떼고 3초 뒤 원래 눈으로). 로봇 동기가 켜져 있으면 쓰다듬을 때 머리를 숙이고 몸통을 3초간 좌우로 흔들어요"><input type="checkbox" id="rpHappy" checked> 재생 안 할 때 머리 반응 (톡톡 = 고개 올리기, 1·2·3번 전부 5초 = 기뻐하기)</label>
       <label class="rp-row" title="로봇은 명령을 받고 실제로 움직이기까지 약 1초 늦어요(실측). 동기 중에는 그만큼 앞선 자세를 보내서 뷰포트와 로봇이 같은 때에 같은 자세가 되게 해요."><span>동기 앞서기(초)</span><input type="number" id="rpLead" min="0" max="2" step="0.1" value="0.9"></label>
     </section>
     <section>
