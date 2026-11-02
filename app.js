@@ -1900,7 +1900,7 @@ tlc.addEventListener('wheel', (e) => {
   e.preventDefault();
   if (e.ctrlKey || e.metaKey) {
     const rect = tlc.getBoundingClientRect(), x = e.clientX - rect.left, t = x2t(x);
-    TL.fit = false; TL.pps = Math.max(2, Math.min(600, TL.pps * Math.exp(-e.deltaY * 0.01)));
+    setFit(false); TL.pps = Math.max(2, Math.min(600, TL.pps * Math.exp(-e.deltaY * 0.01)));
     TL.sx = Math.max(0, t * TL.pps - (x - TL.LW - PAD));
     $('#zoom').value = TL.pps;
   } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
@@ -1911,8 +1911,14 @@ tlc.addEventListener('wheel', (e) => {
   }
   drawTL();
 }, { passive: false });
-$('#zoom').addEventListener('input', (e) => { TL.fit = false; TL.pps = +e.target.value; drawTL(); });
-$('#zoomFit').onclick = () => { TL.fit = true; drawTL(); };
+// '전체 보기': 켜져 있는 동안 버튼이 강조 색이다. 이미 켜져 있을 때 누르면 그렇다고 알려 준다 (아무 반응이 없어 보이지 않게)
+function setFit(on) { TL.fit = on; $('#zoomFit').classList.toggle('on', on); }
+setFit(TL.fit);
+$('#zoom').addEventListener('input', (e) => { setFit(false); TL.pps = +e.target.value; drawTL(); });
+$('#zoomFit').onclick = () => {
+  if (TL.fit) return toast('이미 모든 단계가 한 화면에 보여요 (확대했다가 누르면 다시 맞춰요)');
+  setFit(true); drawTL(); toast('모든 단계를 한 화면에 맞췄어요');
+};
 
 /* ───────────── 뷰포트 선택 ───────────── */
 const ray = new THREE.Raycaster();

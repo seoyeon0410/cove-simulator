@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300..700&family=Noto+Sans+KR:wght@300..700&display=swap">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20261102c">
 <script type="importmap">
 { "imports": {
   "three": "./lib/three/build/three.module.js",
@@ -240,7 +240,7 @@
     <span id="timeLabel" >0 / 0.00s</span>
     <label class="check"><input type="checkbox" id="loop"> 반복</label>
     <span class="spacer"></span>
-    <button id="zoomFit" title="모든 단계가 옆으로 넘어가지 않고 한 화면에 보이게 맞춰요">전체 보기</button>
+    <button id="zoomFit" title="모든 단계가 옆으로 넘어가지 않고 한 화면에 보이게 맞춰요 (켜져 있으면 금색)">전체 보기</button>
     <label class="zoom-wrap" title="타임라인 확대 · 축소 (직접 확대하면 '전체 보기'로 되돌려요)"><span class="dim">확대</span><input type="range" id="zoom" min="2" max="600" step="any" value="120"></label>
     <button id="tlFold" title="타임라인을 완전히 접어요 / 다시 펼쳐요">▾ 접기</button>
   </div>
@@ -325,6 +325,6 @@
   </div>
 </aside>
 <script src="lib/mqtt.min.js"></script>
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=20261102c"></script><!-- ?v= : 고칠 때마다 바꿔서, 다른 사람 브라우저가 예전 파일을 섞어 쓰지 않게 한다 -->
 </body>
 </html>
