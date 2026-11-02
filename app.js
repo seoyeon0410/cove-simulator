@@ -1511,7 +1511,7 @@ setInterval(() => {
 // 동작 곡선에 로봇 가속 한계(약 215°/s²)를 크게 넘는 곳이 있으면(간식주기 머리 약 790°/s² 등) 로봇이 못 따라가다 한꺼번에 따라잡느라 덜컥거린다(삐그덕).
 // 또 로봇은 받은 자세 사이 거리로 속도를 정하므로, 보내는 간격이 조금만 흔들려도 속도가 들쑥날쑥해진다 → 늘 같은 간격(POSE_MS)으로 계산해서 보낸다.
 // 다듬기는 '넘치지 않는' 2차 저역 통과(임계 감쇠)라서 원래 동작보다 크게 휘청이지 않는다. 대신 약 SF_LAG초 늦어지므로 그만큼 앞선 자세를 목표로 한다
-const SF = { cur: null, vel: null, last: 0 }, SF_DT = POSE_MS / 1000, SF_WN = 12, SF_SUB = 6, SF_LAG = 2 / SF_WN;   // SF_WN: 클수록 덜 다듬는다(원래 동작에 가깝다). 9는 1.3초 박자 끄덕임이 22%, 16은 삐그덕이 남아서 12(약 14% 줄어듦)
+const SF = { cur: null, vel: null, last: 0, sent: null }, SF_DT = POSE_MS / 1000, SF_WN = 12, SF_SUB = 6, SF_LAG = 2 / SF_WN;   // SF_WN: 클수록 덜 다듬는다(원래 동작에 가깝다). 9는 1.3초 박자 끄덕임이 22%, 16은 삐그덕이 남아서 12(약 14% 줄어듦)
 function syncPoseAt(t) {                                         // 시각 t 의 자세(로봇 한계 적용)를 다듬어서 로봇에 보낸다
   if (!jointCache || jointCache.model !== S.model) jointCache = { model: S.model, ids: jointIds() };
   const clip = curClip(), ids = jointCache.ids, f = { t }, tiltSign = +($('#rpTiltSign')?.value || 1);
@@ -1526,14 +1526,18 @@ function syncPoseAt(t) {                                         // 시각 t 의
     if (Math.abs(tg[j] - SF.cur[j]) < 0.05 && Math.abs(SF.vel[j]) < 0.5) { SF.cur[j] = tg[j]; SF.vel[j] = 0; }
   }
   const l = limitFrames([{ t, ...SF.cur }], { tiltSign })[0];    // 갸웃 범위는 머리 각도에 따라 달라서 다듬은 뒤 한 번 더 맞춘다
-  robot.pose({ neck: r1(l.neck), head: r1(l.head), tilt: r1(l.tilt), body: r1(l.body) });
+  const out = { neck: r1(l.neck), head: r1(l.head), tilt: r1(l.tilt), body: r1(l.body) };
+  // 가만히 있을 때(거의 같은 자세) 센서·한계 계산이 만드는 ±0.1° 흔들림까지 로봇에 보내면 모터가 새 목표를 받을 때마다 떨어서, 0.15° 이하 차이는 마지막으로 보낸 값을 다시 보낸다
+  if (SF.sent) for (const j of ['neck', 'head', 'tilt', 'body']) if (Math.abs(out[j] - SF.sent[j]) < 0.15) out[j] = SF.sent[j];
+  SF.sent = out;
+  robot.pose(out);
 }
 setInterval(() => {
   if (!robot.sync) { syncEye = ''; return; }
   if (!S.model) return;
   if (!S.playing) {                                              // 재생 중이 아니어도, 관절 조작 슬라이더를 움직였다면 그 자세를 계속 보낸다
     if (S.heldAt != null) { syncPoseAt(S.heldAt); return; }           // 멈춤 지점에서 기다리는 동안은 그 자세를 계속 보내 로봇이 힘을 유지하게 한다
-    SF.cur = null;                                                    // 재생이 끝났으면 다음 재생은 그 첫 자세부터 다시 다듬는다
+    SF.cur = null; SF.sent = null;                                    // 재생이 끝났으면 다음 재생은 그 첫 자세부터 다시 다듬는다
     if (manualActive) { const r1 = (v) => Math.round(v * 10) / 10; robot.pose({ neck: r1(jtVal.neck), head: r1(jtVal.head), tilt: r1(jtVal.tilt), body: r1(jtVal.body) }); }
     return;
   }

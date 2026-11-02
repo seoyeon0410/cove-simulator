@@ -60,6 +60,8 @@ POS_GAIN = {2: {"P": 800, "I": 0, "D": 0}, 3: {"P": 800, "I": 0, "D": 0}, 4: {"P
 SOFT_GAIN = {"P": 800, "I": 0, "D": 4700}    # 물기(전류 기반) 게인 — 전류 기반은 D 를 낮추면 스프링처럼 진동 (10-05 확인)
 SHOW_PWM = {2: 400, 3: 400}        # 평소 모드 출력 상한(Goal PWM, 최대 885) = 손이 끼었을 때 힘 제한. 400 까지는 움직임 차이 없음, 250 이면 고개가 못 따라감 (10-23)
 START_VEL, MAX_VEL, ACC = 30, 150, 10        # 시작 복귀 속도 / 씬 속도 상한 / 가속
+POSE_DEADBAND = 3                  # 웹 pose 가 지금 목표와 이 틱(관절 약 0.26°, 몸통 약 0.1°) 이하로만 다르면 무시. 가만히 있을 때 값이 ±1틱씩 흔들려 들어와도 모터가 새 목표·속도를 받아 떠는(헌팅) 것을 막는다.
+                                   # 비교는 '마지막으로 받아들인 목표' 기준이라 천천히 움직이는 동작은 이 폭을 넘는 순간 그대로 따라간다. 0 으로 두면 예전과 같음 (2026-11-02, 시험 전)
 POSE_ACC = 30                      # 웹 실시간 조그(pose) 중에만 쓰는 모터 가속(Profile Acceleration). 씬·기록 동작은 위 ACC(10) 그대로.
                                    # pose 는 0.14~0.15초마다 새 목표가 오는데 가속이 낮으면(10) 매번 천천히 출발했다가 다음 목표에서 다시 출발해 '삐걱'거림 → 높여서 빨리 속도에 도달.
                                    # 너무 높으면(100~) 급가속으로 오히려 덜컥거림. 이상하면 POSE_ACC = ACC 로 바꾸면 예전과 똑같음 (2026-11-02, 시험 전 — 로봇에서 확인 필요)
@@ -1117,7 +1119,11 @@ class Robot(BaseRobot):
                 self.log(f"웹 실시간 조그 시작 (pose, 가속 {POSE_ACC})")
             self.pose_t = time.time()
             self.state = "ready"
-            self.mot.goto(web_pose_targets(cmd.get("deg", {})), duration=POSE_DT)
+            tg = web_pose_targets(cmd.get("deg", {}))
+            if POSE_DEADBAND:
+                tg = {i: v for i, v in tg.items() if abs(v - self.mot.goal.get(i, v + POSE_DEADBAND + 1)) > POSE_DEADBAND}
+            if tg:
+                self.mot.goto(tg, duration=POSE_DT)
         elif c == "current":                     # {"cmd":"current","id":3,"value":80}
             if self.mot and self.mot.set_current(int(cmd.get("id", 0)), int(cmd.get("value", 0))):
                 self.log(f"ID{cmd.get('id')} 목표 전류 {cmd.get('value')}")
