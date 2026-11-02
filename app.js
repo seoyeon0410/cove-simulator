@@ -2571,6 +2571,25 @@ requestAnimationFrame(frame);
 addEventListener('beforeunload', () => { try { if (S.glb) snapshot(true); } catch { /* */ } });
 window.__cove = { S, exportGLB, getEyes: () => eyes, camera, orbit, THREE, renderer, scene, setTime, sampleJoints, buildRobotExport, buildPresetByName: (n) => { const d = PRESET_GROUPS[0].items.find((i) => i.name === n); return d ? buildPresetClip(d) : null; }, snapshot };
 
+/* 헤더 메모장(#memo): 제어하는 사람이 쓰는 메모. 쓰는 대로 이 브라우저에 저장된다(다른 컴퓨터와는 공유되지 않는다) */
+(() => {
+  const ta = $('#memo'), st = $('#memoState'), KEY = 'cove-memo'; if (!ta) return;
+  const hhmm = () => new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  try { ta.value = localStorage.getItem(KEY) || ''; } catch { /* 무시 */ }
+  let tmr = 0;
+  const save = () => { try { localStorage.setItem(KEY, ta.value); st.textContent = `저장됨 ${hhmm()}`; } catch { st.textContent = '저장 안 됨 (브라우저가 막고 있어요)'; } };
+  ta.addEventListener('input', () => { st.textContent = '저장 중…'; clearTimeout(tmr); tmr = setTimeout(save, 400); });
+  ta.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') ta.blur(); });   // 메모에 쓰는 글자가 재생(스페이스)·단계 넘기기 같은 단축키로 먹히지 않게
+  ta.addEventListener('blur', () => { clearTimeout(tmr); save(); ta.scrollTop = 0; });
+  ta.addEventListener('focus', () => { st.textContent = ta.value ? '자동 저장돼요 · Esc로 접기' : '쓰는 대로 자동 저장돼요 · Esc로 접기'; });
+  document.querySelectorAll('.memo-bar button').forEach((b) => b.addEventListener('mousedown', (e) => e.preventDefault()));   // 버튼을 눌러도 메모가 접히지 않게
+  $('#memoTime').onclick = () => {                                     // 커서 자리에 [14:32] 를 넣는다. 줄 중간이면 새 줄에서 시작한다
+    const p = ta.selectionStart, before = ta.value.slice(0, p), stamp = (before && !before.endsWith('\n') ? '\n' : '') + `[${hhmm()}] `;
+    ta.setRangeText(stamp, p, ta.selectionEnd, 'end'); ta.dispatchEvent(new Event('input'));
+  };
+  $('#memoClear').onclick = () => { if (ta.value && confirm('메모를 모두 지울까요?')) { ta.value = ''; save(); } ta.focus(); };
+})();
+
 /* 센서 창(#sensorBar): 빈 곳을 끌어서 옮기고, 오른쪽 아래 손잡이를 끌어서 크기를 바꾼다 (더블클릭하면 처음 크기·위치). 기억한다 */
 (() => {
   const box = $('#sensorBar'), wrap = $('#viewWrap'); if (!box || !wrap) return;

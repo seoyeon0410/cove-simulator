@@ -663,6 +663,18 @@ footer{container-type:inline-size}
 @container (max-width:500px){#tPrev,#tNext{display:none}}
 @container (max-width:560px){.zoom-wrap{display:none}}
 #zoomFit{flex:none;padding:5px 10px;font-size:12px}
+/* 헤더 메모장: 평소에는 한 줄, 누르면 아래로 펼쳐져 크게 쓸 수 있다 */
+#memoBox{position:relative;flex:1 1 280px;min-width:120px;max-width:520px;height:32px;margin:0 6px 0 14px}
+#memo{position:absolute;top:0;left:0;right:0;height:32px;margin:0;padding:6px 10px;resize:none;overflow:hidden;border:0;border-radius:6px;
+  background:#1b1a17;color:var(--text);box-shadow:inset 0 0 0 1px #3a3630;font:400 13px/1.5 var(--font);white-space:nowrap;text-overflow:ellipsis;z-index:1}
+#memo::placeholder{color:#8a8477}
+#memo:hover{box-shadow:inset 0 0 0 1px #5a564c}
+.memo-bar{display:none}
+#memoBox:focus-within #memo{height:260px;overflow:auto;white-space:pre-wrap;z-index:61;border-radius:6px 6px 0 0;box-shadow:inset 0 0 0 1px var(--accent),0 12px 32px rgba(0,0,0,.55)}
+#memoBox:focus-within .memo-bar{display:flex;align-items:center;gap:8px;position:absolute;top:260px;left:0;right:0;z-index:61;padding:6px 8px;background:#1b1a17;border-radius:0 0 6px 6px;box-shadow:inset 0 0 0 1px var(--accent),0 12px 32px rgba(0,0,0,.55)}
+.memo-bar button{padding:4px 10px;font-size:12px}
+.memo-bar #memoState{flex:1;font-size:12px}
+.memo-bar #memoClear{color:#e7b4a6}
 @container (max-width:340px){#zoomFit{display:none}}
 /* 표정 모음 아래 표정 줄: 번호 · 이름 · 눈 그림 · 기분. 지금 보이는 표정은 이름이 금색, 그 표정만 재생 중이면 줄 전체가 강조 */
 .clip-item.expr .du{font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
