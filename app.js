@@ -981,7 +981,7 @@ function stepKind(c) {
   return face && moves ? '표정 + 동작' : face ? '표정만' : moves ? '동작만' : '둘 다 거의 없음';
 }
 let subFolded = new Set(); try { subFolded = new Set(JSON.parse(localStorage.getItem('cove-sub-fold') || '[]')); } catch { /* 무시 */ }   // 접어 둔 시나리오(하위 단계 동작)
-let stepsFolded = false; try { stepsFolded = localStorage.getItem('cove-steps-fold') === '1'; } catch { /* 무시 */ }
+let stepsFolded = false, exprFolded = false; try { stepsFolded = localStorage.getItem('cove-steps-fold') === '1'; exprFolded = localStorage.getItem('cove-expr-fold') === '1'; } catch { /* 무시 */ }
 function renderClipList() {
   const list = $('#clipList');
   list.innerHTML = '';
@@ -989,37 +989,39 @@ function renderClipList() {
   S.clips.forEach((c, i) => {
     if (c.hidden) return;                                               // 센서 전용 시나리오는 목록에 보이지 않는다
     const g = c.group || (c.markers?.length ? '시나리오' : '내 클립');
-    if (g !== lastGroup) {
-      lastGroup = g; const h = document.createElement('div'); h.className = 'grp'; list.appendChild(h);
-      if (g === '단계별') {                                               // 단계별 묶음은 제목을 눌러 접고 펼친다 (상태를 기억한다)
-        h.classList.add('fold'); h.setAttribute('role', 'button'); h.title = '눌러서 접기/펼치기';
-        h.textContent = `${stepsFolded ? '▸' : '▾'} ${g}`;
-        h.onclick = () => { stepsFolded = !stepsFolded; try { localStorage.setItem('cove-steps-fold', stepsFolded ? '1' : '0'); } catch { /* 무시 */ } renderClipList(); };
-      } else h.textContent = g;
-    }
-    if (g === '단계별') {
-      if (stepsFolded || stepsDone) return;
-      stepsDone = true;                                                 // 단계별 동작은 한 번에 종류별로 나눠 그린다 (표정만 / 동작만 / 표정+동작)
-      const cats = { '표정만': [], '동작만': [], '표정 + 동작': [], '둘 다 거의 없음': [] };
-      S.clips.forEach((k, j) => { if (k.group === '단계별') (cats[stepKind(k)] ||= []).push([k, j]); });
-      Object.entries(cats).forEach(([label, items]) => {
-        if (!items.length && !STEP_KINDS.includes(label)) return;       // 세 칸은 비어 있어도 보여 줘서 끌어다 놓을 수 있다
-        const box = document.createElement('div'); box.className = 'cat'; box.dataset.kind = label;
-        const sh = document.createElement('div'); sh.className = 'grp sub-grp'; sh.textContent = `${label} · ${items.length}`; box.appendChild(sh);
-        items.forEach(([k, j]) => box.appendChild(clipRowEl(k, j)));
-        if (!items.length) { const em = document.createElement('div'); em.className = 'cat-empty'; em.textContent = '여기로 끌어다 놓아요'; box.appendChild(em); }
+    if (g === '단계별') {                                               // 단계별 동작은 한 번에 두 묶음으로 나눠 그린다: 단계별(몸이 움직이는 것) / 표정만(눈만 바뀌는 것). 각각 제목을 눌러 접고 펼친다(상태를 기억한다)
+      if (stepsDone) return;
+      stepsDone = true; lastGroup = g;
+      const all = S.clips.map((k, j) => [k, j]).filter(([k]) => k.group === '단계별');
+      const sections = [
+        { label: '단계별', kind: '표정 + 동작', items: all.filter(([k]) => stepKind(k) !== '표정만'), folded: stepsFolded, key: 'cove-steps-fold', set: (v) => { stepsFolded = v; } },
+        { label: '표정만', kind: '표정만', items: all.filter(([k]) => stepKind(k) === '표정만'), folded: exprFolded, key: 'cove-expr-fold', set: (v) => { exprFolded = v; } },
+      ];
+      sections.forEach((sec) => {
+        const box = document.createElement('div'); box.className = 'cat'; box.dataset.kind = sec.kind;
+        const h = document.createElement('div'); h.className = 'grp fold'; h.setAttribute('role', 'button'); h.title = '눌러서 접기/펼치기';
+        h.textContent = `${sec.folded ? '▸' : '▾'} ${sec.label} · ${sec.items.length}`;
+        h.onclick = () => { sec.set(!sec.folded); try { localStorage.setItem(sec.key, !sec.folded ? '1' : '0'); } catch { /* 무시 */ } renderClipList(); };
+        box.appendChild(h);
+        if (!sec.folded) {
+          sec.items.forEach(([k, j]) => box.appendChild(clipRowEl(k, j)));
+          if (!sec.items.length) { const em = document.createElement('div'); em.className = 'cat-empty'; em.textContent = '여기로 끌어다 놓아요'; box.appendChild(em); }
+        }
         box.ondragover = (e) => { if (dragStep < 0) return; e.preventDefault(); box.classList.add('over'); };
         box.ondragleave = (e) => { if (!box.contains(e.relatedTarget)) box.classList.remove('over'); };
-        box.ondrop = (e) => {                                            // 끌어 온 동작을 이 칸으로 옮긴다
+        box.ondrop = (e) => {                                            // 끌어 온 동작을 이 묶음으로 옮긴다 (단계별 ↔ 표정만)
           e.preventDefault(); box.classList.remove('over');
           const n = dragStep; dragStep = -1;
-          if (n < 0 || !S.clips[n] || stepKind(S.clips[n]) === label) return;
-          S.clips[n].kind = label; snapshot(); renderClipList(); toast(`'${S.clips[n].name}'을(를) '${label}'으로 옮겼어요`);
+          if (n < 0 || !S.clips[n]) return;
+          const isExpr = stepKind(S.clips[n]) === '표정만';
+          if (isExpr === (sec.kind === '표정만')) return;               // 이미 이 묶음에 있다
+          S.clips[n].kind = sec.kind; snapshot(); renderClipList(); toast(`'${S.clips[n].name}'을(를) '${sec.label}'으로 옮겼어요`);
         };
         list.appendChild(box);
       });
       return;
     }
+    if (g !== lastGroup) { lastGroup = g; const h = document.createElement('div'); h.className = 'grp'; h.textContent = g; list.appendChild(h); }
     const rowEl = clipRowEl(c, i); list.appendChild(rowEl);
     if (g === '시나리오') {                                             // 각 시나리오 아래에 그 단계 동작이 하위항목으로 항상 펼쳐져 있다. 줄의 ▾를 눌러 접을 수 있다
       const title = scenarioTitle(c), kids = S.clips.map((k, j) => [k, j]).filter(([k]) => k.group === '단계별' && parentOf(k) === title);
