@@ -17,7 +17,13 @@ if lsof -nP -iTCP:$PORT -sTCP:LISTEN >/dev/null 2>&1; then
   exit 0
 fi
 
+IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)
+
 echo "코브 애니메이터를 켜는 중... (이 창을 닫으면 꺼져요)"
 echo "주소: $URL"
+if [ -n "$IP" ]; then
+  echo "같은 와이파이의 다른 사람에게 보낼 주소: http://$IP:$PORT/"
+  echo "(\"들어오는 네트워크 연결을 허용할까요?\" 창이 뜨면 [허용]을 누르세요)"
+fi
 ( sleep 1; open "$URL" ) &
 python3 server.py $PORT
