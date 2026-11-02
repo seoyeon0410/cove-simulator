@@ -1145,6 +1145,9 @@ const WIGGLE_HEAD = -25, WIGGLE_TILT = 9, WIGGLE_TILT_FRAC = 0.85, WIGGLE_HEAD_R
 // 관절 조작(머리 들기·일어난 뒤 고개 들기 등) 뒤에는 0.1초마다 그 자세를 계속 보내는 로봇 동기가 따로 돌고 있어서, 반응이 따로 자세를 보내면 두 값이 번갈아 가며 로봇이 떨린다.
 // 그래서 조작 중이면 반응도 같은 조작 값(jtVal)을 바꿔서 보내고(한 곳에서만 보낸다), 기준 자세도 로봇이 읽은 값이 아니라 보낸 값에서 잡는다
 const idleBase = () => (manualActive ? { neck: jtVal.neck, head: jtVal.head, tilt: jtVal.tilt, body: jtVal.body } : robot.deg);
+// 로봇에 자세를 보내는 간격(ms). 로봇 프로그램은 자세 하나를 0.15초(POSE_DT)에 걸쳐 가도록 속도를 정하므로, 0.1초마다 보내면 로봇이 웹 속도의 2/3로만 움직여
+// 빠른 동작(머리 끄덕임 등)이 웹보다 느리고 작아진다. 0.15초에 거의 맞춘 0.14초마다 보내서 로봇이 웹과 같은 속도로 따라가게 한다(살짝 겹쳐서 멈칫하지 않게)
+const POSE_MS = 140;
 function driveIdlePose(p) {
   if (manualActive) { Object.assign(jtVal, p); applyManual(); renderJoint(); }
   else robot.pose(p);
@@ -1198,7 +1201,7 @@ function happyWiggle() {
     const tilt = Math.max(wlo, Math.min(whi, base.tilt + Math.max(0, amp) * Math.sin((2 * Math.PI * (t - WIGGLE_TILT_FROM)) / WIGGLE_TILT_PERIOD)));   // 고개 갸우뚱갸우뚱
     driveIdlePose({ neck: r1(base.neck), head: r1(head), tilt: r1(tilt), body: r1(base.body + off) });
     if (done) clearInterval(wiggleTimer);
-  }, 100);
+  }, POSE_MS);
 }
 // 1번 거리센서(머리, 턱 아래)에 손이 닿으면(재생 중이 아닐 때): 고개를 갸우뚱(머리를 숙이고 정면에서 보이는 왼쪽으로 갸웃) 하고, 표정은 편안한 눈으로 바꾼다.
 // 손이 떨어지고 1.5초 뒤 원래대로. 눈은 뷰포트에만 나온다(로봇 눈은 시선을 못 바꾼다), 고개는 로봇 동기가 켜져 있을 때만 움직인다
@@ -1254,7 +1257,7 @@ function armLookStart(resumed) {
       driveIdlePose({ neck: r1(armNeckCur), head: r1(armHeadCur), tilt: r1(armBase.tilt + (tiltT - armBase.tilt) * bow), body: r1(armBase.body) });
     }
     if (!on && armDown <= 0 && (!armBase || !robot.sync || Math.abs(armHeadCur - armBase.head) < 0.3 && Math.abs(armNeckCur - armBase.neck) < 0.3)) { armDown = 1; armLookEnd(); }   // 손이 떨어지면 머리가 처음 각도로 돌아온 뒤에 끝낸다
-  }, 100);
+  }, POSE_MS);
 }
 let armDown = 1, armEyesBack = false;
 // 터치센서 두 개를 같이 만지면 그 방향으로 고개를 들어 갸우뚱하고 눈은 위를 본다: 2+3번(오른쪽) → 3번 쪽, 1+2번(왼쪽) → 1번 쪽.
@@ -1295,7 +1298,7 @@ function sideLookStart(dir) {
       driveIdlePose({ neck: r1(sideNeck), head: r1(sideHead), tilt: r1(sideTilt), body: r1(sideBase.body) });
       if (!on && Math.abs(sideNeck - sideBase.neck) < 0.3 && Math.abs(sideHead - sideBase.head) < 0.2 && Math.abs(sideTilt - sideBase.tilt) < 0.2) sideLookEnd();
     } else if (!on) sideLookEnd();
-  }, 100);
+  }, POSE_MS);
 }
 // 1번·3번을 만진 시각을 기억해 두고, 2번이 새로 닿으면 그 직전(SIDE_GAP_MS 안)에 닿은 쪽 방향으로 한다: 3번 → 2번이면 3번 쪽(−), 1번 → 2번이면 1번 쪽(+).
 // 3번을 떼고 나서 2번을 만져도 된다(같이 닿아 있지 않아도). 갸우뚱은 2번에 손이 닿아 있는 동안 이어간다
@@ -1506,9 +1509,9 @@ setInterval(() => {
 }, 100);
 // [동기 다듬기] 로봇에 보내는 자세를 부드럽게 다듬어서 보낸다.
 // 동작 곡선에 로봇 가속 한계(약 215°/s²)를 크게 넘는 곳이 있으면(간식주기 머리 약 790°/s² 등) 로봇이 못 따라가다 한꺼번에 따라잡느라 덜컥거린다(삐그덕).
-// 또 로봇은 받은 자세 사이 거리로 속도를 정하므로, 0.1초 간격이 조금만 흔들려도 속도가 들쑥날쑥해진다 → 늘 0.1초씩 같은 간격으로 계산해서 보낸다.
+// 또 로봇은 받은 자세 사이 거리로 속도를 정하므로, 보내는 간격이 조금만 흔들려도 속도가 들쑥날쑥해진다 → 늘 같은 간격(POSE_MS)으로 계산해서 보낸다.
 // 다듬기는 '넘치지 않는' 2차 저역 통과(임계 감쇠)라서 원래 동작보다 크게 휘청이지 않는다. 대신 약 SF_LAG초 늦어지므로 그만큼 앞선 자세를 목표로 한다
-const SF = { cur: null, vel: null }, SF_DT = 0.1, SF_WN = 9, SF_SUB = 4, SF_LAG = 2 / SF_WN;   // SF_WN: 클수록 덜 다듬는다(원래 동작에 가깝다)
+const SF = { cur: null, vel: null }, SF_DT = POSE_MS / 1000, SF_WN = 16, SF_SUB = 6, SF_LAG = 2 / SF_WN;   // SF_WN: 클수록 덜 다듬는다(원래 동작에 가깝다). 9였을 때는 1.3초 박자 끄덕임이 22% 작아져서 16으로(약 8%)
 function syncPoseAt(t) {                                         // 시각 t 의 자세(로봇 한계 적용)를 다듬어서 로봇에 보낸다
   if (!jointCache || jointCache.model !== S.model) jointCache = { model: S.model, ids: jointIds() };
   const clip = curClip(), ids = jointCache.ids, f = { t }, tiltSign = +($('#rpTiltSign')?.value || 1);
@@ -1543,7 +1546,7 @@ setInterval(() => {
   const now = performance.now(), diff = !!(mode && robot.eyesMode && robot.eyesMode !== mode);
   if (!diff) eyeDiffSince = 0; else if (!eyeDiffSince) eyeDiffSince = now;
   if (mode && (mode !== syncEye || (diff && now - eyeDiffSince > 3000 && now - syncEyeAt > 5000))) { syncEye = mode; syncEyeAt = now; eyeDiffSince = 0; robot.eyes(mode); }
-}, 100);
+}, POSE_MS);
 function sampleJoints(clip) {                                 // 0.1초 간격 {t, neck, head, tilt, body}
   const ids = jointIds(), out = [], n = Math.round(clip.duration / STEP);
   for (let i = 0; i <= n; i++) {
