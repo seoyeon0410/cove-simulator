@@ -1429,11 +1429,12 @@ function frontFollow() {
   driveIdlePose({ neck: r1(followCur), head: r1(followBase.head), tilt: r1(followBase.tilt), body: r1(followBase.body) });
   if (!near && Math.abs(followCur - followBase.neck) < 0.15) followBase = null;   // 다 내려왔으면 끝
 }
+const HAPPY_HOLD_MS = 4000; let happyEyeDiffAt = 0, happyEyeSentAt = 0;   // 쓰다듬기 반응: 손을 뗀 뒤 신난 눈을 유지하는 시간 / 로봇 눈 지키기
 function startStroke() {
   yieldToTouch();                                                   // 손을 누르는 중이었으면 숙이기는 잠시 멈추고, 끝나면 이어간다
   standEyesUntil = 0;
   touchState = 'stroking'; happyOn = true; toast('쓰다듬어 줘서 기뻐요');
-  eyes?.show('신난 눈'); robot.eyes('신난 눈');
+  eyes?.show('신난 눈'); robot.eyes('신난 눈'); happyEyeSentAt = Date.now(); happyEyeDiffAt = 0;
   happyWiggle();
 }
 function idleHappy() {
@@ -1448,10 +1449,17 @@ function idleHappy() {
   else if (allTouchSince) { if (!allGapAt) allGapAt = now; else if (now - allGapAt > STROKE_GAP_MS) { allTouchSince = 0; allGapAt = 0; } }
   if (allTouchSince && now - allTouchSince >= STROKE_MS && !happyOn && idle && !sideActive && !standTimer && !robot.auto && !robotSceneBusy() && touchState !== 'stroking' && $('#rpHappy')?.checked) startStroke();
   if (happyOn) {
-    if (t) happyUntil = now + 3000;
-    if (!idle || (!t && now > happyUntil)) {
+    // 손이 아직 있는지는 그 순간 값(t)만 보면 안 된다: 손바닥을 움직이며 쓰다듬으면 1.5초마다 오는 센서 값 사이사이에 '안 닿음'이 찍혀서
+    // 3초쯤 지나면 반응이 끝나 눈이 뜬 눈으로 풀렸다가 다시 신난 눈이 되기를 되풀이했다. 그래서 시작할 때처럼 '최근 1.6초 안에 닿았음'도 같이 보고, 손을 뗀 뒤 4초 동안은 유지한다
+    const still = t || !!robot.touchRecent?.some(Boolean);
+    if (still) happyUntil = now + HAPPY_HOLD_MS;
+    if (!idle || (!still && now > happyUntil)) {
       happyOn = false; touchState = 'idle';
       if (idle) restoreEyes();                                  // 앉아 있으면 감은 눈, 아니면 동작의 눈으로 (재생이 시작됐으면 재생이 눈을 맡는다)
+    } else {                                                    // 쓰다듬는 동안은 신난 눈을 지킨다: 화면 눈은 늘, 로봇 눈은 다른 눈이 2초 넘게 보이면 다시 보낸다(같은 눈을 자주 보내면 로봇 눈이 끊겨 보여서 4초에 한 번까지)
+      eyes?.show('신난 눈');
+      if (robot.eyesMode && robot.eyesMode !== '신난 눈') { if (!happyEyeDiffAt) happyEyeDiffAt = now; else if (now - happyEyeDiffAt > 2000 && now - happyEyeSentAt > 4000) { happyEyeSentAt = now; happyEyeDiffAt = 0; robot.eyes('신난 눈'); } }
+      else happyEyeDiffAt = 0;
     }
   }
   prevTouch = t;
