@@ -661,7 +661,9 @@ footer{container-type:inline-size}
 #timeLabel{font-size:13px}
 @container (max-width:600px){.zoom-wrap .dim{display:none}}
 @container (max-width:500px){#tPrev,#tNext{display:none}}
-@container (max-width:420px){.zoom-wrap{display:none}}
+@container (max-width:560px){.zoom-wrap{display:none}}
+#zoomFit{flex:none;padding:5px 10px;font-size:12px}
+@container (max-width:340px){#zoomFit{display:none}}
 /* 표정 모음 아래 표정 줄: 번호 · 이름 · 눈 그림 · 기분. 지금 보이는 표정은 이름이 금색, 그 표정만 재생 중이면 줄 전체가 강조 */
 .clip-item.expr .du{font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .clip-item.expr .eye-pick{cursor:inherit}

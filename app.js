@@ -1622,8 +1622,9 @@ function toast(msg) {
 /* ───────────── 타임라인 ───────────── */
 const tlc = $('#tl'), ctx = tlc.getContext('2d');
 const BAND = 24;
-const TL = { LW: 150, RULER: 26, RH: 28, pps: 120, sx: 0, sy: 0, w: 0, h: 0, drag: null };
-const tlTop = () => TL.RULER + (curClip()?.markers?.length ? BAND : 0);
+const TL = { LW: 150, RULER: 26, RH: 28, pps: 120, sx: 0, sy: 0, w: 0, h: 0, drag: null, fit: true };   // fit: 클립 전체가 옆으로 넘어가지 않고 한 화면에 들어오게 맞춘다 (확대 슬라이더·Ctrl+휠로 직접 확대하면 꺼지고, '전체 보기'로 다시 켠다)
+const bandH = () => TL.band || BAND;                                   // 장면 띠 높이: 단계 이름이 칸에 안 들어가면 이름을 세 줄로 엇갈려 쓰느라 높아진다
+const tlTop = () => TL.RULER + (curClip()?.markers?.length ? bandH() : 0);
 
 function resizeTL() {
   const r = tlc.getBoundingClientRect(), dpr = devicePixelRatio || 1;
@@ -1648,6 +1649,13 @@ const x2t = (x) => (x - TL.LW - PAD + TL.sx) / TL.pps;
 
 function drawTL() {
   if (!S.model || !TL.w) return;
+  if (TL.fit) { TL.pps = Math.max(2, (TL.w - TL.LW - PAD * 2) / Math.max(0.1, curClip().duration)); TL.sx = 0; $('#zoom').value = TL.pps; }
+  {                                                                      // 단계 이름이 자기 칸에 다 안 들어가면(전체를 한 화면에 맞춘 좁은 칸) 이름을 세 줄로 엇갈려 쓴다
+    const mk = curClip().markers || [], dur = curClip().duration;
+    ctx.font = `600 12px ${FONT}`;
+    TL.stagger = mk.some((m, i) => ctx.measureText(m.label).width + 12 > t2x(i + 1 < mk.length ? mk[i + 1].t : dur) - t2x(m.t) - 1);
+    TL.band = TL.stagger ? 3 * 16 + 4 : BAND;
+  }
   const css = getComputedStyle(document.documentElement);
   const C = (n) => css.getPropertyValue(n).trim();
   const { LW, RH, w, h } = TL;
@@ -1752,14 +1760,30 @@ function drawTL() {
     if (x1 < LW || x0 > w) return;
     const cur = S.time >= m.t - 1e-6 && (i + 1 >= marks.length || S.time < marks[i + 1].t - 1e-6);
     const l = Math.max(x0, LW);
-    ctx.fillStyle = cur ? '#4a4234' : (i % 2 ? '#201f1d' : '#191917'); ctx.fillRect(l, RUL, x1 - l - 1, BAND - 2);
+    const BH = bandH();
+    ctx.fillStyle = cur ? '#4a4234' : (i % 2 ? '#201f1d' : '#191917'); ctx.fillRect(l, RUL, x1 - l - 1, BH - 2);
     if (cur) { ctx.fillStyle = C('--accent'); ctx.fillRect(l, RUL, x1 - l - 1, 2); }
-    ctx.save(); ctx.beginPath(); ctx.rect(l, RUL, x1 - l - 1, BAND); ctx.clip();
+    ctx.save(); ctx.beginPath(); ctx.rect(LW, RUL, w - LW, BH); ctx.clip();
     ctx.fillStyle = cur ? '#fff' : C('--text'); ctx.font = `${cur ? 700 : 500} 12px ${FONT}`; ctx.textBaseline = 'middle';
-    ctx.fillText(m.label, Math.max(x0, LW) + 6, RUL + BAND / 2 - 0.5);
+    if (!TL.stagger) ctx.fillText(m.label, l + 6, RUL + BH / 2 - 0.5);
     ctx.restore();
     if (x0 >= LW) { ctx.strokeStyle = '#5a564e'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(Math.round(x0) + 0.5, RULER); ctx.lineTo(Math.round(x0) + 0.5, h); ctx.stroke(); ctx.setLineDash([]); }
   });
+
+  if (TL.stagger) {                                                      // 세 줄로 엇갈린 단계 이름: 뒤 단계의 칸에 가려지지 않게 칸을 다 그린 뒤에 쓴다. 같은 줄의 다음 단계가 시작하기 전까지 쓰고, 넘치면 …로 줄인다
+    ctx.save(); ctx.beginPath(); ctx.rect(LW, RUL, w - LW, bandH()); ctx.clip(); ctx.textBaseline = 'middle';
+    marks.forEach((m, i) => {
+      const x0 = t2x(m.t), x1 = t2x(i + 1 < marks.length ? marks[i + 1].t : clip.duration);
+      if (x1 < LW || x0 > w) return;
+      const cur = S.time >= m.t - 1e-6 && (i + 1 >= marks.length || S.time < marks[i + 1].t - 1e-6);
+      const tx = Math.max(x0, LW) + 5, nx = i + 3 < marks.length ? t2x(marks[i + 3].t) : w, maxW = nx - tx - 6;
+      ctx.fillStyle = cur ? '#fff' : C('--text'); ctx.font = `${cur ? 700 : 500} 12px ${FONT}`;
+      let s = `${i + 1} ${m.label}`;
+      if (ctx.measureText(s).width > maxW) { while (s.length > 2 && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1); s += '…'; }
+      ctx.fillText(s, tx, RUL + 2 + (i % 3) * 16 + 8);
+    });
+    ctx.restore();
+  }
 
   // 길이 끝 선
   ctx.strokeStyle = '#8a8579'; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(endX + 0.5, RULER); ctx.lineTo(endX + 0.5, h); ctx.stroke(); ctx.globalAlpha = 1;
@@ -1787,7 +1811,7 @@ function drawTL() {
     }
   }
   ctx.fillStyle = C('--panel'); ctx.fillRect(0, 0, LW, RULER);
-  if (marks.length) { ctx.fillStyle = C('--dim'); ctx.font = `12px ${FONT}`; ctx.textBaseline = 'middle'; ctx.fillText('장면', 12, RUL + BAND / 2); }
+  if (marks.length) { ctx.fillStyle = C('--dim'); ctx.font = `12px ${FONT}`; ctx.textBaseline = 'middle'; ctx.fillText('장면', 12, RUL + bandH() / 2); }
 
   // 눈 그림을 끌어 놓을 위치 표시
   if (TL.dropT != null) { const dx = t2x(TL.dropT); ctx.strokeStyle = C('--accent'); ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(dx, 0); ctx.lineTo(dx, h); ctx.stroke(); ctx.setLineDash([]); }
@@ -1876,18 +1900,19 @@ tlc.addEventListener('wheel', (e) => {
   e.preventDefault();
   if (e.ctrlKey || e.metaKey) {
     const rect = tlc.getBoundingClientRect(), x = e.clientX - rect.left, t = x2t(x);
-    TL.pps = Math.max(30, Math.min(600, TL.pps * Math.exp(-e.deltaY * 0.01)));
+    TL.fit = false; TL.pps = Math.max(2, Math.min(600, TL.pps * Math.exp(-e.deltaY * 0.01)));
     TL.sx = Math.max(0, t * TL.pps - (x - TL.LW - PAD));
     $('#zoom').value = TL.pps;
   } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-    TL.sx = Math.max(0, TL.sx + (e.deltaX || e.deltaY));
+    if (!TL.fit) TL.sx = Math.max(0, TL.sx + (e.deltaX || e.deltaY));
   } else {
     const max = Math.max(0, (tlRows().length + 1) * TL.RH - (TL.h - tlTop()));
     TL.sy = Math.max(0, Math.min(max, TL.sy + e.deltaY));
   }
   drawTL();
 }, { passive: false });
-$('#zoom').addEventListener('input', (e) => { TL.pps = +e.target.value; drawTL(); });
+$('#zoom').addEventListener('input', (e) => { TL.fit = false; TL.pps = +e.target.value; drawTL(); });
+$('#zoomFit').onclick = () => { TL.fit = true; drawTL(); };
 
 /* ───────────── 뷰포트 선택 ───────────── */
 const ray = new THREE.Raycaster();
@@ -2146,7 +2171,7 @@ const eyeDock = initEyeDock({
   toast,
 });
 // 타임라인의 눈 줄에 눈 그림을 끌어 놓으면 그 시간(0.1초 단위)부터 바뀐다
-const eyeRowAt = (y) => { const top = TL.RULER + (curClip()?.markers?.length ? BAND : 0) + tlRows().length * TL.RH - TL.sy; return y >= top && y < top + TL.RH; };
+const eyeRowAt = (y) => { const top = tlTop() + tlRows().length * TL.RH - TL.sy; return y >= top && y < top + TL.RH; };
 tlc.addEventListener('dragover', (e) => {
   if (!e.dataTransfer.types.includes(EYE_MIME)) return;
   const r = tlc.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;

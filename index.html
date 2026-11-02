@@ -240,7 +240,8 @@
     <span id="timeLabel" >0 / 0.00s</span>
     <label class="check"><input type="checkbox" id="loop"> 반복</label>
     <span class="spacer"></span>
-    <label class="zoom-wrap" title="타임라인 확대 · 축소"><span class="dim">확대</span><input type="range" id="zoom" min="30" max="600" value="120"></label>
+    <button id="zoomFit" title="모든 단계가 옆으로 넘어가지 않고 한 화면에 보이게 맞춰요">전체 보기</button>
+    <label class="zoom-wrap" title="타임라인 확대 · 축소 (직접 확대하면 '전체 보기'로 되돌려요)"><span class="dim">확대</span><input type="range" id="zoom" min="2" max="600" step="any" value="120"></label>
     <button id="tlFold" title="타임라인을 완전히 접어요 / 다시 펼쳐요">▾ 접기</button>
   </div>
   <canvas id="tl"></canvas>
