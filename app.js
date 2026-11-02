@@ -1127,7 +1127,7 @@ function limitToRobot() {
 }
 /* [로봇 동기] 켜져 있으면 웹에서 재생하는 동안 0.1초마다 지금 보이는 자세(로봇 한계 적용)를 로봇에 보낸다. 눈도 따라간다(뜬·감은·웃는·하트는 로봇 기본 이름, 나머지는 로봇에 넣은 한글 표정 이름). */
 // 로봇에 넣은 눈 파일(cove_eyes.json)의 표정 이름(한글) 그대로 보낸다. (로봇 기본 이름 idle/happy/heart 는 옛 모양이라 쓰지 않는다)
-let syncEye = '', syncEyeAt = 0;
+let syncEye = '', syncEyeAt = 0, eyeDiffSince = 0;
 // 재생 중이 아닐 때(멈춤 지점도 아닐 때)도 머리를 쓰다듬으면 신난 눈으로 기뻐하고, 손을 떼고 3초 뒤 원래 눈으로 돌아간다
 let lastTorqueWarn = 0;
 let happyUntil = 0, happyOn = false, prevTouch = false, wiggleTimer = 0, tapTimer = 0, tapBase = null, tapEnd = 0;
@@ -1487,11 +1487,23 @@ setInterval(() => {
   else if (armOn && h?.arm && robot.arm && performance.now() - (S.heldSince || 0) > 1500) {   // 멈춘 직후 자세가 흔들리며 거리가 변하는 걸 손으로 잘못 보지 않도록 1.5초 뒤부터
     toast('1번 거리센서에 손이 들어왔어요'); releaseHold(); }
 }, 100);
-function syncPoseAt(t) {                                         // 시각 t 의 자세(로봇 한계 적용)를 로봇에 보낸다
+// [동기 다듬기] 로봇에 보내는 자세를 부드럽게 다듬어서 보낸다.
+// 동작 곡선에 로봇 가속 한계(약 215°/s²)를 크게 넘는 곳이 있으면(간식주기 머리 약 790°/s² 등) 로봇이 못 따라가다 한꺼번에 따라잡느라 덜컥거린다(삐그덕).
+// 또 로봇은 받은 자세 사이 거리로 속도를 정하므로, 0.1초 간격이 조금만 흔들려도 속도가 들쑥날쑥해진다 → 늘 0.1초씩 같은 간격으로 계산해서 보낸다.
+// 다듬기는 '넘치지 않는' 2차 저역 통과(임계 감쇠)라서 원래 동작보다 크게 휘청이지 않는다. 대신 약 SF_LAG초 늦어지므로 그만큼 앞선 자세를 목표로 한다
+const SF = { cur: null, vel: null }, SF_DT = 0.1, SF_WN = 9, SF_SUB = 4, SF_LAG = 2 / SF_WN;   // SF_WN: 클수록 덜 다듬는다(원래 동작에 가깝다)
+function syncPoseAt(t) {                                         // 시각 t 의 자세(로봇 한계 적용)를 다듬어서 로봇에 보낸다
   if (!jointCache || jointCache.model !== S.model) jointCache = { model: S.model, ids: jointIds() };
-  const clip = curClip(), ids = jointCache.ids, f = { t };
+  const clip = curClip(), ids = jointCache.ids, f = { t }, tiltSign = +($('#rpTiltSign')?.value || 1);
   for (const j of ['neck', 'head', 'tilt', 'body']) f[j] = jointDeg(clip, ids[j], JOINT_AXES[j], t);
-  const l = limitFrames([f], { tiltSign: +($('#rpTiltSign')?.value || 1) })[0], r1 = (v) => Math.round(v * 10) / 10;
+  const tg = limitFrames([f], { tiltSign })[0], r1 = (v) => Math.round(v * 10) / 10;
+  if (!SF.cur) { SF.cur = { neck: tg.neck, head: tg.head, tilt: tg.tilt, body: tg.body }; SF.vel = { neck: 0, head: 0, tilt: 0, body: 0 }; }   // 재생을 시작하면 첫 자세부터 (예전과 같다)
+  const h = SF_DT / SF_SUB;
+  for (const j of ['neck', 'head', 'tilt', 'body']) {
+    for (let s = 0; s < SF_SUB; s++) { const a = SF_WN * SF_WN * (tg[j] - SF.cur[j]) - 2 * SF_WN * SF.vel[j]; SF.vel[j] += a * h; SF.cur[j] += SF.vel[j] * h; }
+    if (Math.abs(tg[j] - SF.cur[j]) < 0.05 && Math.abs(SF.vel[j]) < 0.5) { SF.cur[j] = tg[j]; SF.vel[j] = 0; }
+  }
+  const l = limitFrames([{ t, ...SF.cur }], { tiltSign })[0];    // 갸웃 범위는 머리 각도에 따라 달라서 다듬은 뒤 한 번 더 맞춘다
   robot.pose({ neck: r1(l.neck), head: r1(l.head), tilt: r1(l.tilt), body: r1(l.body) });
 }
 setInterval(() => {
@@ -1499,17 +1511,21 @@ setInterval(() => {
   if (!S.model) return;
   if (!S.playing) {                                              // 재생 중이 아니어도, 관절 조작 슬라이더를 움직였다면 그 자세를 계속 보낸다
     if (S.heldAt != null) { syncPoseAt(S.heldAt); return; }           // 멈춤 지점에서 기다리는 동안은 그 자세를 계속 보내 로봇이 힘을 유지하게 한다
+    SF.cur = null;                                                    // 재생이 끝났으면 다음 재생은 그 첫 자세부터 다시 다듬는다
     if (manualActive) { const r1 = (v) => Math.round(v * 10) / 10; robot.pose({ neck: r1(jtVal.neck), head: r1(jtVal.head), tilt: r1(jtVal.tilt), body: r1(jtVal.body) }); }
     return;
   }
   // 재생을 막 시작했을 때 로봇이 갑자기 튀지 않게, 앞서는 양을 초당 0.6초씩 천천히 늘려서 설정값까지 간다
   const lead = Math.min(Math.max(0, Math.min(2, parseFloat($('#rpLead')?.value) || 0)), 0.6 * (performance.now() - playStartedAt) / 1000);
   const clip = curClip(), hp = nextHold();
-  syncPoseAt(Math.min(S.time + lead, hp ? hp.t : clip.duration));      // 로봇이 늦는 만큼(실측 약 1초) 앞선 자세를 보내되, 멈춤 지점 너머는 미리 보내지 않는다
+  syncPoseAt(Math.min(S.time + lead + (lead > 0 ? SF_LAG : 0), hp ? hp.t : clip.duration));   // 로봇이 늦는 만큼(실측 약 1초) + 다듬느라 늦는 만큼 앞선 자세를 보내되, 멈춤 지점 너머는 미리 보내지 않는다
   const cur = (clip.eyes || []).filter((x) => x.t <= S.time + 1e-6).pop(), mode = cur && !cur.eL && !cur.eR && cur.e;
   // 마지막으로 보낸 눈(syncEye)만 믿으면, 그 뒤에 버튼·센서 반응이 로봇 눈을 따로 바꿨을 때(예: 앉기의 감은 눈) 같은 눈을 다시 안 보내서 로봇이 감은 눈인 채로 남는다.
-  // 그래서 로봇이 알려 준 지금 눈(robot.eyesMode)이 다르면 1.2초 간격으로 다시 보낸다
-  if (mode && (mode !== syncEye || (robot.eyesMode && robot.eyesMode !== mode && performance.now() - syncEyeAt > 1200))) { syncEye = mode; syncEyeAt = performance.now(); robot.eyes(mode); }
+  // 그래서 로봇이 알려 준 지금 눈(robot.eyesMode)이 다르면 다시 보낸다. 단, 로봇은 같은 눈을 받아도 눈 애니메이션(깜빡임·반짝임)을 처음부터 다시 시작해서
+  // 자주 보내면 로봇 눈이 찌지직 끊겨 보인다. 로봇 상태는 1~1.5초 늦게 오므로, 다른 눈이 3초 넘게 계속 보일 때만, 그리고 5초에 한 번까지만 다시 보낸다
+  const now = performance.now(), diff = !!(mode && robot.eyesMode && robot.eyesMode !== mode);
+  if (!diff) eyeDiffSince = 0; else if (!eyeDiffSince) eyeDiffSince = now;
+  if (mode && (mode !== syncEye || (diff && now - eyeDiffSince > 3000 && now - syncEyeAt > 5000))) { syncEye = mode; syncEyeAt = now; eyeDiffSince = 0; robot.eyes(mode); }
 }, 100);
 function sampleJoints(clip) {                                 // 0.1초 간격 {t, neck, head, tilt, body}
   const ids = jointIds(), out = [], n = Math.round(clip.duration / STEP);
@@ -2204,8 +2220,10 @@ function resetIdleReactions() {                                    // 진행 중
   wiggleTimer = tapTimer = armTimer = sideTimer = standTimer = sitIv = sitTimer = 0; standLockUntil = 0;
   armActive = false; armResume = false; armWait = false; armSuppress = false; armBase = null; sideActive = false; happyOn = false; touchState = 'idle'; allTouchSince = 0; allGapAt = 0; standEyesUntil = 0; standHeadAt = 0; followBase = null;
 }
-// 일어나: 앉은(접힌) 자세에서 기둥 25° · 머리 -34°(깨어난 기본 자세)로 2.2초에 걸쳐 부드럽게 일어난다. 로봇은 연결돼 있으면 지금 로봇의 자세에서, 아니면 화면 자세에서 시작한다
-const STAND_POSE = { neck: 25, head: -34, tilt: 0, body: 0 }, STAND_SEC = 2.2;
+// 일어나: 앉은(접힌) 자세에서 기둥 25°로 2.2초에 걸쳐 부드럽게 일어나고, 고개는 조금 늦게 따라 들어서 머리 들기(-42°, 얼굴이 위)까지 올린다(기둥보다 0.8초 늦게 끝남).
+// 로봇은 연결돼 있으면 지금 로봇의 자세에서, 아니면 화면 자세에서 시작한다
+const STAND_POSE = { neck: 25, head: HEAD_UP, tilt: 0, body: 0 }, STAND_SEC = 2.2, STAND_HEAD_FROM = 0.35, STAND_HEAD_LATE = 0.8;   // 고개는 일어나기의 35% 지점부터 들기 시작
+const STAND_ALL = STAND_SEC + STAND_HEAD_LATE;
 $('#standUp').onclick = () => {
   if (!S.model) return;
   if (S.playing) stopPlay();
@@ -2213,7 +2231,7 @@ $('#standUp').onclick = () => {
   takeOverPose(); sitLock = false;                                                                     // 진행 중인 반응을 멈추고 로봇이 씬(앉기 등)을 돌리고 있으면 세운다
   if ($('#sitKeep')) $('#sitKeep').checked = false;                                                    // 일어났으니 표정 버튼이 다시 몸을 움직일 수 있게 한다
   wasSitting = false; eyes?.show('뜬 눈'); if (robot.connected) robot.eyes('뜬 눈');                    // 일어나면서 눈을 뜬다
-  standLockUntil = performance.now() + STAND_SEC * 1000 + 2500;
+  standLockUntil = performance.now() + STAND_ALL * 1000 + 2500;
   // 일어나는 동안과 다 일어난 뒤에도 로봇 눈이 뜬 눈인지 몇 번 더 맞춘다 (로봇이 앞서 돌리던 씬이 끝나면서 눈을 바꿔 놓는 경우를 막는다). 다른 반응이 눈을 쓰고 있으면 건드리지 않는다
   const gEnd = performance.now() + 12000; let gLast = 0;
   standGuard = [setInterval(() => {
@@ -2225,10 +2243,12 @@ $('#standUp').onclick = () => {
   const r1 = (v) => Math.round(v * 10) / 10;
   standTimer = setInterval(() => {
     if (S.playing) { clearInterval(standTimer); standTimer = 0; return; }
-    const k = Math.min(1, (performance.now() - t0) / (STAND_SEC * 1000)), e = k * k * (3 - 2 * k), p = {};
-    for (const j of ['neck', 'head', 'tilt', 'body']) p[j] = r1(from[j] + (STAND_POSE[j] - from[j]) * e);
+    const s = (performance.now() - t0) / 1000, ease = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+    const e = ease(s / STAND_SEC), eh = ease((s - STAND_SEC * STAND_HEAD_FROM) / (STAND_ALL - STAND_SEC * STAND_HEAD_FROM)), p = {};   // 기둥이 먼저 올라오고, 고개는 뒤따라 든다
+    for (const j of ['neck', 'tilt', 'body']) p[j] = r1(from[j] + (STAND_POSE[j] - from[j]) * e);
+    p.head = r1(from.head + (STAND_POSE.head - from.head) * eh);
     Object.assign(jtVal, p); applyManual(); renderJoint();                                              // 화면 자세를 바꾸면 로봇 동기가 같은 자세를 로봇에 보낸다
-    if (k >= 1) { clearInterval(standTimer); standTimer = 0; eyes?.show('뜬 눈'); if (robot.connected) robot.eyes('뜬 눈'); }   // 다 일어나면 눈을 한 번 더 뜬 눈으로 맞춘다 (타이머를 0으로 해야 다른 반응이 다시 시작된다)
+    if (s >= STAND_ALL) { clearInterval(standTimer); standTimer = 0; eyes?.show('뜬 눈'); if (robot.connected) robot.eyes('뜬 눈'); }   // 다 일어나면 눈을 한 번 더 뜬 눈으로 맞춘다 (타이머를 0으로 해야 다른 반응이 다시 시작된다)
   }, 50);
   toast(robot.sync ? '일어나요' : '일어나요 (화면) · 로봇 동기를 켜면 로봇도 일어나요');
 };
