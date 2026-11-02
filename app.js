@@ -934,7 +934,7 @@ function clipRowEl(c, i, sub) {
   el.innerHTML = '<span class="no"></span><span class="nm"></span><span class="du"></span>';
   el.children[0].textContent = m ? m[1].padStart(2, '0') : sm ? sm[1] : '';
   el.children[1].textContent = m ? m[2] : sm ? sm[2] : c.name;
-  el.title = c.name;
+  if (sm) el.title = c.name;                                             // 줄인 이름은 풍선 도움말에 원래 이름을 보여 준다
   el.children[2].textContent = `${+c.duration.toFixed(1)}초`;
   if (c.group === '단계별') {                                          // 시간(초) 왼쪽에 지금 표정을 보여 주는 버튼: 누르면 표정을 골라 이 동작의 눈을 바꾼다
     const cur = c.eyes?.[0]?.e || '뜬 눈', eb = document.createElement('span');
@@ -984,6 +984,7 @@ function stepKind(c) {
 }
 let subFolded = new Set(); try { subFolded = new Set(JSON.parse(localStorage.getItem('cove-sub-fold') || '[]')); } catch { /* 무시 */ }   // 접어 둔 시나리오(하위 단계 동작)
 let stepsFolded = false, exprFolded = false; try { stepsFolded = localStorage.getItem('cove-steps-fold') === '1'; exprFolded = localStorage.getItem('cove-expr-fold') === '1'; } catch { /* 무시 */ }
+let exprListFolded = false; try { exprListFolded = localStorage.getItem('cove-expr-list-fold') === '1'; } catch { /* 무시 */ }   // 표정 모음 아래 표정 목록을 접어 두었는지
 function renderClipList() {
   const list = $('#clipList');
   list.innerHTML = '';
@@ -991,6 +992,7 @@ function renderClipList() {
   S.clips.forEach((c, i) => {
     if (c.hidden) return;                                               // 센서 전용 시나리오는 목록에 보이지 않는다
     const g = c.group || (c.markers?.length ? '시나리오' : '내 클립');
+    if (g === '단계별') return;                                         // 아래쪽 '단계별 · N' / '표정만 · N' 묶음은 화면에서 숨겼다 (단계 동작은 위 시나리오 밑 하위항목으로만 보인다). 되살리려면 이 줄을 지운다
     if (g === '단계별') {                                               // 단계별 동작은 한 번에 두 묶음으로 나눠 그린다: 단계별(몸이 움직이는 것) / 표정만(눈만 바뀌는 것). 각각 제목을 눌러 접고 펼친다(상태를 기억한다)
       if (stepsDone) return;
       stepsDone = true; lastGroup = g;
@@ -1025,6 +1027,12 @@ function renderClipList() {
     }
     if (g !== lastGroup) { lastGroup = g; const h = document.createElement('div'); h.className = 'grp'; h.textContent = g; list.appendChild(h); }
     const rowEl = clipRowEl(c, i); list.appendChild(rowEl);
+    if (g === '표정' && c.markers?.length) {                            // 표정 모음: 그 아래에 표정이 하나씩 하위항목으로 펼쳐져 있다. 시나리오처럼 줄의 ▾로 접고 펼친다(상태를 기억한다). 위쪽 장면 칩 대신 여기서 고른다
+      const cb = document.createElement('button'); cb.className = 'rb fold'; cb.textContent = exprListFolded ? '▸' : '▾'; cb.title = exprListFolded ? '표정 목록 펼치기' : '표정 목록 접기';
+      cb.onclick = () => { exprListFolded = !exprListFolded; try { localStorage.setItem('cove-expr-list-fold', exprListFolded ? '1' : '0'); } catch { /* 무시 */ } renderClipList(); };
+      rowEl.insertBefore(cb, rowEl.children[1]);
+      if (!exprListFolded) c.markers.forEach((m, k) => list.appendChild(exprRowEl(m, k, i)));
+    }
     if (g === '시나리오') {                                             // 각 시나리오 아래에 그 단계 동작이 하위항목으로 항상 펼쳐져 있다. 줄의 ▾를 눌러 접을 수 있다
       const title = scenarioTitle(c), kids = S.clips.map((k, j) => [k, j]).filter(([k]) => k.group === '단계별' && parentOf(k) === title);
       if (kids.length) {
@@ -1044,7 +1052,7 @@ function renderClipList() {
     }
     // 선택한 동작 아래의 로봇 씬 묶음(▶ 웹과 같은 모션 등)은 숨겼다. 되살리려면 if (i === S.clip && linkFor(c.name)) list.appendChild(robotBlock(linkFor(c.name), i));
   });
-  // '로봇 전용' 묶음(로봇 안의 씬 버튼들)은 없앴다. 시나리오의 단계를 동작으로 쪼갠 '단계별' 묶음은 아래에 그대로 있고, 위 시나리오 밑에도 하위항목으로 보인다
+  // '로봇 전용' 묶음(로봇 안의 씬 버튼들)은 없앴다. 시나리오의 단계를 동작으로 쪼갠 '단계별' 묶음도 아래에서 숨겨서, 단계 동작은 위 시나리오 밑 하위항목으로만 보인다
 }
 robot.onChange(() => { if (!document.querySelector('#clipList input.rename')) renderClipList(); const cb = $('#jtRobot'); if (cb) cb.checked = robot.sync; });
 /* ───────────── 로봇용 내보내기 (뷰포트에 보이는 각도 그대로) ───────────── */
@@ -1554,29 +1562,43 @@ function stepScene(dir) {
 }
 function playScene(i) { S.sceneLoop = true; gotoScene(i); if (!S.playing) togglePlay(); updateSceneTag(); }
 function playAll() { S.sceneLoop = false; setTime(0); if (!S.playing) togglePlay(); updateSceneTag(); }
+// 표정 모음의 하위항목 한 줄: 번호 · 표정 이름 · 눈 그림 · 기분. 누르면 (표정 모음이 골라져 있지 않으면 먼저 고르고) 그 표정만 재생한다(연결된 로봇의 눈도 같이). 지금 보이는 표정은 updateSceneTag 가 매 프레임 강조한다
+function exprRowEl(m, k, ci) {
+  const wrap = document.createElement('div'); wrap.className = 'clip-row sub';
+  const el = document.createElement('button'); el.className = 'clip-item has-eye expr'; el.dataset.k = k; el.title = `${m.label} · 누르면 이 표정만 재생해요 (연결된 로봇의 눈도 바뀌어요)`;
+  el.innerHTML = '<span class="no"></span><span class="nm"></span><span class="eye-pick"></span><span class="du"></span>';
+  el.children[0].textContent = k + 1; el.children[1].textContent = m.label; el.children[3].textContent = m.desc || '';
+  const cv = document.createElement('canvas'); cv.width = cv.height = 48; drawPattern(cv, eyeRows(m.label, 0, 0)); el.children[2].appendChild(cv);
+  el.onclick = () => { if (S.clip !== ci) { const sel = $('#clipSel'); sel.value = ci; sel.dispatchEvent(new Event('change')); } pickScene(m, k, true); };
+  wrap.appendChild(el);
+  return wrap;
+}
+// 장면 하나 고르기(칩·표정 줄 공통): 표정 모음에서 '앉아 있을 땐 표정만'이 켜져 있으면 몸은 두고 눈만 바꾼다. 표정 버튼은 연결된 로봇의 눈도 바로 바꾼다
+function pickScene(m, k, byName) {
+  eyeUserAt = performance.now();
+  if (byName && $('#sitKeep')?.checked) { eyes?.show(m.label); if (robot.connected) robot.eyes(m.label, true); toast(`${m.label} · 앉은 채로 눈만 바뀌어요`); return; }
+  playScene(k); if (byName && robot.connected) robot.eyes(m.label, true);
+}
 let chipKey = '';
 function updateSceneTag() {
   const el = $('#sceneTag'), marks = sceneMarks();
   if (!el) return;
   if (!marks.length) { el.hidden = true; $('#situation').hidden = true; $('#vpActions').hidden = true; refreshHoldUI(); return; }
   const i = sceneIndex(S.time), byName = curClip().group === '표정';
-  el.hidden = false;
+  el.hidden = byName;                                      // 표정 모음은 위쪽 칩 대신 목록의 '표정 모음' 줄 아래에 표정이 펼쳐진다
   const box = $('#sceneChips'), key = `${S.clip}|${marks.length}`;
   if (chipKey !== key) {                                   // 칩은 클립이 바뀔 때만 다시 만든다
     chipKey = key; box.innerHTML = '';
     const all = document.createElement('button'); all.className = 'chip all'; all.textContent = '▶ 전체'; all.onclick = playAll; box.appendChild(all);
     marks.forEach((m, k) => {
       const b = document.createElement('button'); b.className = byName ? 'chip' : 'chip num'; b.textContent = byName ? m.label : String(k + 1);
-      b.onclick = () => {
-        eyeUserAt = performance.now();
-        if (byName && $('#sitKeep')?.checked) { eyes?.show(m.label); if (robot.connected) robot.eyes(m.label, true); toast(`${m.label} · 앉은 채로 눈만 바뀌어요`); return; }   // 앉아 있을 땐 몸은 움직이지 않고 눈만 바꾼다
-        playScene(k); if (byName && robot.connected) robot.eyes(m.label, true);
-      };   // 표정 버튼은 연결된 로봇의 눈도 바로 바꾼다
+      b.onclick = () => pickScene(m, k, byName);
       box.appendChild(b);
     });
   }
   box.children[0].classList.toggle('on', !S.sceneLoop);
   [...box.children].slice(1).forEach((b, k) => { b.classList.toggle('on', S.sceneLoop && k === i); b.classList.toggle('cur', k === i); });
+  if (byName) document.querySelectorAll('#clipList .clip-item.expr').forEach((b) => { const k = +b.dataset.k; b.classList.toggle('on', S.sceneLoop && k === i); b.classList.toggle('cur', k === i); });   // 목록의 표정 줄도 같이 강조
   refreshHoldUI();
   const mk = marks[i], sit = $('#situation');
   sit.textContent = mk.desc || mk.label; sit.hidden = false;       // 뷰포트 아래쪽에 지금 상황을 보여 준다
