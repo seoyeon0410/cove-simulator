@@ -663,15 +663,15 @@ footer{container-type:inline-size}
 @container (max-width:500px){#tPrev,#tNext{display:none}}
 @container (max-width:560px){.zoom-wrap{display:none}}
 #zoomFit{flex:none;padding:5px 10px;font-size:12px}
-/* 헤더 메모장: 평소에는 한 줄, 누르면 아래로 펼쳐져 크게 쓸 수 있다 */
-#memoBox{position:relative;flex:1 1 280px;min-width:120px;max-width:520px;height:32px;margin:0 6px 0 14px}
-#memo{position:absolute;top:0;left:0;right:0;height:32px;margin:0;padding:6px 10px;resize:none;overflow:hidden;border:0;border-radius:6px;
-  background:#1b1a17;color:var(--text);box-shadow:inset 0 0 0 1px #3a3630;font:400 13px/1.5 var(--font);white-space:nowrap;text-overflow:ellipsis;z-index:1}
+/* 헤더 메모장: [메모장] 버튼으로 열고 닫는 창. 메모가 있으면 버튼에 금색 점이 붙는다 */
+#memoBox{position:relative;flex:none;margin-left:14px}
+#memoBtn{font-weight:600}
+#memoBtn.has:not(.on)::after{content:"";display:inline-block;width:6px;height:6px;margin-left:7px;border-radius:50%;background:var(--accent);vertical-align:middle}
+#memoPop{position:absolute;top:calc(100% + 8px);left:0;z-index:61;width:min(440px,calc(100vw - 32px));display:flex;flex-direction:column;background:#1b1a17;border-radius:8px;box-shadow:inset 0 0 0 1px var(--accent),0 12px 32px rgba(0,0,0,.55)}
+#memoPop[hidden]{display:none}
+#memo{display:block;width:100%;height:260px;min-height:120px;margin:0;padding:10px 12px;resize:vertical;border:0;background:transparent;color:var(--text);font:400 14px/1.55 var(--font);outline:none}
 #memo::placeholder{color:#8a8477}
-#memo:hover{box-shadow:inset 0 0 0 1px #5a564c}
-.memo-bar{display:none}
-#memoBox:focus-within #memo{height:260px;overflow:auto;white-space:pre-wrap;z-index:61;border-radius:6px 6px 0 0;box-shadow:inset 0 0 0 1px var(--accent),0 12px 32px rgba(0,0,0,.55)}
-#memoBox:focus-within .memo-bar{display:flex;align-items:center;gap:8px;position:absolute;top:260px;left:0;right:0;z-index:61;padding:6px 8px;background:#1b1a17;border-radius:0 0 6px 6px;box-shadow:inset 0 0 0 1px var(--accent),0 12px 32px rgba(0,0,0,.55)}
+.memo-bar{display:flex;align-items:center;gap:8px;padding:6px 8px;border-top:1px solid #3a3630}
 .memo-bar button{padding:4px 10px;font-size:12px}
 .memo-bar #memoState{flex:1;font-size:12px}
 .memo-bar #memoClear{color:#e7b4a6}

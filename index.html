@@ -7,19 +7,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300..700&family=Noto+Sans+KR:wght@300..700&display=swap">
-<link rel="stylesheet" href="style.css?v=20261102f">
+<link rel="stylesheet" href="style.css?v=20261102g">
 <!-- ?v= : 고칠 때마다 이 파일의 v= 숫자를 모두 같이 바꾼다. 다른 사람 브라우저가 저장해 둔 예전 파일(presets.js 등)을 쓰지 않고 새로 받게 한다 -->
 <script type="importmap">
 { "imports": {
   "three": "./lib/three/build/three.module.js",
   "three/addons/": "./lib/three/examples/jsm/",
-  "./presets.js": "./presets.js?v=20261102f",
-  "./look.js": "./look.js?v=20261102f",
-  "./robot.js": "./robot.js?v=20261102f",
-  "./robotexport.js": "./robotexport.js?v=20261102f",
-  "./roboteyes.js": "./roboteyes.js?v=20261102f",
-  "./robotmap.js": "./robotmap.js?v=20261102f",
-  "./eyedock.js": "./eyedock.js?v=20261102f"
+  "./presets.js": "./presets.js?v=20261102g",
+  "./look.js": "./look.js?v=20261102g",
+  "./robot.js": "./robot.js?v=20261102g",
+  "./robotexport.js": "./robotexport.js?v=20261102g",
+  "./roboteyes.js": "./roboteyes.js?v=20261102g",
+  "./robotmap.js": "./robotmap.js?v=20261102g",
+  "./eyedock.js": "./eyedock.js?v=20261102g"
 } }
 </script>
 </head>
@@ -27,10 +27,13 @@
 <header>
   <strong class="brand">코브 애니메이터</strong>
   <span id="fileName" class="dim"></span>
-  <!-- 메모장: 누르면 아래로 크게 펼쳐지고, 다른 곳을 누르면 한 줄로 접힌다. 이 브라우저에 자동 저장된다 -->
+  <!-- 메모장: [메모장] 버튼으로 열고 닫는다. 열어 둔 채로 다른 버튼을 눌러도 닫히지 않는다. 이 브라우저에 자동 저장된다 -->
   <div id="memoBox">
-    <textarea id="memo" spellcheck="false" placeholder="메모 · 눌러서 적어요 (이 컴퓨터에 자동 저장)" title="제어하면서 메모하세요. 이 컴퓨터의 브라우저에 자동 저장돼요"></textarea>
-    <div class="memo-bar"><button id="memoTime" title="지금 시간을 적어요">시간 넣기</button><span id="memoState" class="dim"></span><button id="memoClear" title="메모를 모두 지워요">지우기</button></div>
+    <button id="memoBtn" aria-expanded="false" title="메모장 열기 / 닫기 (이 컴퓨터에 자동 저장돼요)">메모장</button>
+    <div id="memoPop" hidden>
+      <textarea id="memo" spellcheck="false" placeholder="제어하면서 메모하세요. 쓰는 대로 이 컴퓨터에 자동 저장돼요."></textarea>
+      <div class="memo-bar"><button id="memoTime" title="지금 시간을 적어요">시간 넣기</button><span id="memoState" class="dim"></span><button id="memoClear" title="메모를 모두 지워요">지우기</button><button id="memoClose" title="메모장 닫기 (Esc)">닫기</button></div>
+    </div>
   </div>
   <span class="spacer"></span>
   <button id="btnUndo" title="실행 취소 (Ctrl+Z)" hidden>↶</button>
@@ -338,6 +341,6 @@
   </div>
 </aside>
 <script src="lib/mqtt.min.js"></script>
-<script type="module" src="app.js?v=20261102f"></script>
+<script type="module" src="app.js?v=20261102g"></script>
 </body>
 </html>
