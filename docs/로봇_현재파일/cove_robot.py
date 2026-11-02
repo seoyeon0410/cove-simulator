@@ -60,6 +60,9 @@ POS_GAIN = {2: {"P": 800, "I": 0, "D": 0}, 3: {"P": 800, "I": 0, "D": 0}, 4: {"P
 SOFT_GAIN = {"P": 800, "I": 0, "D": 4700}    # 물기(전류 기반) 게인 — 전류 기반은 D 를 낮추면 스프링처럼 진동 (10-05 확인)
 SHOW_PWM = {2: 400, 3: 400}        # 평소 모드 출력 상한(Goal PWM, 최대 885) = 손이 끼었을 때 힘 제한. 400 까지는 움직임 차이 없음, 250 이면 고개가 못 따라감 (10-23)
 START_VEL, MAX_VEL, ACC = 30, 150, 10        # 시작 복귀 속도 / 씬 속도 상한 / 가속
+POSE_ACC = 30                      # 웹 실시간 조그(pose) 중에만 쓰는 모터 가속(Profile Acceleration). 씬·기록 동작은 위 ACC(10) 그대로.
+                                   # pose 는 0.14~0.15초마다 새 목표가 오는데 가속이 낮으면(10) 매번 천천히 출발했다가 다음 목표에서 다시 출발해 '삐걱'거림 → 높여서 빨리 속도에 도달.
+                                   # 너무 높으면(100~) 급가속으로 오히려 덜컥거림. 이상하면 POSE_ACC = ACC 로 바꾸면 예전과 똑같음 (2026-11-02, 시험 전 — 로봇에서 확인 필요)
 ARRIVE_TOL, HOMING_TIMEOUT = 20, 20.0
 LIFT_SIGN = {2: -1, 3: -1}         # "들기" 방향: 원점이 범위 끝(아래)이라 값이 작아지는 쪽이 들림
 SWIVEL_LOCK_W = 40                 # ID3 위치에서 ID4 허용 폭이 이보다 좁으면 "스위블 잠김 구간" → ID4 힘 뺌
@@ -222,6 +225,7 @@ class Motors:
         return ok and self._w(i, A_ACC, 4, ACC) and self._w(i, A_VEL, 4, vel)
 
     def enable(self, vel):
+        self.acc = ACC                 # 아래 _set_regs 가 ACC 로 쓴다 (웹 pose 중에만 set_acc 로 바꿈)
         for i in IDS:
             p = self.pos(i)
             ok = p is not None and self._w(i, A_TORQUE, 1, 0)
@@ -332,6 +336,12 @@ class Motors:
             if p is None or abs(p - self.goal.get(i, p)) > tol:
                 return False
         return True
+
+    def set_acc(self, acc):
+        """전 축 Profile Acceleration 을 바꿈 (웹 pose 는 POSE_ACC, 그 밖에는 ACC)"""
+        for i in IDS:
+            self._w(i, A_ACC, 4, acc)
+        self.acc = acc
 
     def hold(self):
         for i in IDS:
@@ -985,6 +995,8 @@ class Robot(BaseRobot):
                 self.log(f"ID{i} {AXIS_NAME[i]} 토크 {'켜기' if on else '끄기'} 실패", "warn")
 
     def _play(self, name, source):
+        if self.mot and getattr(self.mot, "acc", ACC) != ACC:
+            self.mot.set_acc(ACC)                                  # 웹 pose 에서 씬으로 넘어갈 때 가속을 원래대로
         self._idle_torque(True)
         self.player = Player(name, source)
         self.log(f"씬 '{name}' 시작 ({'자동' if source == 'auto' else '트리거'})")
@@ -1100,7 +1112,9 @@ class Robot(BaseRobot):
             if not self.posing:
                 self.posing = True
                 self._idle_torque(True)
-                self.log("웹 실시간 조그 시작 (pose)")
+                if getattr(self.mot, "acc", ACC) != POSE_ACC:
+                    self.mot.set_acc(POSE_ACC)
+                self.log(f"웹 실시간 조그 시작 (pose, 가속 {POSE_ACC})")
             self.pose_t = time.time()
             self.state = "ready"
             self.mot.goto(web_pose_targets(cmd.get("deg", {})), duration=POSE_DT)
@@ -1201,6 +1215,7 @@ class Robot(BaseRobot):
                         self._scene_done(f"씬 '{self.player.name}' 완료")
                 if self.posing and now - self.pose_t > POSE_END_SEC:
                     self.posing = False
+                    self.mot.set_acc(ACC)                          # 씬·기록 동작은 원래 가속으로
                     self.log("웹 실시간 조그 끝 (지금 자세 유지)")
                     near_home = all(abs(self.mot.goal.get(i, HOME[i]) - HOME[i]) < 30 for i in IDLE_TORQUE_OFF)
                     if not self.player and not self.mode and near_home:      # 목을 든 채로 끝나면 토크 유지 (끄면 처짐)
