@@ -1654,6 +1654,7 @@ const tlTop = () => TL.RULER + (curClip()?.markers?.length ? bandH() : 0);
 function resizeTL() {
   const r = tlc.getBoundingClientRect(), dpr = devicePixelRatio || 1;
   TL.w = r.width; TL.h = r.height;
+  TL.LW = TL.w < 520 ? 96 : 150;                                       // 폰처럼 좁으면 왼쪽 이름 칸을 줄여 타임라인 칸을 넓힌다
   tlc.width = r.width * dpr; tlc.height = r.height * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawTL();
@@ -2580,7 +2581,7 @@ addEventListener('keydown', (e) => {
     try { localStorage.setItem(KEY, JSON.stringify({ x: parseFloat(box.style.left), y: parseFloat(box.style.top) })); } catch { /* 무시 */ }
   };
   box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
-  addEventListener('resize', clamp);
+  const ro = new ResizeObserver(clamp); ro.observe(wrap); ro.observe(box);   // 화면 크기가 바뀌거나(폰·태블릿 배치 포함) 숨겨져 있던 패널이 나타나 크기가 생기면 다시 화면 안으로 맞춘다
 })();
 
 /* ───────────── 시작 ───────────── */
@@ -2672,5 +2673,5 @@ window.__cove = { S, exportGLB, getEyes: () => eyes, camera, orbit, THREE, rende
   const end = () => { if (!d) return; d = null; box.style.cursor = 'grab'; save(); };
   box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
   box.addEventListener('dblclick', () => { x = y = null; s = 1; apply(); save(); });
-  addEventListener('resize', apply);
+  new ResizeObserver(() => apply()).observe(wrap);                    // 3D 화면 크기가 바뀌면(폰·태블릿 배치 포함) 다시 화면 안으로 맞춘다
 })();

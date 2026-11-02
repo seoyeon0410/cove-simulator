@@ -659,9 +659,10 @@ footer{container-type:inline-size}
 #transport{padding:9px 12px}
 .zoom-wrap{display:flex;align-items:center;gap:6px;flex:none;white-space:nowrap;font-size:12.5px}
 #timeLabel{font-size:13px}
-@container (max-width:600px){.zoom-wrap .dim{display:none}}
-@container (max-width:500px){#tPrev,#tNext{display:none}}
-@container (max-width:560px){.zoom-wrap{display:none}}
+/* 폭이 좁으면 숨기지 않고 줄을 바꾼다: 재생 버튼·시간·반복은 첫 줄, 전체 보기·확대 바·접기는 둘째 줄 (spacer가 줄바꿈 역할) */
+@container (max-width:640px){#transport{flex-wrap:wrap;row-gap:6px}#transport .spacer{flex:0 0 100%;height:0}#tlFold{margin-left:auto}#zoom{width:110px}}
+@container (max-width:360px){#tPrev,#tNext{display:none}}
+@container (max-width:420px){#transport{padding:8px 6px;gap:3px}#timeLabel{min-width:0;font-size:12px}#tlFold{padding:5px 7px}}
 #zoomFit{flex:none;padding:5px 10px;font-size:12px}
 /* 헤더 메모장: [메모장] 버튼으로 열고 닫는 창. 메모가 있으면 버튼에 금색 점이 붙는다 */
 #memoBox{position:relative;flex:none;margin-left:14px}
@@ -677,8 +678,48 @@ footer{container-type:inline-size}
 .memo-bar #memoClear{color:#e7b4a6}
 .memo-bar #memoState.ok{animation:memoOk 1.6s ease-out}
 @keyframes memoOk{0%,50%{color:#8fbf7a;font-weight:600}100%{color:var(--dim);font-weight:400}}
-@container (max-width:340px){#zoomFit{display:none}}
+/* (좁을 때 '전체 보기'·확대 바를 숨기던 규칙은 없앴다: 이제 둘째 줄로 내려간다) */
 /* 표정 모음 아래 표정 줄: 번호 · 이름 · 눈 그림 · 기분. 지금 보이는 표정은 이름이 금색, 그 표정만 재생 중이면 줄 전체가 강조 */
 .clip-item.expr .du{font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .clip-item.expr .eye-pick{cursor:inherit}
 .clip-item.expr.cur .nm{color:var(--accent);font-weight:600}
+/* ───── 적응형 (2026-11-02): 화면 폭에 맞춰 배치를 바꾼다. 데스크톱(901px 이상)은 그대로 ───── */
+/* 헤더: 버튼이 많아 폭이 모자라면 잘리지 않고 다음 줄로 내려간다 */
+header{flex-wrap:wrap;row-gap:6px}
+#robotPanel{max-width:calc(100vw - 24px)}
+
+/* 태블릿 세로·폰 (폭 900px 이하): 위에서 아래로 쌓는다 — 3D 화면 → 타임라인 → 동작 목록 → 편집 패널. 페이지 전체가 아래로 스크롤된다 */
+@media (max-width:900px){
+  html,body{height:auto}
+  body{display:flex;flex-direction:column;gap:8px;min-height:100%;overflow:visible;padding:0 8px 12px}
+  header{order:0;margin:0 -8px;padding:8px 10px}
+  #viewWrap{order:1;flex:none;height:min(48vh,520px);min-height:240px;margin:0}
+  footer{order:2;flex:none;height:auto;margin:0}
+  footer #tl{flex:none;height:max(120px,calc(var(--tl-h,160px) - 44px))}   /* 재생 줄이 두 줄이 돼도 타임라인 칸 높이는 그대로 (높이 조절 손잡이도 그대로 동작) */
+  body.tl-collapsed footer{height:32px}
+  #left{order:3;flex:none;width:auto;overflow:visible}
+  #right{order:4;flex:none;width:auto;overflow:visible}
+  body:not(.edit-open) #right{display:none}
+}
+/* 세로로 충분히 길면 목록을 내려도 3D 화면이 위에 붙어 있다 */
+@media (max-width:900px) and (min-height:600px){
+  #viewWrap{position:sticky;top:0;z-index:8}   /* 아래로 스크롤할 때 타임라인의 접기 버튼(z 7) 등이 3D 화면 위로 비치지 않게 */
+}
+/* 폰 (폭 600px 이하): 헤더 버튼을 작게, 뷰포트 안 창들은 위·아래로 나누고, 센서 창은 로봇이 연결됐을 때만 한 줄로 보인다 */
+@media (max-width:600px){
+  .brand{font-size:13px}
+  #fileName{display:none}
+  #memoBox{margin-left:8px}
+  header button,#fileMenu>summary{padding:6px 9px;font-size:12.5px}
+  header .edit-switch{font-size:12.5px}
+  #memoPop{position:fixed;top:60px;left:8px;right:8px;width:auto}
+  #viewDock{flex-direction:column;flex-wrap:nowrap;justify-content:space-between;align-items:stretch;gap:6px;padding:8px}
+  #viewDock #sensorBar{align-self:flex-end;max-width:100%}
+  #viewWrap #sensorBar.off{display:none}
+  #viewWrap #sensorBar .sb-row{flex-direction:row;flex-wrap:wrap;gap:3px}
+  #viewWrap #sensorBar .sb-pill{padding:3px 7px}
+  #vpActions{margin-left:0;max-width:100%}
+  .vp-nav button{max-width:none}
+  #holdBar{top:8px;left:8px;max-width:calc(100% - 16px)}
+  .clip-item{padding:10px 8px}
+}
