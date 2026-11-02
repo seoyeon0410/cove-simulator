@@ -83,24 +83,27 @@
 
   <div id="viewWrap">
     <div id="view"></div>
-    <div id="vpActions" class="glass" hidden>
+    <!-- 뷰포트 아래 줄: 왼쪽에 센서 창, 오른쪽에 단계 패널. 둘이 한 줄에 안 들어가면 단계 패널이 아랫줄로 내려가 겹치지 않는다. 끌어서 옮기면 그 자리(뷰포트 좌표)로 간다 -->
+    <div id="viewDock">
+      <div id="sensorBar" class="off" title="로봇의 센서가 지금 감지하고 있는지 보여 줘요">
+        <div class="sb-head"><span class="sb-lbl">센서</span><span class="sb-note" id="sbNote">로봇 연결 필요</span></div>
+        <div class="sb-row">
+          <div class="sb-pill" id="sbTouch1" title="터치센서 1번 (앞에서 볼 때 왼쪽 위)"><i></i><b>터치 1 왼쪽</b><small></small></div>
+          <div class="sb-pill" id="sbTouch2" title="터치센서 2번 (가운데)"><i></i><b>터치 2 가운데</b><small></small></div>
+          <div class="sb-pill" id="sbTouch3" title="터치센서 3번 (앞에서 볼 때 오른쪽 위)"><i></i><b>터치 3 오른쪽</b><small></small></div>
+          <div class="sb-pill" id="sbArm" title="1번 거리센서 (머리, 턱 아래)"><i></i><b>1번 머리</b><small></small></div>
+          <div class="sb-pill" id="sbFront" title="2번 거리센서 (몸통 앞)"><i></i><b>2번 몸통</b><small></small></div>
+        </div>
+      </div>
+      <div id="vpActions" class="glass" hidden>
         <div id="vpStep" class="vp-step"></div>
+        <div id="situation" hidden></div>
         <div class="vp-nav">
           <button id="vpPrev" title="이전 단계 ([)">◀ <span id="vpPrevName"></span></button>
           <button id="vpNext" title="다음 단계 (])"><span id="vpNextName"></span> ▶</button>
         </div>
-    </div>
-    <div id="sensorBar" class="off" title="로봇의 센서가 지금 감지하고 있는지 보여 줘요">
-      <div class="sb-head"><span class="sb-lbl">센서</span><span class="sb-note" id="sbNote">로봇 연결 필요</span></div>
-      <div class="sb-row">
-        <div class="sb-pill" id="sbTouch1" title="터치센서 1번 (앞에서 볼 때 왼쪽 위)"><i></i><b>터치 1 왼쪽</b><small></small></div>
-        <div class="sb-pill" id="sbTouch2" title="터치센서 2번 (가운데)"><i></i><b>터치 2 가운데</b><small></small></div>
-        <div class="sb-pill" id="sbTouch3" title="터치센서 3번 (앞에서 볼 때 오른쪽 위)"><i></i><b>터치 3 오른쪽</b><small></small></div>
-        <div class="sb-pill" id="sbArm" title="1번 거리센서 (머리, 턱 아래)"><i></i><b>1번 머리</b><small></small></div>
-        <div class="sb-pill" id="sbFront" title="2번 거리센서 (몸통 앞)"><i></i><b>2번 몸통</b><small></small></div>
       </div>
     </div>
-    <div id="situation" hidden></div>
     <div id="holdBar" hidden></div>
     <div id="drop">GLB 파일을 여기에 놓으세요</div>
   </div>
@@ -228,7 +231,6 @@
 
 <footer>
   <div id="tlResize" title="위아래로 끌어서 타임라인 높이를 조절해요 (더블클릭하면 기본 높이)"><i></i></div>
-  <button id="tlFold" title="타임라인을 완전히 접어요 / 다시 펼쳐요">▾ 접기</button>
   <div id="transport">
     <button id="tStart" title="처음 (Home)">⏮</button>
     <button id="tPrev" title="이전 프레임 (←)">◀</button>
@@ -238,7 +240,8 @@
     <span id="timeLabel" >0 / 0.00s</span>
     <label class="check"><input type="checkbox" id="loop"> 반복</label>
     <span class="spacer"></span>
-    <span class="dim">확대</span><input type="range" id="zoom" min="30" max="600" value="120">
+    <label class="zoom-wrap" title="타임라인 확대 · 축소"><span class="dim">확대</span><input type="range" id="zoom" min="30" max="600" value="120"></label>
+    <button id="tlFold" title="타임라인을 완전히 접어요 / 다시 펼쳐요">▾ 접기</button>
   </div>
   <canvas id="tl"></canvas>
 </footer>

@@ -930,9 +930,11 @@ function clipRowEl(c, i, sub) {
   const el = document.createElement('button');
   el.className = 'clip-item' + (i === S.clip ? ' on' : ''); el.dataset.i = i;
   const m = c.name.match(/^시나리오(\d+)\s*(.*)$/);                      // "시나리오1 휴식" → 번호 01 + 제목 "휴식"
+  const sm = sub && c.name.match(/^.*?\s*(\d+)단계\s*(.+)$/);              // 하위항목 "휴식 1단계 누가 다가왔어요" → 번호 1 + "누가 다가왔어요" (시나리오 이름은 바로 위 줄에 있다)
   el.innerHTML = '<span class="no"></span><span class="nm"></span><span class="du"></span>';
-  el.children[0].textContent = m ? m[1].padStart(2, '0') : '';
-  el.children[1].textContent = m ? m[2] : c.name;
+  el.children[0].textContent = m ? m[1].padStart(2, '0') : sm ? sm[1] : '';
+  el.children[1].textContent = m ? m[2] : sm ? sm[2] : c.name;
+  el.title = c.name;
   el.children[2].textContent = `${+c.duration.toFixed(1)}초`;
   if (c.group === '단계별') {                                          // 시간(초) 왼쪽에 지금 표정을 보여 주는 버튼: 누르면 표정을 골라 이 동작의 눈을 바꾼다
     const cur = c.eyes?.[0]?.e || '뜬 눈', eb = document.createElement('span');
@@ -1597,8 +1599,8 @@ function toast(msg) {
 
 /* ───────────── 타임라인 ───────────── */
 const tlc = $('#tl'), ctx = tlc.getContext('2d');
-const BAND = 22;
-const TL = { LW: 150, RULER: 26, RH: 26, pps: 120, sx: 0, sy: 0, w: 0, h: 0, drag: null };
+const BAND = 24;
+const TL = { LW: 150, RULER: 26, RH: 28, pps: 120, sx: 0, sy: 0, w: 0, h: 0, drag: null };
 const tlTop = () => TL.RULER + (curClip()?.markers?.length ? BAND : 0);
 
 function resizeTL() {
@@ -1694,7 +1696,7 @@ function drawTL() {
         ctx.fillStyle = '#3a3428'; ctx.fillRect(l, y + 4, Math.max(2, x1 - l - 1), RH - 8);
         ctx.fillStyle = C('--accent'); ctx.fillRect(l, y + 4, 2, RH - 8);
         ctx.save(); ctx.beginPath(); ctx.rect(l, y, Math.max(2, x1 - l - 1), RH); ctx.clip();
-        ctx.fillStyle = C('--text'); ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle';
+        ctx.fillStyle = C('--text'); ctx.font = `12px ${FONT}`; ctx.textBaseline = 'middle';
         ctx.fillText((k.eL || k.eR ? `왼 ${k.eL || k.e} · 오 ${k.eR || k.e}` : k.e) + ((k.gx || k.gy) ? ` (${k.gx || 0},${k.gy || 0})` : ''), l + 6, y + RH / 2);
         ctx.restore();
       });
@@ -1705,7 +1707,7 @@ function drawTL() {
   ctx.fillStyle = C('--panel'); ctx.fillRect(LW, 0, w - LW, RUL);
   const steps = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60];
   const major = steps.find((s) => s * TL.pps >= 70) || 60;
-  ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle';
+  ctx.font = `12px ${FONT}`; ctx.textBaseline = 'middle';
   const t0 = Math.max(0, Math.floor(x2t(LW) / major) * major), t1 = x2t(w);
   if (TL.pps / f >= 6) {
     ctx.strokeStyle = '#3a3834'; ctx.beginPath();
@@ -1731,7 +1733,7 @@ function drawTL() {
     ctx.fillStyle = cur ? '#4a4234' : (i % 2 ? '#201f1d' : '#191917'); ctx.fillRect(l, RUL, x1 - l - 1, BAND - 2);
     if (cur) { ctx.fillStyle = C('--accent'); ctx.fillRect(l, RUL, x1 - l - 1, 2); }
     ctx.save(); ctx.beginPath(); ctx.rect(l, RUL, x1 - l - 1, BAND); ctx.clip();
-    ctx.fillStyle = cur ? '#fff' : C('--dim'); ctx.font = `${cur ? 600 : 400} 11px ${FONT}`; ctx.textBaseline = 'middle';
+    ctx.fillStyle = cur ? '#fff' : C('--text'); ctx.font = `${cur ? 700 : 500} 12px ${FONT}`; ctx.textBaseline = 'middle';
     ctx.fillText(m.label, Math.max(x0, LW) + 6, RUL + BAND / 2 - 0.5);
     ctx.restore();
     if (x0 >= LW) { ctx.strokeStyle = '#5a564e'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(Math.round(x0) + 0.5, RULER); ctx.lineTo(Math.round(x0) + 0.5, h); ctx.stroke(); ctx.setLineDash([]); }
@@ -1751,7 +1753,7 @@ function drawTL() {
     ctx.fillStyle = sel ? C('--rowsel') : (r % 2 ? C('--row1') : C('--row2')); ctx.fillRect(0, y, LW, RH);
     const has = (clip.tracks[idx] || []).length;
     ctx.fillStyle = has ? C('--key') : '#5a564e'; ctx.beginPath(); ctx.arc(12, y + RH / 2, 3.5, 0, 7); ctx.fill();
-    ctx.fillStyle = sel ? '#fff' : C('--text'); ctx.font = `12px ${FONT}`;
+    ctx.fillStyle = sel ? '#fff' : C('--text'); ctx.font = `12.5px ${FONT}`;
     ctx.fillText(nodeName(idx), 24, y + RH / 2, LW - 30);
   });
   {
@@ -1759,11 +1761,11 @@ function drawTL() {
     if (y + RH >= RULER && y <= h) {
       ctx.fillStyle = C('--row2'); ctx.fillRect(0, y, LW, RH);
       ctx.fillStyle = (clip.eyes || []).length ? C('--key') : '#5a564e'; ctx.beginPath(); ctx.arc(12, y + RH / 2, 3.5, 0, 7); ctx.fill();
-      ctx.fillStyle = C('--text'); ctx.font = `12px ${FONT}`; ctx.textBaseline = 'middle'; ctx.fillText('눈 (8×8 도트)', 24, y + RH / 2, LW - 30);
+      ctx.fillStyle = C('--text'); ctx.font = `12.5px ${FONT}`; ctx.textBaseline = 'middle'; ctx.fillText('눈 (8×8 도트)', 24, y + RH / 2, LW - 30);
     }
   }
   ctx.fillStyle = C('--panel'); ctx.fillRect(0, 0, LW, RULER);
-  if (marks.length) { ctx.fillStyle = C('--dim'); ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle'; ctx.fillText('장면', 12, RUL + BAND / 2); }
+  if (marks.length) { ctx.fillStyle = C('--dim'); ctx.font = `12px ${FONT}`; ctx.textBaseline = 'middle'; ctx.fillText('장면', 12, RUL + BAND / 2); }
 
   // 눈 그림을 끌어 놓을 위치 표시
   if (TL.dropT != null) { const dx = t2x(TL.dropT); ctx.strokeStyle = C('--accent'); ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(dx, 0); ctx.lineTo(dx, h); ctx.stroke(); ctx.setLineDash([]); }
@@ -2480,7 +2482,7 @@ addEventListener('keydown', (e) => {
     box.style.left = Math.max(4, Math.min(W - w - 4, parseFloat(box.style.left))) + 'px';
     box.style.top = Math.max(4, Math.min(H - h - 4, parseFloat(box.style.top))) + 'px';
   };
-  const put = (x, y) => { box.style.left = x + 'px'; box.style.top = y + 'px'; box.style.right = 'auto'; box.style.bottom = 'auto'; clamp(); };
+  const put = (x, y) => { box.style.position = 'absolute'; box.style.margin = '0'; box.style.left = x + 'px'; box.style.top = y + 'px'; box.style.right = 'auto'; box.style.bottom = 'auto'; clamp(); };   // 끌기 전에는 아래 줄(#viewDock) 안에 놓여 있고, 끌면 뷰포트 좌표로 옮겨 간다
   try { const p = JSON.parse(localStorage.getItem(KEY) || 'null'); if (p) put(p.x, p.y); } catch { /* 무시 */ }
   box.style.cursor = 'grab'; box.style.touchAction = 'none'; box.title = '끌어서 옮길 수 있어요';
   let d = null;
@@ -2526,10 +2528,10 @@ window.__cove = { S, exportGLB, getEyes: () => eyes, camera, orbit, THREE, rende
   box.title = '끌어서 옮길 수 있어요 (오른쪽 아래 모서리로 크기 조절)';
   const apply = () => {
     box.style.transform = s === 1 ? '' : `scale(${s})`;
-    if (x == null) { box.style.left = ''; box.style.top = ''; box.style.bottom = ''; return; }
+    if (x == null) { box.style.position = ''; box.style.left = ''; box.style.top = ''; box.style.bottom = ''; return; }   // 처음 자리: 아래 줄(#viewDock) 안
     const W = wrap.clientWidth, H = wrap.clientHeight, w = box.offsetWidth * s, h = box.offsetHeight * s;
     x = Math.max(4, Math.min(W - w - 4, x)); y = Math.max(4, Math.min(H - h - 4, y));
-    box.style.left = x + 'px'; box.style.top = y + 'px'; box.style.bottom = 'auto';
+    box.style.position = 'absolute'; box.style.left = x + 'px'; box.style.top = y + 'px'; box.style.bottom = 'auto';
   };
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ x, y, s })); } catch { /* 무시 */ } };
   try { const p = JSON.parse(localStorage.getItem(KEY) || 'null'); if (p) { x = p.x; y = p.y; s = p.s || 1; } } catch { /* 무시 */ }
