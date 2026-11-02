@@ -1511,14 +1511,16 @@ setInterval(() => {
 // 동작 곡선에 로봇 가속 한계(약 215°/s²)를 크게 넘는 곳이 있으면(간식주기 머리 약 790°/s² 등) 로봇이 못 따라가다 한꺼번에 따라잡느라 덜컥거린다(삐그덕).
 // 또 로봇은 받은 자세 사이 거리로 속도를 정하므로, 보내는 간격이 조금만 흔들려도 속도가 들쑥날쑥해진다 → 늘 같은 간격(POSE_MS)으로 계산해서 보낸다.
 // 다듬기는 '넘치지 않는' 2차 저역 통과(임계 감쇠)라서 원래 동작보다 크게 휘청이지 않는다. 대신 약 SF_LAG초 늦어지므로 그만큼 앞선 자세를 목표로 한다
-const SF = { cur: null, vel: null }, SF_DT = POSE_MS / 1000, SF_WN = 16, SF_SUB = 6, SF_LAG = 2 / SF_WN;   // SF_WN: 클수록 덜 다듬는다(원래 동작에 가깝다). 9였을 때는 1.3초 박자 끄덕임이 22% 작아져서 16으로(약 8%)
+const SF = { cur: null, vel: null, last: 0 }, SF_DT = POSE_MS / 1000, SF_WN = 12, SF_SUB = 6, SF_LAG = 2 / SF_WN;   // SF_WN: 클수록 덜 다듬는다(원래 동작에 가깝다). 9는 1.3초 박자 끄덕임이 22%, 16은 삐그덕이 남아서 12(약 14% 줄어듦)
 function syncPoseAt(t) {                                         // 시각 t 의 자세(로봇 한계 적용)를 다듬어서 로봇에 보낸다
   if (!jointCache || jointCache.model !== S.model) jointCache = { model: S.model, ids: jointIds() };
   const clip = curClip(), ids = jointCache.ids, f = { t }, tiltSign = +($('#rpTiltSign')?.value || 1);
   for (const j of ['neck', 'head', 'tilt', 'body']) f[j] = jointDeg(clip, ids[j], JOINT_AXES[j], t);
   const tg = limitFrames([f], { tiltSign })[0], r1 = (v) => Math.round(v * 10) / 10;
-  if (!SF.cur) { SF.cur = { neck: tg.neck, head: tg.head, tilt: tg.tilt, body: tg.body }; SF.vel = { neck: 0, head: 0, tilt: 0, body: 0 }; }   // 재생을 시작하면 첫 자세부터 (예전과 같다)
-  const h = SF_DT / SF_SUB;
+  const nowMs = performance.now();
+  if (!SF.cur) { SF.cur = { neck: tg.neck, head: tg.head, tilt: tg.tilt, body: tg.body }; SF.vel = { neck: 0, head: 0, tilt: 0, body: 0 }; SF.last = nowMs; }   // 재생을 시작하면 첫 자세부터 (예전과 같다)
+  const dt = Math.max(0.05, Math.min(0.3, (nowMs - SF.last) / 1000 || SF_DT)); SF.last = nowMs;   // 타이머가 늦거나 빨라도(브라우저가 바쁠 때) 실제 지난 시간으로 계산해서 속도가 튀지 않게 한다
+  const h = dt / SF_SUB;
   for (const j of ['neck', 'head', 'tilt', 'body']) {
     for (let s = 0; s < SF_SUB; s++) { const a = SF_WN * SF_WN * (tg[j] - SF.cur[j]) - 2 * SF_WN * SF.vel[j]; SF.vel[j] += a * h; SF.cur[j] += SF.vel[j] * h; }
     if (Math.abs(tg[j] - SF.cur[j]) < 0.05 && Math.abs(SF.vel[j]) < 0.5) { SF.cur[j] = tg[j]; SF.vel[j] = 0; }
