@@ -218,6 +218,7 @@ h3{color:#c9c2b5}
 body:not(.edit-open){grid-template-columns:minmax(0,46fr) minmax(0,54fr)}
 body:not(.edit-open) #right{display:none}
 body:not(.edit-open) footer{grid-column:2/3}
+body:not(.edit-open) #eyeSwipe{display:none}
 #btnEdit{font-weight:600}
 
 /* 클립 목록: 상자 없이 가벼운 한 줄 목록 (번호 · 제목 · 길이) */
@@ -437,7 +438,7 @@ button.rb.run,.rbc.run{background:var(--accent);color:#231b0c;opacity:1}
   background:linear-gradient(135deg,rgba(255,255,255,.7),rgba(255,255,255,.4));-webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6);
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.75);color:#2b2620;font-size:16px;font-weight:600;letter-spacing:-.01em;text-align:center;pointer-events:none}
 #situation[hidden]{display:none}
-#vpActions{position:absolute;top:14px;right:14px;z-index:3;flex-direction:column;align-items:stretch;gap:8px;padding:8px;max-width:280px}
+#vpActions{position:absolute;bottom:18px;right:14px;z-index:3;flex-direction:column;align-items:stretch;gap:8px;padding:8px;max-width:300px}
 #vpActions[hidden]{display:none}
 #vpActions #holdRow{display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:2px}
 #vpActions #holdRow[hidden]{display:none}
@@ -619,3 +620,24 @@ button.rb.reset-eyes:hover{opacity:1}
 body.tl-collapsed{grid-template-rows:auto minmax(0,1fr) 30px}
 body.tl-collapsed footer #transport,body.tl-collapsed footer #tl,body.tl-collapsed footer #tlResize{display:none}
 body.tl-collapsed #tlFold{top:3px;left:10px;right:auto;color:var(--accent)}
+
+/* 센서 창: 뷰포트 왼쪽 아래에 작게 띄운다 */
+#viewWrap #sensorBar{position:absolute;bottom:18px;left:14px;z-index:4;margin:0;padding:6px 8px;width:auto;max-width:176px;background:rgba(24,23,21,.72);backdrop-filter:blur(6px);box-shadow:inset 0 0 0 1px var(--line)}
+#viewWrap #sensorBar .sb-head{margin-bottom:2px;font-size:10px}
+#viewWrap #sensorBar .sb-note{font-size:10px}
+#viewWrap #sensorBar .sb-ref{font-size:9px;margin:0 0 4px}
+#viewWrap #sensorBar .sb-row{gap:2px}
+#viewWrap #sensorBar .sb-pill{gap:6px;padding:2px 7px;border-radius:6px}
+#viewWrap #sensorBar .sb-pill i{width:7px;height:7px}
+#viewWrap #sensorBar .sb-pill b{font-size:10.5px}
+#viewWrap #sensorBar .sb-pill small{font-size:9.5px}
+/* 센서 창 색: 아이보리 */
+#viewWrap #sensorBar{background:rgba(250,246,233,.92);box-shadow:inset 0 0 0 1px rgba(120,100,60,.28),0 2px 8px rgba(60,45,20,.12);color:#4a4132}
+#viewWrap #sensorBar .sb-head{color:#7a6f58}
+#viewWrap #sensorBar .sb-pill{background:#ece5cf;color:#6f6550}
+#viewWrap #sensorBar .sb-pill i{background:#b9ae93}
+#viewWrap #sensorBar .sb-pill.on{background:var(--accent);color:#2a2008}
+#viewWrap #sensorBar .sb-pill.on i{background:#2a2008}
+#viewWrap #sensorBar.off .sb-pill{opacity:.8}
+#viewWrap #sensorBar{transform-origin:0 0}
+#sensorBar .sb-grip{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;border-radius:0 0 var(--r-ctl,8px) 0;background:linear-gradient(135deg,transparent 50%,rgba(120,100,60,.45) 50% 56%,transparent 56% 66%,rgba(120,100,60,.45) 66% 72%,transparent 72%)}

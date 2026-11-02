@@ -58,17 +58,6 @@
         <div class="es-head"><span class="es-lbl">표정 고르기</span><span class="es-name" id="esName">눌러서 고르세요</span></div>
         <div class="es-grid" id="esGrid"></div>
       </div>
-      <div id="sensorBar" class="off" title="로봇의 센서가 지금 감지하고 있는지 보여 줘요">
-        <div class="sb-head"><span class="sb-lbl">센서</span><span class="sb-note" id="sbNote">로봇 연결 필요</span></div>
-        <div class="sb-ref">(모든 센서는 사람 기준 위치입니다)</div>
-        <div class="sb-row">
-          <div class="sb-pill" id="sbTouch1" title="터치센서 1번 (앞에서 볼 때 왼쪽 위)"><i></i><b>터치 1 왼쪽</b><small></small></div>
-          <div class="sb-pill" id="sbTouch2" title="터치센서 2번 (가운데)"><i></i><b>터치 2 가운데</b><small></small></div>
-          <div class="sb-pill" id="sbTouch3" title="터치센서 3번 (앞에서 볼 때 오른쪽 위)"><i></i><b>터치 3 오른쪽</b><small></small></div>
-          <div class="sb-pill" id="sbArm" title="1번 거리센서 (머리, 턱 아래)"><i></i><b>1번 머리</b><small></small></div>
-          <div class="sb-pill" id="sbFront" title="2번 거리센서 (몸통 앞)"><i></i><b>2번 몸통</b><small></small></div>
-        </div>
-      </div>
       <details id="clipTools">
       <summary>클립 관리</summary>
       <div class="row tools">
@@ -100,6 +89,16 @@
           <button id="vpPrev" title="이전 단계 ([)">◀ <span id="vpPrevName"></span></button>
           <button id="vpNext" title="다음 단계 (])"><span id="vpNextName"></span> ▶</button>
         </div>
+    </div>
+    <div id="sensorBar" class="off" title="로봇의 센서가 지금 감지하고 있는지 보여 줘요">
+      <div class="sb-head"><span class="sb-lbl">센서</span><span class="sb-note" id="sbNote">로봇 연결 필요</span></div>
+      <div class="sb-row">
+        <div class="sb-pill" id="sbTouch1" title="터치센서 1번 (앞에서 볼 때 왼쪽 위)"><i></i><b>터치 1 왼쪽</b><small></small></div>
+        <div class="sb-pill" id="sbTouch2" title="터치센서 2번 (가운데)"><i></i><b>터치 2 가운데</b><small></small></div>
+        <div class="sb-pill" id="sbTouch3" title="터치센서 3번 (앞에서 볼 때 오른쪽 위)"><i></i><b>터치 3 오른쪽</b><small></small></div>
+        <div class="sb-pill" id="sbArm" title="1번 거리센서 (머리, 턱 아래)"><i></i><b>1번 머리</b><small></small></div>
+        <div class="sb-pill" id="sbFront" title="2번 거리센서 (몸통 앞)"><i></i><b>2번 몸통</b><small></small></div>
+      </div>
     </div>
     <div id="situation" hidden></div>
     <div id="holdBar" hidden></div>

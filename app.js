@@ -2470,6 +2470,35 @@ addEventListener('keydown', (e) => {
   }
 });
 
+/* 단계 넘기기 패널(#vpActions): 빈 곳이나 '2 / 6 단계' 글자를 끌어서 옮긴다. 위치는 기억한다 */
+(() => {
+  const box = $('#vpActions'), wrap = $('#viewWrap'); if (!box || !wrap) return;
+  const KEY = 'cove-vp-pos';
+  const clamp = () => {                                               // 화면 밖으로 나가지 않게
+    if (!box.style.left) return;
+    const W = wrap.clientWidth, H = wrap.clientHeight, w = box.offsetWidth, h = box.offsetHeight;
+    box.style.left = Math.max(4, Math.min(W - w - 4, parseFloat(box.style.left))) + 'px';
+    box.style.top = Math.max(4, Math.min(H - h - 4, parseFloat(box.style.top))) + 'px';
+  };
+  const put = (x, y) => { box.style.left = x + 'px'; box.style.top = y + 'px'; box.style.right = 'auto'; box.style.bottom = 'auto'; clamp(); };
+  try { const p = JSON.parse(localStorage.getItem(KEY) || 'null'); if (p) put(p.x, p.y); } catch { /* 무시 */ }
+  box.style.cursor = 'grab'; box.style.touchAction = 'none'; box.title = '끌어서 옮길 수 있어요';
+  let d = null;
+  box.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button')) return;                            // 버튼은 그대로 눌린다
+    const r = box.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+    d = { dx: e.clientX - r.left, dy: e.clientY - r.top, ox: w.left, oy: w.top };
+    box.setPointerCapture(e.pointerId); box.style.cursor = 'grabbing'; e.preventDefault();
+  });
+  box.addEventListener('pointermove', (e) => { if (d) put(e.clientX - d.ox - d.dx, e.clientY - d.oy - d.dy); });
+  const end = () => {
+    if (!d) return; d = null; box.style.cursor = 'grab';
+    try { localStorage.setItem(KEY, JSON.stringify({ x: parseFloat(box.style.left), y: parseFloat(box.style.top) })); } catch { /* 무시 */ }
+  };
+  box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
+  addEventListener('resize', clamp);
+})();
+
 /* ───────────── 시작 ───────────── */
 initRobotPanel({ exportFiles: buildRobotExport });
 resizeView();
@@ -2486,3 +2515,43 @@ requestAnimationFrame(frame);
 })();
 addEventListener('beforeunload', () => { try { if (S.glb) snapshot(true); } catch { /* */ } });
 window.__cove = { S, exportGLB, getEyes: () => eyes, camera, orbit, THREE, renderer, scene, setTime, sampleJoints, buildRobotExport, buildPresetByName: (n) => { const d = PRESET_GROUPS[0].items.find((i) => i.name === n); return d ? buildPresetClip(d) : null; }, snapshot };
+
+/* 센서 창(#sensorBar): 빈 곳을 끌어서 옮기고, 오른쪽 아래 손잡이를 끌어서 크기를 바꾼다 (더블클릭하면 처음 크기·위치). 기억한다 */
+(() => {
+  const box = $('#sensorBar'), wrap = $('#viewWrap'); if (!box || !wrap) return;
+  const KEY = 'cove-sensor-box';
+  let x = null, y = null, s = 1;                                      // x, y: 뷰포트 안 왼쪽 위 좌표(없으면 CSS 기본 위치), s: 배율
+  const handle = document.createElement('div'); handle.className = 'sb-grip'; handle.title = '끌어서 크기 조절 · 더블클릭하면 처음 크기와 위치'; box.appendChild(handle);
+  box.style.transformOrigin = '0 0'; box.style.touchAction = 'none'; box.style.cursor = 'grab';
+  box.title = '끌어서 옮길 수 있어요 (오른쪽 아래 모서리로 크기 조절)';
+  const apply = () => {
+    box.style.transform = s === 1 ? '' : `scale(${s})`;
+    if (x == null) { box.style.left = ''; box.style.top = ''; box.style.bottom = ''; return; }
+    const W = wrap.clientWidth, H = wrap.clientHeight, w = box.offsetWidth * s, h = box.offsetHeight * s;
+    x = Math.max(4, Math.min(W - w - 4, x)); y = Math.max(4, Math.min(H - h - 4, y));
+    box.style.left = x + 'px'; box.style.top = y + 'px'; box.style.bottom = 'auto';
+  };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ x, y, s })); } catch { /* 무시 */ } };
+  try { const p = JSON.parse(localStorage.getItem(KEY) || 'null'); if (p) { x = p.x; y = p.y; s = p.s || 1; } } catch { /* 무시 */ }
+  apply();
+  const pin = () => {                                                 // 처음 끌 때 CSS 기본 위치를 좌표로 바꿔 둔다
+    if (x != null) return; const r = box.getBoundingClientRect(), w = wrap.getBoundingClientRect(); x = r.left - w.left; y = r.top - w.top;
+  };
+  let d = null;
+  box.addEventListener('pointerdown', (e) => {
+    pin();
+    const r = box.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+    d = e.target === handle ? { mode: 'size', x0: e.clientX, w0: r.width, s0: s } : { mode: 'move', dx: e.clientX - r.left, dy: e.clientY - r.top, ox: w.left, oy: w.top };
+    box.setPointerCapture(e.pointerId); if (d.mode === 'move') box.style.cursor = 'grabbing'; e.preventDefault();
+  });
+  box.addEventListener('pointermove', (e) => {
+    if (!d) return;
+    if (d.mode === 'move') { x = e.clientX - d.ox - d.dx; y = e.clientY - d.oy - d.dy; }
+    else s = Math.max(0.7, Math.min(2.5, d.s0 * (d.w0 + e.clientX - d.x0) / d.w0));
+    apply();
+  });
+  const end = () => { if (!d) return; d = null; box.style.cursor = 'grab'; save(); };
+  box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
+  box.addEventListener('dblclick', () => { x = y = null; s = 1; apply(); save(); });
+  addEventListener('resize', apply);
+})();
