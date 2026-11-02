@@ -209,7 +209,7 @@ const SCENARIOS = [
     { name: '잘 쉬었어요', duration: 4, keys: [k(0, 30, -8), k(1.5, 25, -34), k(2.2, 25, -34, 10), k(3, 25, -34, -10), k(4, 25, -34)] },
   ] },
   { name: '시나리오2 간지럽히기', rev: 5, interp: 'linear', eyes: EYES_TICKLE, noTail: true, hold: [{ at: 2, label: '간지럽히기', msg: '간지럽혀 주길 기다리고 있어요. 준비되면 눌러 주세요.' }, { at: 3, label: '손 떼기', msg: '간지럽히다가 손을 떼는 순간에 멈춰 있어요. 더 놀고 싶어 하기 전에 준비되면 눌러 주세요.' }, { at: 4, label: '뒤로 넘어가기', msg: '너무 웃겨서 뒤로 넘어가기 직전에 멈춰 있어요. 준비되면 눌러 주세요.' }], steps: tickleMergedSteps() },   // 3번째 장면(간지러워요!) 앞에서 멈추고, 버튼을 누르면 간지럽다는 듯 움직인다
-  { name: '시나리오3 간식주기', interp: 'linear', eyes: EYES_SNACK, tailLabel: '졸려요', steps: snackMergedSteps() },
+  { name: '시나리오3 간식주기', interp: 'linear', eyes: EYES_SNACK, tailLabel: '졸려요', hold: [{ at: 4, label: '간식 주기', msg: '먹고 싶어서 간식을 기다리고 있어요. 간식을 주면 눌러 주세요.' }], steps: snackMergedSteps() },   // 5번째 장면(냠냠 맛있어요) 앞에서 멈추고, 버튼을 눌러야 먹기 시작한다
   { name: '시나리오4 인사', rev: 5, hidden: true, noTail: true, eyes: [...autoEyes([3, 3, 4], [['뜬 눈', '뜬 눈'], ['뜬 눈', '뜬 눈'], ['신난 눈', '윙크']]), [10, '뜬 눈']], natural: true, steps: [   // 2번 센서(손이 다가옴)가 부르는 시나리오: 동작 목록에는 숨기고, 끝에 '다시 쉬어요'(접기)를 붙이지 않아 기둥이 선 채로 끝난다
     { name: '누가 지나가요', duration: 3, keys: WAKE },
     { name: '반가워서 고개를 들어요', duration: 3, keys: [k(0, 25, -34), k(1.2, 33, -42), k(3, 33, -42)] },
