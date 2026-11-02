@@ -1137,7 +1137,10 @@ let touchState = 'idle';   // 'idle' | 'stroking'
 let standTimer = 0, standLockUntil = 0, sitTimer = 0, sitIv = 0, standGuard = [];
 // 터치 판정 상태: idle → pending(닿은 걸 처음 봄) → 떨어졌으면 tapwait(다음 센서가 이어 닿는지 한 번 더 본다) → 톡
 // 몸도 흔든다: 로봇의 지금 자세를 기준으로 머리를 조금 숙이고 몸통을 3초간 좌우로 (웹 동기가 켜져 있어야 한다 = 주변 확인 + 동기 켬). 끝나면 그 자세로 돌아온다
-const WIGGLE_SEC = 3;                                           // 몸 흔드는 시간 (초)
+const WIGGLE_SEC = 4.2;                                         // 쓰다듬기 반응 시간 (초): 몸통 도리도리 + 고개 갸우뚱갸우뚱
+// 갸우뚱: 고개가 -25°보다 들려 있으면 -25°까지 살짝 숙이고(0.8초), 고개가 내려온 뒤(0.8초부터) 그 머리 각도에서 로봇이 허용하는 갸웃의 85%(최대 9°)로 1.6초 박자로 좌우로 기울인다.
+// 머리가 많이 들려 있으면 로봇이 갸웃을 거의 못 하고(-40° 위로는 0), 박자를 더 빠르게·폭을 더 크게 하면 로봇 가속 한계(약 215°/s²)를 넘는다
+const WIGGLE_HEAD = -25, WIGGLE_TILT = 9, WIGGLE_TILT_FRAC = 0.85, WIGGLE_HEAD_RAMP = 0.8, WIGGLE_TILT_FROM = 0.8, WIGGLE_TILT_PERIOD = 1.6;
 // 재생 안 할 때 센서 반응들(톡·쓰다듬기·1번·2번 기둥 올리기)이 로봇에 자세를 보내는 길을 하나로 맞춘다.
 // 관절 조작(머리 들기·일어난 뒤 고개 들기 등) 뒤에는 0.1초마다 그 자세를 계속 보내는 로봇 동기가 따로 돌고 있어서, 반응이 따로 자세를 보내면 두 값이 번갈아 가며 로봇이 떨린다.
 // 그래서 조작 중이면 반응도 같은 조작 값(jtVal)을 바꿔서 보내고(한 곳에서만 보낸다), 기준 자세도 로봇이 읽은 값이 아니라 보낸 값에서 잡는다
@@ -1184,10 +1187,16 @@ function happyWiggle() {
   const t0 = performance.now(), r1 = (v) => Math.round(v * 10) / 10;
   wiggleTimer = setInterval(() => {
     if (S.playing || !robot.sync) { clearInterval(wiggleTimer); return; }        // 재생이 시작됐거나 동기가 꺼졌으면 재생·동기에 맡기고 그만둔다
-    const t = (performance.now() - t0) / 1000, done = t >= WIGGLE_SEC;
-    const e = Math.max(0, Math.min(1, t / 0.5, (WIGGLE_SEC - t) / 0.5)), es = e * e * (3 - 2 * e), off = done ? 0 : 12 * Math.sin((2 * Math.PI * t) / 1.4) * es;
-    const bow = 0;                                                             // 머리는 움직이지 않고 몸통만 좌우로 흔든다 (도리도리)
-    driveIdlePose({ neck: r1(base.neck), head: r1(Math.min(0, base.head + bow)), tilt: r1(base.tilt), body: r1(base.body + off) });
+    const t = (performance.now() - t0) / 1000, done = t >= WIGGLE_SEC, sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+    const es = sm(Math.min(t / 0.5, (WIGGLE_SEC - t) / 0.5)), wave = done ? 0 : Math.sin((2 * Math.PI * t) / 1.4);
+    const off = 12 * wave * es;                                                // 몸통 좌우 12° (도리도리)
+    const eh = done ? 0 : sm(Math.min(t / WIGGLE_HEAD_RAMP, (WIGGLE_SEC - t) / WIGGLE_HEAD_RAMP));   // 고개 숙이기는 천천히(0.8초) — 들린 고개를 빨리 내리면 로봇 가속 한계를 넘는다
+    const head = Math.min(0, base.head + Math.max(0, WIGGLE_HEAD - base.head) * eh);   // -25°보다 들려 있을 때만 숙인다 (이미 숙였으면 그대로)
+    const [lo, hi] = tiltRange(head), sg = +($('#rpTiltSign')?.value || 1), [wlo, whi] = sg > 0 ? [lo, hi] : [-hi, -lo];   // 지금 머리 각도에서 갸웃할 수 있는 범위 (고개가 많이 들려 있으면 0)
+    const et = done ? 0 : sm(Math.min((t - WIGGLE_TILT_FROM) / 0.8, (WIGGLE_SEC - WIGGLE_TILT_FROM - t) / 0.8));   // 갸웃은 고개가 내려온 뒤 시작해서, 고개를 다시 들기 전에 끝낸다
+    const amp = Math.min(WIGGLE_TILT, WIGGLE_TILT_FRAC * Math.min(-wlo, whi)) * et;
+    const tilt = Math.max(wlo, Math.min(whi, base.tilt + Math.max(0, amp) * Math.sin((2 * Math.PI * (t - WIGGLE_TILT_FROM)) / WIGGLE_TILT_PERIOD)));   // 고개 갸우뚱갸우뚱
+    driveIdlePose({ neck: r1(base.neck), head: r1(head), tilt: r1(tilt), body: r1(base.body + off) });
     if (done) clearInterval(wiggleTimer);
   }, 100);
 }
