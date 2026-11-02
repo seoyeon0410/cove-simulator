@@ -675,6 +675,8 @@ footer{container-type:inline-size}
 .memo-bar button{padding:4px 10px;font-size:12px}
 .memo-bar #memoState{flex:1;font-size:12px}
 .memo-bar #memoClear{color:#e7b4a6}
+.memo-bar #memoState.ok{animation:memoOk 1.6s ease-out}
+@keyframes memoOk{0%,50%{color:#8fbf7a;font-weight:600}100%{color:var(--dim);font-weight:400}}
 @container (max-width:340px){#zoomFit{display:none}}
 /* 표정 모음 아래 표정 줄: 번호 · 이름 · 눈 그림 · 기분. 지금 보이는 표정은 이름이 금색, 그 표정만 재생 중이면 줄 전체가 강조 */
 .clip-item.expr .du{font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

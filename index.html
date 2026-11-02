@@ -7,19 +7,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300..700&family=Noto+Sans+KR:wght@300..700&display=swap">
-<link rel="stylesheet" href="style.css?v=20261102g">
+<link rel="stylesheet" href="style.css?v=20261102h">
 <!-- ?v= : 고칠 때마다 이 파일의 v= 숫자를 모두 같이 바꾼다. 다른 사람 브라우저가 저장해 둔 예전 파일(presets.js 등)을 쓰지 않고 새로 받게 한다 -->
 <script type="importmap">
 { "imports": {
   "three": "./lib/three/build/three.module.js",
   "three/addons/": "./lib/three/examples/jsm/",
-  "./presets.js": "./presets.js?v=20261102g",
-  "./look.js": "./look.js?v=20261102g",
-  "./robot.js": "./robot.js?v=20261102g",
-  "./robotexport.js": "./robotexport.js?v=20261102g",
-  "./roboteyes.js": "./roboteyes.js?v=20261102g",
-  "./robotmap.js": "./robotmap.js?v=20261102g",
-  "./eyedock.js": "./eyedock.js?v=20261102g"
+  "./presets.js": "./presets.js?v=20261102h",
+  "./look.js": "./look.js?v=20261102h",
+  "./robot.js": "./robot.js?v=20261102h",
+  "./robotexport.js": "./robotexport.js?v=20261102h",
+  "./roboteyes.js": "./roboteyes.js?v=20261102h",
+  "./robotmap.js": "./robotmap.js?v=20261102h",
+  "./eyedock.js": "./eyedock.js?v=20261102h"
 } }
 </script>
 </head>
@@ -305,7 +305,7 @@
       <label class="check rp-ok" title="휴식에서 머리를 숙이기 전에 멈춰 있는 동안 1번 거리센서(머리, 턱 아래를 보는 VL53L0X)에 손이 들어오면 숙이기를 자동으로 넘겨요"><input type="checkbox" id="rpArm" checked> 1번 거리센서(머리)로 "숙이기" 넘기기 <span id="rpArmState" class="dim"></span></label>
       <label class="check rp-ok" title="재생 중이 아닐 때 2번 거리센서(몸통 앞, VL53L5CX 4×4)의 구역 중 하나가 평소보다 30% 넘게 가까워지면서 센서 값이 120mm 이하(손 약 10cm 안)로 들어오면 앉아 있던 로봇이 일어나 인사해요(인사 시나리오를 재생하고 끝에 접지 않고 선 채로 끝나요). 서 있을 때는 이 센서를 보지 않아요. 로봇 자동 모드가 켜져 있으면 로봇이 직접 반응하니 건너뛰어요"><input type="checkbox" id="rpFront" checked> 2번 거리센서(몸통)로 손이 다가오면 일어나 인사하기 <span id="rpFrontState" class="dim"></span></label>
       <label class="check rp-ok" title="재생 중이 아닐 때 1번 거리센서(머리)에 손이 닿으면 고개를 갸우뚱(머리를 -26°까지 숙이고 로봇이 허용하는 만큼 왼쪽으로 갸웃) 하고 표정은 편안한 눈으로 바뀌어요. 손이 떨어지면 바로 고개를 세우고 눈도 돌아와요. 고개는 로봇 동기가 켜져 있을 때만 움직여요"><input type="checkbox" id="rpArmLook" checked> 1번 거리센서를 만지면 고개 갸우뚱 · 편안한 눈</label>
-      <label class="check rp-ok" title="동작을 재생하고 있지 않을 때: 머리를 짧게 톡톡 치면(금방 떨어지면) 앉아 있던 로봇이 일어나요. 터치센서 1·2·3번을 전부 5초 넘게 계속 쓰다듬으면 신난 눈으로 기뻐하고 몸통을 3초간 좌우로 도리도리해요(손을 떼고 3초 뒤 원래 눈으로). 몸통 흔들기는 로봇 동기가 켜져 있을 때만 해요"><input type="checkbox" id="rpHappy" checked> 재생 안 할 때 머리 반응 (톡톡 = 일어나기, 쓰다듬기 = 신난 눈 · 바디 도리도리)</label>
+      <label class="check rp-ok" title="동작을 재생하고 있지 않을 때: 머리를 짧게 톡톡 치면(금방 떨어지면) 앉아 있던 로봇이 일어나요. 터치센서 1·2·3번을 전부 3초 넘게 계속 쓰다듬으면 신난 눈으로 기뻐하고 몸통을 3초간 좌우로 도리도리해요(손을 떼고 3초 뒤 원래 눈으로). 몸통 흔들기는 로봇 동기가 켜져 있을 때만 해요"><input type="checkbox" id="rpHappy" checked> 재생 안 할 때 머리 반응 (톡톡 = 일어나기, 쓰다듬기 = 신난 눈 · 바디 도리도리)</label>
       <label class="rp-row" title="로봇은 명령을 받고 실제로 움직이기까지 약 1초 늦어요(실측). 동기 중에는 그만큼 앞선 자세를 보내서 뷰포트와 로봇이 같은 때에 같은 자세가 되게 해요."><span>동기 앞서기(초)</span><input type="number" id="rpLead" min="0" max="2" step="0.1" value="0.9"></label>
     </section>
     <section>
@@ -341,6 +341,6 @@
   </div>
 </aside>
 <script src="lib/mqtt.min.js"></script>
-<script type="module" src="app.js?v=20261102g"></script>
+<script type="module" src="app.js?v=20261102h"></script>
 </body>
 </html>

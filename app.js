@@ -1131,7 +1131,7 @@ let syncEye = '', syncEyeAt = 0;
 // 재생 중이 아닐 때(멈춤 지점도 아닐 때)도 머리를 쓰다듬으면 신난 눈으로 기뻐하고, 손을 떼고 3초 뒤 원래 눈으로 돌아간다
 let lastTorqueWarn = 0;
 let happyUntil = 0, happyOn = false, prevTouch = false, wiggleTimer = 0, tapTimer = 0, tapBase = null, tapEnd = 0;
-const STROKE_MS = 5000, STROKE_GAP_MS = 2000; let allTouchSince = 0, allGapAt = 0;   // 쓰다듬기로 치는 시간: 세 센서를 전부 이만큼 계속 만져야 한다
+const STROKE_MS = 3000, STROKE_GAP_MS = 2000; let allTouchSince = 0, allGapAt = 0;   // 쓰다듬기로 치는 시간: 세 센서를 전부 이만큼 계속 만져야 한다
 let touchState = 'idle';   // 'idle' | 'stroking'
 // 일어나기 애니메이션 / 눈 감기 잠금 / 앉기 뒤 접힌 자세 맞추기 타이머 (반응을 한 번에 멈출 수 있게 센서 반응 상태와 함께 둔다)
 let standTimer = 0, standLockUntil = 0, sitTimer = 0, sitIv = 0, standGuard = [];
@@ -1432,10 +1432,10 @@ function idleHappy() {
   // 앉아 있을 때 머리에 손이 닿으면 바로 일어난다 (톡톡이든 쓰다듬든 처음 닿은 순간). 예전에는 "금방 떨어졌는지"를 보려고 센서 값을 두 번 더 기다려서 3초 넘게 걸렸다.
   // 서 있을 때의 쓰다듬기(기뻐하기)는 아래에서 따로 센다. 로봇 센서 값은 1.5초마다 오므로 닿은 뒤 최대 1.5초쯤 걸린다
   if (t && !prevTouch && idle && !standTimer && !robot.auto && !robotSceneBusy() && !sideActive && $('#rpHappy')?.checked) { if (armActive && !armSuppress) armLiftOff(); else if (isSitting()) tapRaise(); }   // 손을 누르는 중이면 올라오고, 앉아 있으면 일어난다
-  // 쓰다듬기(기뻐하기)는 터치센서 1·2·3번을 전부 5초 넘게 계속 만졌을 때만 한다
-  // 센서 값은 1.5초마다 오고 손바닥이 세 센서를 항상 동시에 덮고 있지는 않으므로: 세 센서가 모두 "최근 1.6초 안에 닿았음"이면 닿고 있는 걸로 보고, 잠깐(2초) 끊겨도 5초를 처음부터 다시 세지 않는다
+  // 쓰다듬기(기뻐하기)는 터치센서 1·2·3번을 전부 3초 넘게 계속 만졌을 때만 한다 (STROKE_MS)
+  // 센서 값은 1.5초마다 오고 손바닥이 세 센서를 항상 동시에 덮고 있지는 않으므로: 세 센서가 모두 "최근 1.6초 안에 닿았음"이면 닿고 있는 걸로 보고, 잠깐(2초) 끊겨도 3초를 처음부터 다시 세지 않는다
   const all = !!(robot.connected && robot.touchRecent?.every(Boolean));
-  if (all) { allGapAt = 0; if (!allTouchSince) { allTouchSince = now; if (!happyOn && idle) toast('1·2·3번이 모두 닿았어요 · 5초 동안 계속 쓰다듬어 주세요'); } }
+  if (all) { allGapAt = 0; if (!allTouchSince) { allTouchSince = now; if (!happyOn && idle) toast(`1·2·3번이 모두 닿았어요 · ${STROKE_MS / 1000}초 동안 계속 쓰다듬어 주세요`); } }
   else if (allTouchSince) { if (!allGapAt) allGapAt = now; else if (now - allGapAt > STROKE_GAP_MS) { allTouchSince = 0; allGapAt = 0; } }
   if (allTouchSince && now - allTouchSince >= STROKE_MS && !happyOn && idle && !sideActive && !standTimer && !robot.auto && !robotSceneBusy() && touchState !== 'stroking' && $('#rpHappy')?.checked) startStroke();
   if (happyOn) {
@@ -2587,7 +2587,13 @@ window.__cove = { S, exportGLB, getEyes: () => eyes, camera, orbit, THREE, rende
   };
   btn.onclick = () => setOpen(pop.hidden);
   $('#memoClose').onclick = () => setOpen(false);
-  ta.addEventListener('input', () => { st.textContent = '저장 중…'; clearTimeout(tmr); tmr = setTimeout(save, 400); });
+  ta.addEventListener('input', (e) => {
+    clearTimeout(tmr);
+    if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') {   // 엔터(줄 바꿈): 바로 저장하고 "저장했어요"를 잠깐 보여 준다. 한글을 쓰다가 누른 엔터도 줄이 바뀌는 순간 저장된다
+      save(); st.textContent = `저장했어요 ${hhmm()}`; st.classList.remove('ok'); void st.offsetWidth; st.classList.add('ok'); return;
+    }
+    st.textContent = '저장 중…'; tmr = setTimeout(save, 400);
+  });
   ta.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') setOpen(false); });   // 메모에 쓰는 글자가 재생(스페이스)·단계 넘기기 같은 단축키로 먹히지 않게
   ta.addEventListener('blur', () => { clearTimeout(tmr); save(); });
   $('#memoTime').onclick = () => {                                     // 커서 자리에 [14:32] 를 넣는다. 줄 중간이면 새 줄에서 시작한다
