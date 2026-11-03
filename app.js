@@ -44,11 +44,14 @@ const fps = () => curClip()?.fps || 30;
 
 /* ───────────── three.js 장면 ───────────── */
 const viewEl = $('#view');
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+// 아이패드·폰(손가락 터치 기기)은 3D 그리기를 가볍게 한다: 화면이 바쁘면 로봇에 자세를 보내는 0.14초 간격이 늦어지고 몰려서 로봇이 삐걱거린다(노트북에서는 괜찮음).
+// 해상도 배율 1.25 (아이패드는 원래 2), 계단 줄이기(안티에일리어싱) 끔, 그림자는 부드럽지 않은 보통 그림자
+const LIGHT_GFX = matchMedia('(pointer: coarse)').matches;
+const renderer = new THREE.WebGLRenderer({ antialias: !LIGHT_GFX, alpha: true });
 renderer.setClearColor(0x000000, 0);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, LIGHT_GFX ? 1.25 : 2));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = LIGHT_GFX ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 viewEl.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(40, 1, 0.001, 100);
@@ -741,8 +744,9 @@ function togglePlay() {
   S.playing = true; $('#tPlay').textContent = '❚❚'; updateProps();
 }
 let lastT = performance.now();
+let tlDrawnAt = 0;
 function frame(now) {
-  const dt = Math.min((now - lastT) / 1000, 0.1); lastT = now;
+  const dt = Math.min((now - lastT) / 1000, 0.25); lastT = now;   // 기기가 느려 한 프레임이 0.1초를 넘어도 재생 시간이 실제 시간보다 늦어지지 않게 (예전 0.1 — 아이패드에서 재생이 느려지며 로봇이 끊겼다). 탭을 오래 숨겼다 돌아와도 0.25초까지만 건너뜀
   if (S.playing) {
     const c = curClip();
     const prevT = S.time;
@@ -759,7 +763,8 @@ function frame(now) {
     if (S.time >= c.duration) {
       if (S.loop) { S.time %= c.duration; S.released.clear(); } else { S.time = c.duration; stopPlay(); }
     }
-    applyPose(S.time); updateProps(); updateTimeLabel(); drawTL();
+    applyPose(S.time); updateProps(); updateTimeLabel();
+    if (!LIGHT_GFX || now - tlDrawnAt > 66) { tlDrawnAt = now; drawTL(); }   // 터치 기기에서는 재생 중 타임라인을 초당 약 15번만 다시 그린다
   }
   stepRobotView(dt);
   if (S.model) updateMarkers();
