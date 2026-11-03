@@ -794,20 +794,3 @@ html.noview #situation:not(#vpActions #situation){display:none}
   html.noview #viewWrap{height:auto;min-height:0}
   html.noview body:not(.edit-open) #right,html.noview #right{display:none}
 }
-/* 3D 화면 없이 보기: 위쪽 띠(센서·단계 패널)도 아래 목록처럼 검은 바탕 + 베이지 글자로 (3D 화면 위에 뜨던 아이보리·유리색 대신) */
-html.noview #viewWrap{background:var(--panel);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
-html.noview #viewWrap #sensorBar{background:#1b1a17;color:var(--text);backdrop-filter:none;box-shadow:inset 0 0 0 1px #3a3630}
-html.noview #viewWrap #sensorBar .sb-head,html.noview #viewWrap #sensorBar .sb-note{color:var(--dim)}
-html.noview #viewWrap #sensorBar .sb-pill{background:var(--ctl);color:var(--dim)}
-html.noview #viewWrap #sensorBar .sb-pill i{background:#55514a}
-html.noview #viewWrap #sensorBar .sb-pill.on{background:var(--accent);color:#2a2008}
-html.noview #viewWrap #sensorBar .sb-pill.on i{background:#2a2008}
-html.noview #viewWrap #sensorBar.off .sb-pill{opacity:.7}
-html.noview #vpActions.glass{background:#1b1a17;color:var(--text);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:inset 0 0 0 1px #3a3630}
-html.noview .vp-step{color:var(--dim)}
-html.noview #vpActions #situation{color:var(--text)}
-html.noview .vp-nav button{background:var(--ctl);color:var(--text);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
-html.noview .vp-nav button:hover{background:var(--ctl-hover)}
-html.noview .vp-nav button:active{background:var(--ctl-on)}
-html.noview .hold-msg{background:#1b1a17;color:var(--accent);box-shadow:inset 0 0 0 1px #3a3630}
-html.noview .hold-cue{background:#1b1a17;color:var(--accent);box-shadow:0 0 0 2px #35b36b}
