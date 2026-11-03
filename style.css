@@ -689,17 +689,17 @@ footer{container-type:inline-size}
 header{flex-wrap:wrap;row-gap:6px}
 #robotPanel{max-width:calc(100vw - 24px)}
 
-/* 태블릿 세로·폰 (폭 900px 이하): 위에서 아래로 쌓는다 — 3D 화면 → 타임라인 → 동작 목록 → 편집 패널. 페이지 전체가 아래로 스크롤된다 */
+/* 태블릿 세로·폰 (폭 900px 이하): 위에서 아래로 쌓는다 — 3D 화면 → 동작 목록(시나리오) → 편집 패널 → 타임라인(재생 줄)은 맨 아래. 페이지 전체가 아래로 스크롤된다 */
 @media (max-width:900px){
   html,body{height:auto}
   body{display:flex;flex-direction:column;gap:8px;min-height:100%;overflow:visible;padding:0 8px 12px}
   header{order:0;margin:0 -8px;padding:8px 10px}
   #viewWrap{order:1;flex:none;height:min(48vh,520px);min-height:240px;margin:0}
-  footer{order:2;flex:none;height:auto;margin:0}
+  footer{order:9;flex:none;height:auto;margin:0}
   footer #tl{flex:none;height:max(120px,calc(var(--tl-h,160px) - 44px))}   /* 재생 줄이 두 줄이 돼도 타임라인 칸 높이는 그대로 (높이 조절 손잡이도 그대로 동작) */
   body.tl-collapsed footer{height:32px}
-  #left{order:3;flex:none;width:auto;overflow:visible}
-  #right{order:4;flex:none;width:auto;overflow:visible}
+  #left{order:2;flex:none;width:auto;overflow:visible}
+  #right{order:3;flex:none;width:auto;overflow:visible}
   body:not(.edit-open) #right{display:none}
 }
 /* 세로로 충분히 길면 목록을 내려도 3D 화면이 위에 붙어 있다 */
