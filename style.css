@@ -800,3 +800,7 @@ html.noview #situation:not(#vpActions #situation){display:none}
 
 /* 목록 위의 장면 버튼 줄(▶ 전체 · 1 2 3 …)은 쓰지 않아서 숨겼다 (2026-11-03). 장면은 목록의 단계 줄·단계 패널로 고른다. 되살리려면 이 줄을 지운다 */
 #sceneTag{display:none!important}
+
+/* 목록 맨 위 "시나리오" 글자: 위쪽 간격이 아래(첫 줄까지)보다 좁아 보여서 위를 띄워 위아래를 비슷하게 (장면 버튼 줄을 숨긴 뒤) */
+#clipList .grp:first-child{margin-top:4px}
+#clipList .grp{margin-bottom:10px}   /* 제목과 아래 줄(선택되면 칸이 칠해진다) 사이도 위쪽처럼 약 10px */
