@@ -794,3 +794,6 @@ html.noview #situation:not(#vpActions #situation){display:none}
   html.noview #viewWrap{height:auto;min-height:0}
   html.noview body:not(.edit-open) #right,html.noview #right{display:none}
 }
+
+/* 헤더의 [머리 들기] 버튼은 쓰지 않아서 숨겼다 (2026-11-03). 일어나기가 고개까지 든다. 되살리려면 이 줄을 지운다 */
+#headUp{display:none!important}
