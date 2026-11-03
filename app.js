@@ -49,6 +49,9 @@ const viewEl = $('#view');
 // 아이패드: 사파리는 기본이 '데스크톱 사이트'라 pointer:coarse 가 아닐 수 있어 터치 점 수도 본다. 주소에 ?touch=1 을 붙이면 노트북에서도 아이패드 화면으로 볼 수 있다
 const TOUCH_UI = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 1 || /[?&]touch=1/.test(location.search);
 document.documentElement.classList.toggle('touch', TOUCH_UI);   // style.css 의 html.touch 규칙: 손가락으로 누르기 좋게 버튼·줄을 키운다
+// 3D 화면 없이 보기 (?noview=1, 아이패드 주소 /ipad): 3D 화면은 그리지 않고, 센서 창·단계 패널·멈춤 버튼만 위쪽 띠에 둔다
+const NOVIEW = /[?&]noview=1/.test(location.search);
+document.documentElement.classList.toggle('noview', NOVIEW);
 const LIGHT_GFX = TOUCH_UI;
 const renderer = new THREE.WebGLRenderer({ antialias: !LIGHT_GFX, alpha: true });
 renderer.setClearColor(0x000000, 0);
@@ -771,8 +774,7 @@ function frame(now) {
   }
   stepRobotView(dt);
   if (S.model) updateMarkers();
-  orbit.update();
-  renderer.render(scene, camera);
+  if (!NOVIEW) { orbit.update(); renderer.render(scene, camera); }   // 3D 화면 없이 보기에서는 그리지 않는다 (아이패드가 덜 바빠서 로봇에 자세를 고르게 보낸다)
   requestAnimationFrame(frame);
 }
 

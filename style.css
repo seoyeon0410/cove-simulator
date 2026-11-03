@@ -767,3 +767,30 @@ html.touch .memo-bar button{min-height:40px;padding:6px 14px;font-size:14px}
 html.touch #memo{font-size:16px}   /* 16px 미만이면 아이패드가 입력할 때 화면을 확대한다 */
 /* 아이패드 세로(폭 900px 이하)에서는 3D 화면을 조금 줄여 목록이 더 보이게 한다 */
 @media (max-width:900px){html.touch #viewWrap{height:min(42vh,520px)}}
+/* 3D 화면 없이 보기 (html.noview, 주소 ?noview=1 · 아이패드 /ipad) ───── */
+html.noview #view,html.noview #drop{display:none}
+html.noview #viewWrap{display:flex;flex-direction:column;gap:10px;height:auto;min-height:0;padding:10px;overflow:visible}
+html.noview #viewDock{position:static;inset:auto;padding:0;pointer-events:auto;align-items:stretch;align-content:stretch;flex-wrap:wrap}
+html.noview #viewDock>*{pointer-events:auto}
+html.noview #sensorBar,html.noview #vpActions{position:relative!important;left:auto!important;top:auto!important;bottom:auto!important;right:auto!important;transform:none!important;margin:0!important;cursor:default!important}
+html.noview #viewWrap #sensorBar{max-width:none;flex:1 1 280px}
+html.noview #viewWrap #sensorBar .sb-row{flex-direction:row;flex-wrap:wrap}
+html.noview #vpActions{flex:1 1 320px;max-width:none}
+html.noview .vp-nav button{max-width:none}
+html.noview .sb-grip{display:none}
+html.noview #holdBar{position:static;max-width:none;flex-direction:row;flex-wrap:wrap;order:-1}
+html.noview #holdBar[hidden]{display:none}
+html.noview #situation:not(#vpActions #situation){display:none}
+/* 넓은 화면: 위쪽 띠(센서·단계) → 목록 → 타임라인을 한 줄로 쌓는다 (편집 패널은 숨김) */
+@media (min-width:901px){
+  html.noview body{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:auto auto minmax(0,1fr) var(--tl-h,160px)}
+  html.noview body.tl-collapsed{grid-template-rows:auto auto minmax(0,1fr) 32px}
+  html.noview #viewWrap{grid-column:1;grid-row:2}
+  html.noview #left{grid-column:1;grid-row:3}
+  html.noview footer{grid-column:1;grid-row:4}
+  html.noview #right{display:none!important}
+}
+@media (max-width:900px){
+  html.noview #viewWrap{height:auto;min-height:0}
+  html.noview body:not(.edit-open) #right,html.noview #right{display:none}
+}

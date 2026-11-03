@@ -2,150 +2,16 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>코브 리모컨</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>코브 애니메이터</title>
+<!-- 아이패드용 주소(/ipad): 3D 화면 없이 보기(?noview=1)로 바로 넘어간다. 단계 버튼만 있는 간단한 리모컨은 /ipad/remote.html -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="코브">
-<!-- 아이패드용 코브 리모컨 (/ipad): 3D 화면 없이 시나리오의 단계 버튼만. 누르면 코브가 그 단계 동작(코브에 넣어 둔 모션 파일)을 직접 재생한다.
-     연결: 부스 브로커 ws://192.168.1.232:9001, 로봇 robot2 (주소 뒤 ?broker=ws://…&robot=… 로 바꿀 수 있다). 3D 화면이 있는 전체 화면은 주소 끝의 /ipad 를 빼면 된다 -->
-<style>
-:root{--bg:#070707;--panel:#151514;--ctl:#242422;--text:#f4efe6;--dim:#b4ad9f;--accent:#efd9ae;--ok:#8fbf7a;--warn:#e0a640;--err:#e2624b}
-*{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font:400 16px/1.45 "Google Sans Flex","Noto Sans KR",-apple-system,sans-serif;padding:max(12px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 24px max(14px,env(safe-area-inset-left))}
-button{font:inherit;color:inherit;border:0;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-header{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 0 12px;background:var(--bg)}
-h1{margin:0 6px 0 0;font-size:20px;font-weight:700}
-.state{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:var(--panel);font-size:14px;color:var(--dim)}
-.dot{width:10px;height:10px;border-radius:50%;background:#5a564e}
-.dot.connecting{background:var(--warn)}.dot.live{background:var(--ok);box-shadow:0 0 0 4px rgba(143,191,122,.2)}.dot.error{background:var(--err)}
-.spacer{flex:1}
-.hbtn{min-height:48px;padding:10px 18px;border-radius:12px;background:var(--ctl);font-size:16px;font-weight:600}
-.hbtn.stop{background:#b3382a;color:#fff;font-size:17px;padding:10px 24px}
-.hbtn:active{filter:brightness(1.2)}
-.sensors{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 16px}
-.pill{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;background:var(--panel);color:var(--dim);font-size:15px;font-weight:600;transition:background .12s,color .12s}
-.pill i{width:10px;height:10px;border-radius:50%;background:#55514a}
-.pill small{font-weight:400;font-size:14px}
-.pill.on{background:var(--accent);color:#2a2008}.pill.on i{background:#2a2008}
-section{margin:0 0 18px;padding:14px;border-radius:16px;background:var(--panel)}
-.sec-head{display:flex;align-items:center;gap:12px;margin:0 2px 12px}
-.sec-head h2{margin:0;font-size:19px;font-weight:700}
-.sec-head .sub{color:var(--dim);font-size:14px}
-.sec-head .all{margin-left:auto;min-height:44px;padding:8px 16px;border-radius:999px;background:var(--ctl);font-size:15px;font-weight:600}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
-.step{display:flex;align-items:center;gap:12px;min-height:72px;padding:12px 14px;border-radius:14px;background:var(--ctl);text-align:left;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
-.step .no{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:#34302a;color:var(--accent);font-weight:700;font-size:16px}
-.step .nm{flex:1;min-width:0;font-size:16.5px;font-weight:600;line-height:1.3}
-.step .du{flex:none;color:var(--dim);font-size:14px}
-.step:active{filter:brightness(1.25)}
-.step.run,.sec-head .all.run{background:var(--accent);color:#231b0c;box-shadow:none}
-.step.run .no{background:#231b0c;color:var(--accent)}.step.run .du{color:#5a4a2a}
-#msg{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);padding:12px 20px;border-radius:999px;background:#34302a;color:var(--text);font-size:15px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:calc(100vw - 32px);text-align:center}
-#msg.show{opacity:1}
-.foot{color:var(--dim);font-size:13px;margin-top:8px}
-.foot a{color:var(--accent)}
-</style>
+<meta http-equiv="refresh" content="0; url=../?noview=1">
+<style>body{margin:0;background:#070707;color:#f4efe6;font:16px/1.5 "Noto Sans KR",sans-serif;display:grid;place-items:center;height:100vh}a{color:#efd9ae}</style>
 </head>
 <body>
-<header>
-  <h1>코브 리모컨</h1>
-  <span class="state"><span class="dot" id="dot"></span><span id="stateTxt">연결 중…</span></span>
-  <span class="spacer"></span>
-  <button class="hbtn" id="home" title="처음(접힌) 자세로">처음 자세</button>
-  <button class="hbtn stop" id="stop" title="지금 하는 동작을 바로 멈춰요">■ 정지</button>
-</header>
-
-<div class="sensors" id="sensors">
-  <div class="pill" id="sT1"><i></i>터치 1 왼쪽</div>
-  <div class="pill" id="sT2"><i></i>터치 2 가운데</div>
-  <div class="pill" id="sT3"><i></i>터치 3 오른쪽</div>
-  <div class="pill" id="sArm"><i></i>1번 머리 <small></small></div>
-  <div class="pill" id="sFront"><i></i>2번 몸통 <small></small></div>
-</div>
-
-<main id="list"></main>
-<p class="foot">버튼을 누르면 코브가 그 단계를 재생해요. 누르기 전에 로봇 주변에 손·물건이 없는지 확인하세요. 3D 화면이 있는 전체 화면은 <a href="../">여기</a>.</p>
-<div id="msg"></div>
-
-<script src="../lib/mqtt.min.js"></script>
-<script>
-// 코브에 넣어 둔 씬 이름(cove_scenes.py)과 웹 동작 이름. 2026-11-03 에 웹 시나리오·단계 동작으로 바꿔 넣은 것과 같다
-const SCENARIOS = [
-  { title: '휴식', all: 'rest', sec: 29, steps: [['rest_1_wake', '누가 다가왔어요', 3], ['rest_2_invite', '쓰다듬어 줘서 좋아요', 6], ['rest_3_nibble', '팔을 올려 주길 기다려요', 3], ['rest_4_lean', '기대니까 편안해요', 4], ['rest_5_sleep', '스르르 잠이 와요', 9], ['rest_6_release', '잘 쉬었어요', 4]] },
-  { title: '간지럽히기', all: 'tickle', sec: 57.2, steps: [['tickle_1_look', '누가 왔어요! 반가워요', 4], ['tickle_2_invite', '만져 달라고 몸을 흔들어요', 4], ['tickle_3_squirm', '간지러워요!', 6], ['tickle_4_enjoy', '더 놀고 싶어요', 8], ['tickle_5_laugh', '너무 웃겨서 뒤로 넘어가요', 17], ['tickle_6_end', '기분이 정말 좋아요', 18.2]] },
-  { title: '간식주기', all: 'snack', sec: 37, steps: [['snack_1_look', '누가 왔는지 살펴봐요', 3], ['snack_2_sniff', '냄새가 나는 것 같아요', 6], ['snack_3_curious', '이게 뭘까요?', 5], ['snack_4_expect', '먹고 싶어요!', 6], ['snack_5_eat', '냠냠 맛있어요', 5], ['snack_6_full', '배가 불러요', 2], ['snack_7_happy', '행복해요!', 8.2], ['snack_8_sleepy', '졸려요', 1.8]] },
-  { title: '인사', all: null, steps: [['greet', '반가워서 일어나 인사해요', 10]] },
-  { title: '표정 모음', all: null, steps: [['expressions', '표정을 하나씩 보여 줘요', 33.6]] },
-];
-const q = new URLSearchParams(location.search);
-const BROKER = q.get('broker') || 'ws://192.168.1.232:9001', ROBOT = q.get('robot') || 'robot2';
-const $ = (s) => document.querySelector(s);
-const msgEl = $('#msg'); let msgT = 0;
-const say = (t) => { msgEl.textContent = t; msgEl.classList.add('show'); clearTimeout(msgT); msgT = setTimeout(() => msgEl.classList.remove('show'), 2200); };
-
-// 버튼 만들기
-const btns = new Map();
-SCENARIOS.forEach((sc) => {
-  const sec = document.createElement('section');
-  const head = document.createElement('div'); head.className = 'sec-head';
-  head.innerHTML = '<h2></h2><span class="sub"></span>';
-  head.children[0].textContent = sc.title;
-  head.children[1].textContent = sc.steps.length > 1 ? `${sc.steps.length}단계` : '';
-  if (sc.all) { const a = document.createElement('button'); a.className = 'all'; a.textContent = `▶ 전체 (${sc.sec}초)`; a.onclick = () => run(sc.all, `${sc.title} 전체`); head.appendChild(a); btns.set(sc.all, a); }
-  const grid = document.createElement('div'); grid.className = 'grid';
-  sc.steps.forEach(([name, label, s], k) => {
-    const b = document.createElement('button'); b.className = 'step'; b.dataset.label = label;
-    b.innerHTML = '<span class="no"></span><span class="nm"></span><span class="du"></span>';
-    b.children[0].textContent = sc.steps.length > 1 ? k + 1 : '▶'; b.children[1].textContent = label; b.children[2].textContent = `${s}초`;
-    b.onclick = () => run(name, label);
-    grid.appendChild(b); btns.set(name, b);
-  });
-  sec.append(head, grid); $('#list').appendChild(sec);
-});
-
-// 브로커 연결: 코브에 명령을 보내고(booth/<로봇>/cmd), 상태·센서를 받는다(status 1초마다, sense 는 바뀔 때 바로)
-let client = null, live = false, lastStatus = 0;
-const setState = (cls, txt) => { $('#dot').className = 'dot ' + cls; $('#stateTxt').textContent = txt; };
-function send(obj) {
-  if (!client || !client.connected) { say('코브와 연결되지 않았어요'); return false; }
-  client.publish(`booth/${ROBOT}/cmd`, JSON.stringify(obj), { qos: 0 }); return true;
-}
-function run(name, label) { if (send({ cmd: 'scene', name })) say(`${label} — 재생해요`); }
-$('#stop').onclick = () => { if (send({ cmd: 'stop' })) say('정지했어요'); };
-$('#home').onclick = () => { if (send({ cmd: 'scene', name: 'home' })) say('처음 자세로 가요'); };
-
-const pill = (id, on, small) => { const el = $('#' + id); el.classList.toggle('on', !!on); const s = el.querySelector('small'); if (s && small != null) s.textContent = small; };
-function applySense(sn) {
-  if (!sn || typeof sn !== 'object') return;
-  if (Array.isArray(sn.touch_each)) ['sT1', 'sT2', 'sT3'].forEach((id, i) => pill(id, sn.touch_each[i]));
-  if (typeof sn.arm === 'boolean') pill('sArm', sn.arm, typeof sn.top_mm === 'number' ? `${sn.top_mm}mm` : '');
-  if (typeof sn.person === 'boolean') pill('sFront', sn.person, typeof sn.front_mm === 'number' ? `${sn.front_mm}mm` : '');
-}
-function onStatus(msg) {
-  if (!msg || typeof msg !== 'object') return;
-  lastStatus = Date.now(); live = true;
-  const cur = typeof msg.scene === 'string' && msg.scene ? msg.scene : null;
-  btns.forEach((b, name) => b.classList.toggle('run', name === cur));
-  const b = cur && btns.get(cur);
-  setState('live', cur ? `재생 중 · ${b ? (b.dataset.label || b.textContent) : cur}` : '연결됨 · 대기');
-  if (msg.sense) applySense(msg.sense);
-}
-function connect() {
-  if (!window.mqtt) { setState('error', '연결 도구를 못 불러왔어요'); return; }
-  setState('connecting', '연결 중…');
-  client = window.mqtt.connect(BROKER, { clientId: 'cove-ipad-' + Math.random().toString(16).slice(2, 8), connectTimeout: 5000, reconnectPeriod: 3000, clean: true });
-  client.on('connect', () => { setState('connecting', '연결됨 · 코브 응답 기다리는 중'); client.subscribe([`booth/${ROBOT}/status`, `booth/${ROBOT}/sense`]); });
-  client.on('message', (t, payload) => {
-    let msg; try { msg = JSON.parse(new TextDecoder().decode(payload)); } catch { return; }
-    if (t.endsWith('/status')) onStatus(msg); else if (t.endsWith('/sense')) applySense(msg);
-  });
-  client.on('reconnect', () => setState('connecting', '다시 연결하는 중…'));
-  client.on('offline', () => setState('error', '연결 끊김 · 부스 와이파이를 확인하세요'));
-  client.on('error', () => setState('error', '연결 오류 · 부스 와이파이를 확인하세요'));
-}
-setInterval(() => { if (live && Date.now() - lastStatus > 4000) { live = false; setState('connecting', '연결됨 · 코브 응답 없음'); } }, 1000);
-connect();
-</script>
+<p>코브 애니메이터로 이동 중… <a href="../?noview=1">바로 가기</a></p>
+<script>location.replace('../?noview=1');</script>
 </body>
 </html>
