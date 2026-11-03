@@ -1609,7 +1609,7 @@ function gotoScene(i) {
 function stepScene(dir) {
   const i = sceneIndex(S.time);
   if (S.heldAt != null) { S.heldAt = null; refreshHoldUI(); }      // 멈춰서 기다리던 중이어도 단계 버튼은 바로 먹는다
-  if (dir < 0) gotoScene(S.time - sceneRange(i)[0] > 0.5 ? i : i - 1); else gotoScene(i + 1);
+  gotoScene(i + (dir < 0 ? -1 : 1));                               // ◀ 는 언제나 바로 앞 단계로 (예전에는 단계 중간이면 그 단계 처음으로 가서, 재생 중에는 이전으로 안 넘어가는 것처럼 보였다). 첫 단계에서는 그 처음으로
   updateSceneTag();
 }
 function playScene(i) { S.sceneLoop = true; gotoScene(i); if (!S.playing) togglePlay(); updateSceneTag(); }
