@@ -1144,7 +1144,7 @@ let happyUntil = 0, happyOn = false, prevTouch = false, wiggleTimer = 0, tapTime
 const STROKE_MS = 3000, STROKE_GAP_MS = 2000; let allTouchSince = 0, allGapAt = 0;   // 쓰다듬기로 치는 시간: 세 센서를 전부 이만큼 계속 만져야 한다
 let touchState = 'idle';   // 'idle' | 'stroking'
 // 일어나기 애니메이션 / 눈 감기 잠금 / 앉기 뒤 접힌 자세 맞추기 타이머 (반응을 한 번에 멈출 수 있게 센서 반응 상태와 함께 둔다)
-let standTimer = 0, standLockUntil = 0, sitTimer = 0, sitIv = 0, standGuard = [];
+let standPoseAt = null, standTimer = 0, standLockUntil = 0, sitTimer = 0, sitIv = 0, standGuard = [];
 // 터치 판정 상태: idle → pending(닿은 걸 처음 봄) → 떨어졌으면 tapwait(다음 센서가 이어 닿는지 한 번 더 본다) → 톡
 // 몸도 흔든다: 로봇의 지금 자세를 기준으로 머리를 조금 숙이고 몸통을 3초간 좌우로 (웹 동기가 켜져 있어야 한다 = 주변 확인 + 동기 켬). 끝나면 그 자세로 돌아온다
 const WIGGLE_SEC = 4.2;                                         // 쓰다듬기 반응 시간 (초): 몸통 도리도리 + 고개 갸우뚱갸우뚱
@@ -1548,7 +1548,7 @@ setInterval(() => {
   if (!S.playing) {                                              // 재생 중이 아니어도, 관절 조작 슬라이더를 움직였다면 그 자세를 계속 보낸다
     if (S.heldAt != null) { syncPoseAt(S.heldAt); return; }           // 멈춤 지점에서 기다리는 동안은 그 자세를 계속 보내 로봇이 힘을 유지하게 한다
     SF.cur = null; SF.sent = null;                                    // 재생이 끝났으면 다음 재생은 그 첫 자세부터 다시 다듬는다
-    if (manualActive) { const r1 = (v) => Math.round(v * 10) / 10; robot.pose({ neck: r1(jtVal.neck), head: r1(jtVal.head), tilt: r1(jtVal.tilt), body: r1(jtVal.body) }); }
+    if (manualActive) { const r1 = (v) => Math.round(v * 10) / 10, v = standPoseAt ? standPoseAt(performance.now()) : jtVal; robot.pose({ neck: r1(v.neck), head: r1(v.head), tilt: r1(v.tilt), body: r1(v.body) }); }   // 일어나는 중이면 지금 시점의 자세를 바로 계산
     return;
   }
   // 재생을 막 시작했을 때 로봇이 갑자기 튀지 않게, 앞서는 양을 초당 0.6초씩 천천히 늘려서 설정값까지 간다
@@ -2255,7 +2255,7 @@ $('#btnRest').onclick = resetPose;
 // 사람이 아직 다가와 있는 동안 기둥 올리기가 다시 일으키지 않도록, 그 사람이 떠날 때까지 기둥 올리기를 쉰다
 function resetIdleReactions() {                                    // 진행 중이던 센서 반응(톡·쓰다듬기·1번·갸우뚱·일어나기·앉기 뒤 맞추기·일어난 뒤 눈·기둥)을 모두 멈춘다
   [wiggleTimer, tapTimer, armTimer, sideTimer, standTimer, sitIv].forEach((t) => clearInterval(t)); clearTimeout(sitTimer); standGuard.forEach(clearInterval); standGuard = [];
-  wiggleTimer = tapTimer = armTimer = sideTimer = standTimer = sitIv = sitTimer = 0; standLockUntil = 0;
+  wiggleTimer = tapTimer = armTimer = sideTimer = standTimer = sitIv = sitTimer = 0; standLockUntil = 0; standPoseAt = null;
   armActive = false; armResume = false; armWait = false; armSuppress = false; armBase = null; sideActive = false; happyOn = false; touchState = 'idle'; allTouchSince = 0; allGapAt = 0; standEyesUntil = 0; standHeadAt = 0; followBase = null;
 }
 // 일어나: 앉은(접힌) 자세에서 기둥 25°로 2.2초에 걸쳐 부드럽게 일어나고, 고개는 조금 늦게 따라 들어서 머리 들기(-42°, 얼굴이 위)까지 올린다(기둥보다 0.8초 늦게 끝남).
@@ -2279,14 +2279,19 @@ $('#standUp').onclick = () => {
   }, 500)];
   const from = (robot.connected && robot.deg) ? { ...robot.deg } : readJointAngles(), t0 = performance.now();
   const r1 = (v) => Math.round(v * 10) / 10;
-  standTimer = setInterval(() => {
-    if (S.playing) { clearInterval(standTimer); standTimer = 0; return; }
-    const s = (performance.now() - t0) / 1000, ease = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+  const poseAt = (now) => {                                          // 일어나기 시작 뒤 now 시점의 자세 (화면과 로봇 동기가 같이 쓴다)
+    const s = (now - t0) / 1000, ease = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
     const e = ease(s / STAND_SEC), eh = ease((s - STAND_SEC * STAND_HEAD_FROM) / (STAND_ALL - STAND_SEC * STAND_HEAD_FROM)), p = {};   // 기둥이 먼저 올라오고, 고개는 뒤따라 든다
     for (const j of ['neck', 'tilt', 'body']) p[j] = r1(from[j] + (STAND_POSE[j] - from[j]) * e);
     p.head = r1(from.head + (STAND_POSE.head - from.head) * eh);
+    return { s, p };
+  };
+  standPoseAt = (now) => poseAt(now).p;                              // 로봇 동기는 보내는 순간의 자세를 바로 계산해서 보낸다 (0.05초마다 바뀌는 화면 값을 0.14초마다 집어 보내면 간격이 들쑥날쑥해 아이패드에서 버벅였다)
+  standTimer = setInterval(() => {
+    if (S.playing) { clearInterval(standTimer); standTimer = 0; standPoseAt = null; return; }
+    const { s, p } = poseAt(performance.now());
     Object.assign(jtVal, p); applyManual(); renderJoint();                                              // 화면 자세를 바꾸면 로봇 동기가 같은 자세를 로봇에 보낸다
-    if (s >= STAND_ALL) { clearInterval(standTimer); standTimer = 0; eyes?.show('뜬 눈'); if (robot.connected) robot.eyes('뜬 눈'); }   // 다 일어나면 눈을 한 번 더 뜬 눈으로 맞춘다 (타이머를 0으로 해야 다른 반응이 다시 시작된다)
+    if (s >= STAND_ALL) { clearInterval(standTimer); standTimer = 0; standPoseAt = null; eyes?.show('뜬 눈'); if (robot.connected) robot.eyes('뜬 눈'); }   // 다 일어나면 눈을 한 번 더 뜬 눈으로 맞춘다 (타이머를 0으로 해야 다른 반응이 다시 시작된다)
   }, 50);
   toast(robot.sync ? '일어나요' : '일어나요 (화면) · 로봇 동기를 켜면 로봇도 일어나요');
 };
