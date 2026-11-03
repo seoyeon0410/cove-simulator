@@ -9,22 +9,21 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="코브">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300..700&family=Noto+Sans+KR:wght@300..700&display=swap">
-<link rel="stylesheet" href="style.css?v=20261103u">
+<!-- 글꼴은 인터넷이 될 때만 받아 쓴다. 기다리지 않고 바로 화면을 그린다 (부스 와이파이는 인터넷이 안 될 수 있어서, 글꼴을 기다리느라 아이패드에서 하얀 화면으로 오래 멈춰 있었다) -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300..700&family=Noto+Sans+KR:wght@300..700&display=swap" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="style.css?v=20261103v">
 <!-- ?v= : 고칠 때마다 이 파일의 v= 숫자를 모두 같이 바꾼다. 다른 사람 브라우저가 저장해 둔 예전 파일(presets.js 등)을 쓰지 않고 새로 받게 한다 -->
 <script type="importmap">
 { "imports": {
   "three": "./lib/three/build/three.module.js",
   "three/addons/": "./lib/three/examples/jsm/",
-  "./presets.js": "./presets.js?v=20261103u",
-  "./look.js": "./look.js?v=20261103u",
-  "./robot.js": "./robot.js?v=20261103u",
-  "./robotexport.js": "./robotexport.js?v=20261103u",
-  "./roboteyes.js": "./roboteyes.js?v=20261103u",
-  "./robotmap.js": "./robotmap.js?v=20261103u",
-  "./eyedock.js": "./eyedock.js?v=20261103u"
+  "./presets.js": "./presets.js?v=20261103v",
+  "./look.js": "./look.js?v=20261103v",
+  "./robot.js": "./robot.js?v=20261103v",
+  "./robotexport.js": "./robotexport.js?v=20261103v",
+  "./roboteyes.js": "./roboteyes.js?v=20261103v",
+  "./robotmap.js": "./robotmap.js?v=20261103v",
+  "./eyedock.js": "./eyedock.js?v=20261103v"
 } }
 </script>
 </head>
@@ -347,6 +346,6 @@
   </div>
 </aside>
 <script src="lib/mqtt.min.js"></script>
-<script type="module" src="app.js?v=20261103u"></script>
+<script type="module" src="app.js?v=20261103v"></script>
 </body>
 </html>
