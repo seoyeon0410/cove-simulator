@@ -2079,8 +2079,9 @@ const playMain = () => { if (!S.playing) S.sceneLoop = false; togglePlay(); };
 $('#tPlay').onclick = playMain;
 $('#tStart').onclick = () => setTime(0);
 $('#tEnd').onclick = () => setTime(curClip().duration);
-$('#tPrev').onclick = () => { stopPlay(); setTime(S.time - 1 / fps()); };
-$('#tNext').onclick = () => { stopPlay(); setTime(S.time + 1 / fps()); };
+// 재생 줄의 ◀ ▶: 장면(단계)이 있는 동작이면 이전·다음 단계로 넘어간다(재생 중이면 그대로 이어서 재생). 장면이 없는 클립만 한 프레임씩 (키보드 ← → 는 그대로 한 프레임)
+$('#tPrev').onclick = () => { if (sceneMarks().length > 1) stepScene(-1); else { stopPlay(); setTime(S.time - 1 / fps()); } };
+$('#tNext').onclick = () => { if (sceneMarks().length > 1) stepScene(1); else { stopPlay(); setTime(S.time + 1 / fps()); } };
 $('#loop').onchange = (e) => (S.loop = e.target.checked);
 $('#autoKey').onchange = (e) => (S.autoKey = e.target.checked);
 $('#showAll').onchange = (e) => { S.showAll = e.target.checked; buildTree(); };

@@ -12,19 +12,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300..700&family=Noto+Sans+KR:wght@300..700&display=swap">
-<link rel="stylesheet" href="style.css?v=20261103q">
+<link rel="stylesheet" href="style.css?v=20261103r">
 <!-- ?v= : 고칠 때마다 이 파일의 v= 숫자를 모두 같이 바꾼다. 다른 사람 브라우저가 저장해 둔 예전 파일(presets.js 등)을 쓰지 않고 새로 받게 한다 -->
 <script type="importmap">
 { "imports": {
   "three": "./lib/three/build/three.module.js",
   "three/addons/": "./lib/three/examples/jsm/",
-  "./presets.js": "./presets.js?v=20261103q",
-  "./look.js": "./look.js?v=20261103q",
-  "./robot.js": "./robot.js?v=20261103q",
-  "./robotexport.js": "./robotexport.js?v=20261103q",
-  "./roboteyes.js": "./roboteyes.js?v=20261103q",
-  "./robotmap.js": "./robotmap.js?v=20261103q",
-  "./eyedock.js": "./eyedock.js?v=20261103q"
+  "./presets.js": "./presets.js?v=20261103r",
+  "./look.js": "./look.js?v=20261103r",
+  "./robot.js": "./robot.js?v=20261103r",
+  "./robotexport.js": "./robotexport.js?v=20261103r",
+  "./roboteyes.js": "./roboteyes.js?v=20261103r",
+  "./robotmap.js": "./robotmap.js?v=20261103r",
+  "./eyedock.js": "./eyedock.js?v=20261103r"
 } }
 </script>
 </head>
@@ -255,9 +255,9 @@
   <div id="tlResize" title="위아래로 끌어서 타임라인 높이를 조절해요 (더블클릭하면 기본 높이)"><i></i></div>
   <div id="transport">
     <button id="tStart" title="처음 (Home)">⏮</button>
-    <button id="tPrev" title="이전 프레임 (←)">◀</button>
+    <button id="tPrev" title="이전 단계 (장면이 없는 클립은 이전 프레임)">◀</button>
     <button id="tPlay" class="primary" title="재생 (Space)">▶</button>
-    <button id="tNext" title="다음 프레임 (→)">▶</button>
+    <button id="tNext" title="다음 단계 (장면이 없는 클립은 다음 프레임)">▶</button>
     <button id="tEnd" title="끝 (End)">⏭</button>
     <span id="timeLabel" >0 / 0.00s</span>
     <label class="check"><input type="checkbox" id="loop"> 반복</label>
@@ -347,6 +347,6 @@
   </div>
 </aside>
 <script src="lib/mqtt.min.js"></script>
-<script type="module" src="app.js?v=20261103q"></script>
+<script type="module" src="app.js?v=20261103r"></script>
 </body>
 </html>
