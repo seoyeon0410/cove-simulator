@@ -1416,9 +1416,9 @@ function frontApproach() {
   playAll();                                                       // 인사 시나리오를 처음부터 끝까지 재생한다(앉은 자세에서 일어나 인사하고, 끝에 접지 않고 선 채로 끝)
   playStartedAt = performance.now() - 5000;                        // 앞서 보내는 양(로봇이 늦는 약 1초)을 서서히 늘리지 않고 처음부터 다 준다 — 앉은 자세에서 시작이라 튈 걱정이 없다
 }
-// 2번 거리센서: 서 있는 로봇에게 가까이 올수록 기둥을 더 올린다(손 약 10cm에서 시작, 약 5cm에서 최대 33°). 사람이 떠나면 원래 높이로 내려온다.
+// 2번 거리센서: 서 있는 로봇에게 가까이 올수록 기둥을 더 올린다(손 약 20cm에서 시작, 약 7cm에서 최대 33°). 사람이 떠나면 원래 높이로 내려온다.
 // 로봇 동기가 켜져 있고 재생·다른 반응 중이 아닐 때만 움직이고, 기둥만 바꾼다(나머지는 시작할 때 자세 그대로)
-const FOLLOW_FAR = 140, FOLLOW_NEAR = 55, NECK_MAX = 33, FOLLOW_RATE = 12;   // mm, mm, 도, 도/초 (다가옴 자체가 손 약 10cm 안이라, 센서 값 140mm에서 시작해 55mm(손 약 5cm)에서 최대)
+const FOLLOW_FAR = 230, FOLLOW_NEAR = 80, NECK_MAX = 33, FOLLOW_RATE = 12;   // mm, mm, 도, 도/초 (다가옴이 손 약 20cm 안부터라(robot.js Z_MAX_MM 220), 센서 값 230mm에서 시작해 80mm(손 약 7cm)에서 최대)
 let followBase = null, followCur = 0, followTimer = 0, sitLock = false, followMm = null;
 const FOLLOW_ON = false;                                            // 서 있을 때는 2번 센서를 더 이상 보지 않는다(가까울수록 기둥 올리기 끔). 켜려면 true
 function frontFollow() {
