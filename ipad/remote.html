@@ -79,7 +79,9 @@ const SCENARIOS = [
   { title: '표정 모음', all: null, steps: [['expressions', '표정을 하나씩 보여 줘요', 33.6]] },
 ];
 const q = new URLSearchParams(location.search);
-const BROKER = q.get('broker') || 'ws://192.168.1.232:9001', ROBOT = q.get('robot') || 'robot2';
+// 부스 제어 PC(브로커) 주소는 바뀔 때가 있어서(.232 → .206) 응답하지 않으면 다음 주소로 바꿔 본다. ?broker= 로 정하면 그 주소만 쓴다
+const HOSTS = q.get('broker') ? [q.get('broker')] : ['ws://192.168.1.206:9001', 'ws://192.168.1.232:9001'], ROBOT = q.get('robot') || 'robot2';
+let hostIdx = 0;
 const $ = (s) => document.querySelector(s);
 const msgEl = $('#msg'); let msgT = 0;
 const say = (t) => { msgEl.textContent = t; msgEl.classList.add('show'); clearTimeout(msgT); msgT = setTimeout(() => msgEl.classList.remove('show'), 2200); };
@@ -134,8 +136,10 @@ function onStatus(msg) {
 function connect() {
   if (!window.mqtt) { setState('error', '연결 도구를 못 불러왔어요'); return; }
   setState('connecting', '연결 중…');
-  client = window.mqtt.connect(BROKER, { clientId: 'cove-ipad-' + Math.random().toString(16).slice(2, 8), connectTimeout: 5000, reconnectPeriod: 3000, clean: true });
-  client.on('connect', () => { setState('connecting', '연결됨 · 코브 응답 기다리는 중'); client.subscribe([`booth/${ROBOT}/status`, `booth/${ROBOT}/sense`]); });
+  const url = HOSTS[hostIdx % HOSTS.length];
+  const c = client = window.mqtt.connect(url, { clientId: 'cove-ipad-' + Math.random().toString(16).slice(2, 8), connectTimeout: 5000, reconnectPeriod: 3000, clean: true });
+  const fb = setTimeout(() => { if (client === c && !c.connected && HOSTS.length > 1) { try { c.end(true); } catch {} hostIdx++; connect(); } }, 6000);   // 6초 안에 안 되면 다음 주소
+  client.on('connect', () => { clearTimeout(fb); setState('connecting', '연결됨 · 코브 응답 기다리는 중'); client.subscribe([`booth/${ROBOT}/status`, `booth/${ROBOT}/sense`]); });
   client.on('message', (t, payload) => {
     let msg; try { msg = JSON.parse(new TextDecoder().decode(payload)); } catch { return; }
     if (t.endsWith('/status')) onStatus(msg); else if (t.endsWith('/sense')) applySense(msg);

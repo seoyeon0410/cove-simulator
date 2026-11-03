@@ -12,19 +12,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300..700&family=Noto+Sans+KR:wght@300..700&display=swap">
-<link rel="stylesheet" href="style.css?v=20261103t">
+<link rel="stylesheet" href="style.css?v=20261103u">
 <!-- ?v= : 고칠 때마다 이 파일의 v= 숫자를 모두 같이 바꾼다. 다른 사람 브라우저가 저장해 둔 예전 파일(presets.js 등)을 쓰지 않고 새로 받게 한다 -->
 <script type="importmap">
 { "imports": {
   "three": "./lib/three/build/three.module.js",
   "three/addons/": "./lib/three/examples/jsm/",
-  "./presets.js": "./presets.js?v=20261103t",
-  "./look.js": "./look.js?v=20261103t",
-  "./robot.js": "./robot.js?v=20261103t",
-  "./robotexport.js": "./robotexport.js?v=20261103t",
-  "./roboteyes.js": "./roboteyes.js?v=20261103t",
-  "./robotmap.js": "./robotmap.js?v=20261103t",
-  "./eyedock.js": "./eyedock.js?v=20261103t"
+  "./presets.js": "./presets.js?v=20261103u",
+  "./look.js": "./look.js?v=20261103u",
+  "./robot.js": "./robot.js?v=20261103u",
+  "./robotexport.js": "./robotexport.js?v=20261103u",
+  "./roboteyes.js": "./roboteyes.js?v=20261103u",
+  "./robotmap.js": "./robotmap.js?v=20261103u",
+  "./eyedock.js": "./eyedock.js?v=20261103u"
 } }
 </script>
 </head>
@@ -291,7 +291,7 @@
   <div class="rp-body">
     <section>
       <h4>연결</h4>
-      <label class="rp-row"><span>브로커 주소</span><input type="text" id="rpUrl" spellcheck="false" placeholder="ws://192.168.1.232:9001"></label>
+      <label class="rp-row"><span>브로커 주소</span><input type="text" id="rpUrl" spellcheck="false" placeholder="ws://192.168.1.206:9001"></label>
       <label class="rp-row"><span>로봇 이름</span><input type="text" id="rpRobot" spellcheck="false" placeholder="robot2"></label>
       <div class="rp-btns"><button id="rpConnect" class="primary">연결</button></div>
       <p class="rp-hint" id="rpHint">부스 공유기(HIDELAB_ROBOWORLD)에 연결된 PC에서 사용하세요. 이 화면은 연결하기 전까지 로봇에 아무 명령도 보내지 않아요.</p>
@@ -347,6 +347,6 @@
   </div>
 </aside>
 <script src="lib/mqtt.min.js"></script>
-<script type="module" src="app.js?v=20261103t"></script>
+<script type="module" src="app.js?v=20261103u"></script>
 </body>
 </html>

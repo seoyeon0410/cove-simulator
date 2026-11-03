@@ -6,7 +6,10 @@
 import { REST, TICK } from './robotexport.js';
 
 const $ = (s) => document.querySelector(s);
-const DEFAULT_URL = 'ws://192.168.1.232:9001';
+const DEFAULT_URL = 'ws://192.168.1.206:9001';
+// 부스 제어 PC(브로커)의 주소는 공유기가 바꿔 줄 때가 있다(2026-11-03: .232 → .206). 지금 주소가 6초 안에 응답하지 않으면 아래 주소들을 차례로 시도하고, 연결된 주소를 기억한다
+const BOOTH_HOSTS = ['192.168.1.206', '192.168.1.232'];
+const triedHosts = new Set();
 const EYES = [['idle', '뜬 눈'], ['blink', '깜빡'], ['look_left', '왼쪽 보기'], ['look_right', '오른쪽 보기'], ['happy', '웃는 눈'],
   ['closed', '감은 눈'], ['tickle', '간지럼'], ['curious', '궁금'], ['heart', '하트'], ['off', '끄기']];
 const MODES = [['rest', '휴식'], ['tickle', '간지럽히기'], ['snack', '간식'], ['track', '따라보기'], ['off', '반응 끄기']];
@@ -141,7 +144,18 @@ function connect() {
   log('sys', `연결 시도: ${url} (${robot})`);
   const c = window.mqtt.connect(url, { clientId: 'cove-web-' + Math.random().toString(16).slice(2, 8), connectTimeout: 5000, reconnectPeriod: 3000, clean: true });
   client = c;
+  const fallback = setTimeout(() => {                    // 6초 안에 연결이 안 되면 부스 제어 PC의 다른 주소로 바꿔 본다
+    if (client !== c || c.connected) return;
+    const m = url.match(/^(wss?:\/\/)([^:/]+)(:\d+)?/); if (!m) return;
+    triedHosts.add(m[2]);
+    const next = BOOTH_HOSTS.find((h) => !triedHosts.has(h));
+    if (!next) { triedHosts.clear(); return; }             // 다 해 봤으면 지금 주소로 계속 다시 시도한다
+    log('sys', `${m[2]} 가 응답하지 않아요 → ${next} 로 시도`);
+    try { c.end(true); } catch { /* 무시 */ }
+    client = null; $('#rpUrl').value = `${m[1]}${next}${m[3] || ':9001'}`; connect();
+  }, 6000);
   c.on('connect', () => {
+    clearTimeout(fallback); triedHosts.clear();
     setState('online'); log('sys', '브로커에 연결됐어요');
     c.subscribe([topic('status', robot), topic('event', robot), topic('tof', robot), topic('sense', robot)], (err) => { if (err) log('err', '구독 실패: ' + err.message); });
   });
