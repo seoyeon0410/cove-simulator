@@ -46,7 +46,10 @@ const fps = () => curClip()?.fps || 30;
 const viewEl = $('#view');
 // 아이패드·폰(손가락 터치 기기)은 3D 그리기를 가볍게 한다: 화면이 바쁘면 로봇에 자세를 보내는 0.14초 간격이 늦어지고 몰려서 로봇이 삐걱거린다(노트북에서는 괜찮음).
 // 해상도 배율 1.25 (아이패드는 원래 2), 계단 줄이기(안티에일리어싱) 끔, 그림자는 부드럽지 않은 보통 그림자
-const LIGHT_GFX = matchMedia('(pointer: coarse)').matches;
+// 아이패드: 사파리는 기본이 '데스크톱 사이트'라 pointer:coarse 가 아닐 수 있어 터치 점 수도 본다. 주소에 ?touch=1 을 붙이면 노트북에서도 아이패드 화면으로 볼 수 있다
+const TOUCH_UI = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 1 || /[?&]touch=1/.test(location.search);
+document.documentElement.classList.toggle('touch', TOUCH_UI);   // style.css 의 html.touch 규칙: 손가락으로 누르기 좋게 버튼·줄을 키운다
+const LIGHT_GFX = TOUCH_UI;
 const renderer = new THREE.WebGLRenderer({ antialias: !LIGHT_GFX, alpha: true });
 renderer.setClearColor(0x000000, 0);
 renderer.setPixelRatio(Math.min(devicePixelRatio, LIGHT_GFX ? 1.25 : 2));
@@ -1669,7 +1672,7 @@ function toast(msg) {
 /* ───────────── 타임라인 ───────────── */
 const tlc = $('#tl'), ctx = tlc.getContext('2d');
 const BAND = 24;
-const TL = { LW: 150, RULER: 26, RH: 28, pps: 120, sx: 0, sy: 0, w: 0, h: 0, drag: null, fit: true };   // fit: 클립 전체가 옆으로 넘어가지 않고 한 화면에 들어오게 맞춘다 (확대 슬라이더·Ctrl+휠로 직접 확대하면 꺼지고, '전체 보기'로 다시 켠다)
+const TL = { LW: 150, RULER: TOUCH_UI ? 30 : 26, RH: TOUCH_UI ? 36 : 28, pps: 120, sx: 0, sy: 0, w: 0, h: 0, drag: null, fit: true };   // 터치 기기는 타임라인 줄을 높여 손가락으로 누르기 좋게   // fit: 클립 전체가 옆으로 넘어가지 않고 한 화면에 들어오게 맞춘다 (확대 슬라이더·Ctrl+휠로 직접 확대하면 꺼지고, '전체 보기'로 다시 켠다)
 const bandH = () => TL.band || BAND;                                   // 장면 띠 높이: 단계 이름이 칸에 안 들어가면 이름을 세 줄로 엇갈려 쓰느라 높아진다
 const tlTop = () => TL.RULER + (curClip()?.markers?.length ? bandH() : 0);
 

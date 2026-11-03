@@ -723,3 +723,45 @@ header{flex-wrap:wrap;row-gap:6px}
   #holdBar{top:8px;left:8px;max-width:calc(100% - 16px)}
   .clip-item{padding:10px 8px}
 }
+/* ───── 아이패드(터치) 화면 (2026-11-03): 손가락으로 누르기 좋게 버튼·줄·글자를 키운다. html.touch 는 app.js 가 붙인다 ───── */
+html.touch{-webkit-text-size-adjust:100%}
+html.touch button,html.touch .clip-item,html.touch summary,html.touch .check{touch-action:manipulation;-webkit-tap-highlight-color:transparent}   /* 두 번 탭 확대 막기 */
+html.touch header{padding-top:10px;padding-bottom:10px;row-gap:8px}
+html.touch header button,html.touch #fileMenu>summary{min-height:42px;padding:8px 14px;font-size:14.5px}
+html.touch header .edit-switch{font-size:14.5px}
+html.touch .clip-item{min-height:50px;padding:12px 12px}
+html.touch .clip-item .nm{font-size:16px}
+html.touch .clip-row.sub .clip-item .nm{font-size:15px}
+html.touch .clip-item .du,html.touch .clip-item .no{font-size:13.5px}
+html.touch button.rb{width:44px;min-height:44px;font-size:16px;opacity:.85}
+html.touch button.rb.ed{display:none}   /* 아이패드에서는 단계 동작 이름 바꾸기(✎)·지우기(×)를 숨긴다 — 손가락으로 잘못 눌러 지우지 않게 (노트북에서는 그대로) */
+html.touch .eye-pick{width:40px;height:30px}
+html.touch .eye-pick canvas{width:28px;height:28px}
+html.touch #sceneChips{gap:8px 6px}
+html.touch #sceneChips .chip{height:40px;padding:0 16px;font-size:15px}
+html.touch #sceneChips .chip.num{width:40px}
+html.touch #transport{gap:6px;padding:10px 12px}
+html.touch #transport button{min-width:48px;min-height:44px;font-size:16px}
+html.touch #timeLabel{font-size:15px}
+html.touch #zoomFit,html.touch #tlFold{min-height:40px;padding:6px 14px;font-size:14px}
+html.touch .vp-step{font-size:14px}
+html.touch #vpActions #situation{font-size:18px}
+html.touch .vp-nav button{min-height:48px;max-width:220px;padding:6px 14px;font-size:15px}
+html.touch .hold-btn{padding:14px 26px;font-size:17px}
+html.touch .hold-cue{font-size:19px}
+html.touch .hold-msg{font-size:14.5px}
+html.touch #viewWrap #sensorBar .sb-head{font-size:13px}
+html.touch #viewWrap #sensorBar .sb-note{font-size:13px}
+html.touch #viewWrap #sensorBar .sb-pill{padding:6px 11px}
+html.touch #viewWrap #sensorBar .sb-pill b{font-size:14px}
+html.touch #viewWrap #sensorBar .sb-pill small{font-size:13px}
+html.touch #viewWrap #sensorBar{max-width:260px}
+html.touch #robotPanel button,html.touch .rp-row input{min-height:42px}
+html.touch .rp-ok{font-size:14px}
+html.touch input[type=checkbox]{width:52px;height:26px}
+html.touch input[type=checkbox]::before{width:22px;height:22px}
+html.touch input[type=checkbox]:checked::before{left:28px}
+html.touch .memo-bar button{min-height:40px;padding:6px 14px;font-size:14px}
+html.touch #memo{font-size:16px}   /* 16px 미만이면 아이패드가 입력할 때 화면을 확대한다 */
+/* 아이패드 세로(폭 900px 이하)에서는 3D 화면을 조금 줄여 목록이 더 보이게 한다 */
+@media (max-width:900px){html.touch #viewWrap{height:min(42vh,520px)}}
