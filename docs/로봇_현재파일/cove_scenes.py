@@ -20,7 +20,7 @@ SCENES = {
     "greet": [{"rel": {1: 0, 2: 0, 3: 0, 4: 0}, "time": 1.0}, {"motion": "greet", "smooth": 0, "eyes": "greet"}, _HOME],   # 시나리오4 인사 (2번 센서로 일어나 인사)
     "expressions": [{"rel": {1: 0, 2: -321, 3: -375, 4: 0}, "time": 1.0}, {"motion": "expressions", "smooth": 0, "eyes": "expressions"}, _HOME],   # 표정 모음
     "rest_1_wake": [{"rel": {1: 0, 2: 0, 3: 0, 4: 0}, "time": 0.6}, {"motion": "rest_1_wake", "smooth": 0, "eyes": "rest_1_wake"}],   # 휴식 1단계 누가 다가왔어요
-    "rest_2_invite": [{"rel": {1: 0, 2: -279, 3: -398, 4: 0}, "time": 0.6}, {"motion": "rest_2_invite", "smooth": 0, "eyes": "rest_2_invite"}],   # 휴식 2단계 쓰다듬어 줘서 좋아요
+    "rest_2_invite": [{"rel": {1: 0, 2: -277, 3: -393, 4: 0}, "time": 0.6}, {"motion": "rest_2_invite", "smooth": 0, "eyes": "rest_2_invite"}],   # 휴식 2단계 쓰다듬어 줘서 좋아요
     "rest_3_nibble": [{"rel": {1: 0, 2: -284, 3: -378, 4: 0}, "time": 0.6}, {"motion": "rest_3_nibble", "smooth": 0, "eyes": "rest_3_nibble"}],   # 휴식 3단계 팔을 올려 주길 기다려요
     "rest_4_lean": [{"rel": {1: 0, 2: -327, 3: -282, 4: 0}, "time": 0.6}, {"motion": "rest_4_lean", "smooth": 0, "eyes": "rest_4_lean"}],   # 휴식 4단계 기대니까 편안해요
     "rest_5_sleep": [{"rel": {1: 0, 2: -367, 3: -124, 4: 0}, "time": 0.6}, {"motion": "rest_5_sleep", "smooth": 0, "eyes": "rest_5_sleep"}],   # 휴식 5단계 스르르 잠이 와요
