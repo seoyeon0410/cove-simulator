@@ -4,22 +4,27 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>코브 애니메이터</title>
+<!-- 아이패드에서 '홈 화면에 추가'로 열면 주소창 없이 화면을 가득 채운다 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="코브">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300..700&family=Noto+Sans+KR:wght@300..700&display=swap">
-<link rel="stylesheet" href="style.css?v=20261103k">
+<link rel="stylesheet" href="style.css?v=20261103l">
 <!-- ?v= : 고칠 때마다 이 파일의 v= 숫자를 모두 같이 바꾼다. 다른 사람 브라우저가 저장해 둔 예전 파일(presets.js 등)을 쓰지 않고 새로 받게 한다 -->
 <script type="importmap">
 { "imports": {
   "three": "./lib/three/build/three.module.js",
   "three/addons/": "./lib/three/examples/jsm/",
-  "./presets.js": "./presets.js?v=20261103k",
-  "./look.js": "./look.js?v=20261103k",
-  "./robot.js": "./robot.js?v=20261103k",
-  "./robotexport.js": "./robotexport.js?v=20261103k",
-  "./roboteyes.js": "./roboteyes.js?v=20261103k",
-  "./robotmap.js": "./robotmap.js?v=20261103k",
-  "./eyedock.js": "./eyedock.js?v=20261103k"
+  "./presets.js": "./presets.js?v=20261103l",
+  "./look.js": "./look.js?v=20261103l",
+  "./robot.js": "./robot.js?v=20261103l",
+  "./robotexport.js": "./robotexport.js?v=20261103l",
+  "./roboteyes.js": "./roboteyes.js?v=20261103l",
+  "./robotmap.js": "./robotmap.js?v=20261103l",
+  "./eyedock.js": "./eyedock.js?v=20261103l"
 } }
 </script>
 </head>
@@ -44,6 +49,7 @@
   <button id="robotStop" class="danger" title="연결된 로봇을 바로 정지 (그 자리에서 힘 유지)" hidden>■ 정지</button>
   <button id="btnRobot" title="실제 로봇과 연결해서 씬 실행·정지·표정 보내기"><span class="dot" id="robotDot"></span> 로봇 연결</button>
   <label class="check edit-switch" id="editLabel" title="본을 숫자로 조작하고 키프레임을 찍는 편집 패널 열기/닫기"><input type="checkbox" id="editSw"> 편집</label>
+  <button id="btnFull" title="주소창·탭 없이 웹이 화면을 가득 채워요 (다시 누르거나 Esc로 끄기)">전체 화면</button>
   <details id="fileMenu" class="menu">
     <summary title="파일 열기·저장·내보내기">파일 ▾</summary>
     <div class="menu-pop">
@@ -341,6 +347,6 @@
   </div>
 </aside>
 <script src="lib/mqtt.min.js"></script>
-<script type="module" src="app.js?v=20261103k"></script>
+<script type="module" src="app.js?v=20261103l"></script>
 </body>
 </html>

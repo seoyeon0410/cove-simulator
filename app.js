@@ -2641,6 +2641,25 @@ requestAnimationFrame(frame);
 addEventListener('beforeunload', () => { try { if (S.glb) snapshot(true); } catch { /* */ } });
 window.__cove = { S, exportGLB, getEyes: () => eyes, camera, orbit, THREE, renderer, scene, setTime, sampleJoints, buildRobotExport, buildPresetByName: (n) => { const d = PRESET_GROUPS[0].items.find((i) => i.name === n); return d ? buildPresetClip(d) : null; }, snapshot };
 
+/* [전체 화면] 버튼: 주소창·탭 없이 웹이 화면을 가득 채운다. 브라우저가 못 하면(아이폰 등) 홈 화면에 추가하는 방법을 알려 준다 */
+(() => {
+  const btn = $('#btnFull'); if (!btn) return;
+  const root = document.documentElement;
+  const isFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  const can = !!(root.requestFullscreen || root.webkitRequestFullscreen);
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;   // 홈 화면에서 연 앱이면 이미 가득 찬 화면
+  if (standalone) { btn.hidden = true; return; }
+  const sync = () => { const on = isFull(); btn.classList.toggle('on', on); btn.textContent = on ? '전체 화면 끄기' : '전체 화면'; requestAnimationFrame(() => { try { resizeView(); resizeTL(); } catch { /* 무시 */ } }); };
+  btn.onclick = async () => {
+    try {
+      if (isFull()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else if (can) await (root.requestFullscreen || root.webkitRequestFullscreen).call(root);
+      else toast('이 브라우저는 전체 화면을 못 해요 · 사파리 공유 버튼 → "홈 화면에 추가"로 열면 주소창 없이 가득 차요');
+    } catch { toast('전체 화면을 켜지 못했어요 · 사파리 공유 버튼 → "홈 화면에 추가"로 열어 보세요'); }
+  };
+  document.addEventListener('fullscreenchange', sync); document.addEventListener('webkitfullscreenchange', sync);
+})();
+
 /* 헤더 메모장(#memo): 제어하는 사람이 쓰는 메모. [메모장] 버튼으로 열고 닫는다(열림 상태도 기억). 쓰는 대로 이 브라우저에 저장된다(다른 컴퓨터와는 공유되지 않는다) */
 (() => {
   const ta = $('#memo'), st = $('#memoState'), btn = $('#memoBtn'), pop = $('#memoPop'), KEY = 'cove-memo', OPEN = 'cove-memo-open'; if (!ta || !btn || !pop) return;
