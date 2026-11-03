@@ -643,7 +643,8 @@ body.tl-collapsed #tlFold{margin-left:0;color:var(--accent)}
 #viewWrap #sensorBar .sb-pill.on i{background:#2a2008}
 #viewWrap #sensorBar.off .sb-pill{opacity:.8}
 #viewWrap #sensorBar{transform-origin:0 0}
-#sensorBar .sb-grip{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;border-radius:0 0 var(--r-ctl,8px) 0;background:linear-gradient(135deg,transparent 50%,rgba(120,100,60,.45) 50% 56%,transparent 56% 66%,rgba(120,100,60,.45) 66% 72%,transparent 72%)}
+#vpActions .vp-grip{z-index:2;border-radius:0 0 var(--r-panel,0) 0}
+#sensorBar .sb-grip,#vpActions .vp-grip{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;border-radius:0 0 var(--r-ctl,8px) 0;background:linear-gradient(135deg,transparent 50%,rgba(120,100,60,.45) 50% 56%,transparent 56% 66%,rgba(120,100,60,.45) 66% 72%,transparent 72%)}
 /* ───── 가독성 (2026-11-02): 글자를 키우고, 뷰포트 아래의 창들이 겹치지 않게 한 줄(#viewDock)에 놓는다 ───── */
 /* 뷰포트 아래 줄: 왼쪽 센서 창, 오른쪽 단계 패널. 한 줄에 안 들어가면 단계 패널이 아랫줄로 내려간다. 줄 자체는 클릭을 막지 않는다(3D 화면 회전 그대로) */
 #viewDock{position:absolute;inset:0;z-index:4;display:flex;flex-wrap:wrap;align-items:flex-end;align-content:flex-end;justify-content:space-between;gap:10px;padding:14px 14px 18px;pointer-events:none}
@@ -734,7 +735,8 @@ html.touch .clip-item .nm{font-size:16px}
 html.touch .clip-row.sub .clip-item .nm{font-size:15px}
 html.touch .clip-item .du,html.touch .clip-item .no{font-size:13.5px}
 html.touch button.rb{width:44px;min-height:44px;font-size:16px;opacity:.85}
-html.touch button.rb.ed{display:none}   /* 아이패드에서는 단계 동작 이름 바꾸기(✎)·지우기(×)를 숨긴다 — 손가락으로 잘못 눌러 지우지 않게 (노트북에서는 그대로) */
+html.touch button.rb.ed{display:none}
+html.touch .sb-grip{width:26px;height:26px}   /* 크기 조절 손잡이도 손가락 크기로 */   /* 아이패드에서는 단계 동작 이름 바꾸기(✎)·지우기(×)를 숨긴다 — 손가락으로 잘못 눌러 지우지 않게 (노트북에서는 그대로) */
 html.touch .eye-pick{width:40px;height:30px}
 html.touch .eye-pick canvas{width:28px;height:28px}
 html.touch #sceneChips{gap:8px 6px}

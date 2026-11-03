@@ -2580,32 +2580,45 @@ addEventListener('keydown', (e) => {
   }
 });
 
-/* 단계 넘기기 패널(#vpActions): 빈 곳이나 '2 / 6 단계' 글자를 끌어서 옮긴다. 위치는 기억한다 */
+/* 단계 넘기기 패널(#vpActions): 빈 곳이나 '2 / 6 단계' 글자를 끌어서 옮기고, 오른쪽 아래 손잡이를 끌어서 크기를 바꾼다(더블클릭하면 처음 크기). 위치·크기는 기억한다 */
 (() => {
   const box = $('#vpActions'), wrap = $('#viewWrap'); if (!box || !wrap) return;
-  const KEY = 'cove-vp-pos';
-  const clamp = () => {                                               // 화면 밖으로 나가지 않게
+  const KEY = 'cove-vp-pos', SKEY = 'cove-vp-scale';
+  let sc = 1; try { sc = Math.max(0.7, Math.min(2.2, +localStorage.getItem(SKEY) || 1)); } catch { /* 무시 */ }
+  const grip = document.createElement('div'); grip.className = 'sb-grip vp-grip'; grip.title = '끌어서 크기 조절 · 더블클릭하면 처음 크기'; box.appendChild(grip);
+  const clamp = () => {                                               // 화면 밖으로 나가지 않게 (크기를 키운 것까지 포함해 실제 보이는 크기로 맞춘다)
     if (!box.style.left) return;
-    const W = wrap.clientWidth, H = wrap.clientHeight, w = box.offsetWidth, h = box.offsetHeight;
-    box.style.left = Math.max(4, Math.min(W - w - 4, parseFloat(box.style.left))) + 'px';
-    box.style.top = Math.max(4, Math.min(H - h - 4, parseFloat(box.style.top))) + 'px';
+    const r = box.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+    let x = parseFloat(box.style.left), y = parseFloat(box.style.top);
+    if (r.right > w.right - 4) x -= r.right - (w.right - 4);
+    if (r.left + (x - parseFloat(box.style.left)) < w.left + 4) x = 4;
+    if (r.bottom > w.bottom - 4) y -= r.bottom - (w.bottom - 4);
+    if (r.top + (y - parseFloat(box.style.top)) < w.top + 4) y = 4;
+    box.style.left = Math.max(4, x) + 'px'; box.style.top = Math.max(4, y) + 'px';
   };
   const put = (x, y) => { box.style.position = 'absolute'; box.style.margin = '0'; box.style.left = x + 'px'; box.style.top = y + 'px'; box.style.right = 'auto'; box.style.bottom = 'auto'; clamp(); };   // 끌기 전에는 아래 줄(#viewDock) 안에 놓여 있고, 끌면 뷰포트 좌표로 옮겨 간다
+  const pin = () => { if (box.style.left) return; const r = box.getBoundingClientRect(), w = wrap.getBoundingClientRect(); put(r.left - w.left, r.top - w.top); };
+  const applyScale = () => { box.style.transformOrigin = '0 0'; box.style.transform = sc === 1 ? '' : `scale(${sc})`; clamp(); };
   try { const p = JSON.parse(localStorage.getItem(KEY) || 'null'); if (p) put(p.x, p.y); } catch { /* 무시 */ }
-  box.style.cursor = 'grab'; box.style.touchAction = 'none'; box.title = '끌어서 옮길 수 있어요';
+  if (sc !== 1) requestAnimationFrame(() => { pin(); applyScale(); });   // 키운 크기는 뷰포트 좌표에 놓고 적용한다 (아래 줄 안에서는 늘어난 만큼 자리를 차지하지 않아서)
+  box.style.cursor = 'grab'; box.style.touchAction = 'none'; box.title = '끌어서 옮길 수 있어요 (오른쪽 아래 모서리로 크기 조절)';
   let d = null;
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ x: parseFloat(box.style.left), y: parseFloat(box.style.top) })); localStorage.setItem(SKEY, String(sc)); } catch { /* 무시 */ } };
   box.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button')) return;                            // 버튼은 그대로 눌린다
+    pin();
     const r = box.getBoundingClientRect(), w = wrap.getBoundingClientRect();
-    d = { dx: e.clientX - r.left, dy: e.clientY - r.top, ox: w.left, oy: w.top };
-    box.setPointerCapture(e.pointerId); box.style.cursor = 'grabbing'; e.preventDefault();
+    d = e.target === grip ? { mode: 'size', x0: e.clientX, w0: r.width, s0: sc } : { mode: 'move', dx: e.clientX - r.left, dy: e.clientY - r.top, ox: w.left, oy: w.top };
+    box.setPointerCapture(e.pointerId); if (d.mode === 'move') box.style.cursor = 'grabbing'; e.preventDefault();
   });
-  box.addEventListener('pointermove', (e) => { if (d) put(e.clientX - d.ox - d.dx, e.clientY - d.oy - d.dy); });
-  const end = () => {
-    if (!d) return; d = null; box.style.cursor = 'grab';
-    try { localStorage.setItem(KEY, JSON.stringify({ x: parseFloat(box.style.left), y: parseFloat(box.style.top) })); } catch { /* 무시 */ }
-  };
+  box.addEventListener('pointermove', (e) => {
+    if (!d) return;
+    if (d.mode === 'move') put(e.clientX - d.ox - d.dx, e.clientY - d.oy - d.dy);
+    else { sc = Math.max(0.7, Math.min(2.2, d.s0 * (d.w0 + e.clientX - d.x0) / d.w0)); applyScale(); }
+  });
+  const end = () => { if (!d) return; d = null; box.style.cursor = 'grab'; save(); };
   box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
+  grip.addEventListener('dblclick', (e) => { e.stopPropagation(); sc = 1; applyScale(); save(); });
   const ro = new ResizeObserver(clamp); ro.observe(wrap); ro.observe(box);   // 화면 크기가 바뀌거나(폰·태블릿 배치 포함) 숨겨져 있던 패널이 나타나 크기가 생기면 다시 화면 안으로 맞춘다
 })();
 
